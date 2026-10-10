@@ -29,6 +29,23 @@ def now_et() -> datetime:
     return datetime.now(ET)
 
 
+def market_date(ts: str | None = None) -> str:
+    """
+    Trading-day date (ET) as YYYY-MM-DD, for "today" boundaries. The server runs on
+    UTC, so date.today() rolls over at 8 PM ET. ts: an ISO timestamp (stored ones are
+    UTC; naive ones are treated as UTC); defaults to now. Empty/bad ts gives "".
+    """
+    if ts is None:
+        return now_et().date().isoformat()
+    try:
+        d = datetime.fromisoformat(ts)
+    except (TypeError, ValueError):
+        return ""
+    if d.tzinfo is None:
+        d = d.replace(tzinfo=timezone.utc)
+    return d.astimezone(ET).date().isoformat()
+
+
 def is_market_open() -> bool:
     """True if US stock market is currently open."""
     now = now_et()

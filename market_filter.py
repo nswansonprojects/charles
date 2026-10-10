@@ -14,6 +14,10 @@ from datetime import datetime, datetime as dt, timezone, timedelta
 import yfinance as yf
 
 import config
+import state_io
+from zoneinfo import ZoneInfo
+
+_ET = ZoneInfo("America/New_York")
 try:
     import macro_calendar
     import timeofday
@@ -62,49 +66,66 @@ def market_is_bullish() -> tuple[bool, float]:
 
 # ── 2. Earnings blackout ──────────────────────────────────────────────────────
 
-_earnings_cache: dict = {}
+_earnings_cache: dict = {}   # (symbol, ET date) -> (near, days); re-checked each trading day
+
+
+def _earnings_dates(cal) -> list:
+    """
+    Earnings dates from yfinance's Ticker.calendar, as datetime.date objects.
+    yfinance >= 0.2.x returns a dict ({"Earnings Date": [date, ...], ...});
+    older versions returned a DataFrame with an "Earnings Date" row.
+    """
+    if cal is None:
+        return []
+    if isinstance(cal, dict):
+        raw = cal.get("Earnings Date", [])
+    elif hasattr(cal, "index"):          # old DataFrame form
+        if getattr(cal, "empty", True) or "Earnings Date" not in cal.index:
+            return []
+        raw = cal.loc["Earnings Date"]
+    else:
+        return []
+    if raw is None or isinstance(raw, (str, bytes)) or not hasattr(raw, "__iter__"):
+        raw = [raw]
+    out = []
+    for d in raw:
+        if d is None:
+            continue
+        d = d.date() if hasattr(d, "date") and callable(d.date) else d
+        if hasattr(d, "toordinal"):
+            out.append(d)
+    return out
+
 
 def near_earnings(symbol: str) -> tuple[bool, int]:
     """
-    Returns (is_near_earnings, days_away).
-    Skips crypto symbols automatically (no earnings).
+    Returns (is_near_earnings, days_away): earnings from 1 day ago up to
+    config.EARNINGS_BLACKOUT_DAYS ahead (ET calendar days).
     """
     if "/" in symbol:
         return False, 999   # crypto — no earnings
 
-    if symbol in _earnings_cache:
-        return _earnings_cache[symbol]
+    today = dt.now(timezone.utc).astimezone(_ET).date()
+    key = (symbol, today)
+    if key in _earnings_cache:
+        return _earnings_cache[key]
 
     try:
-        ticker   = yf.Ticker(symbol)
-        cal      = ticker.calendar
-        if cal is None or cal.empty:
-            _earnings_cache[symbol] = (False, 999)
-            return False, 999
-
-        # calendar can be a DataFrame or dict depending on yfinance version
-        if hasattr(cal, "columns"):
-            dates = cal.loc["Earnings Date"] if "Earnings Date" in cal.index else []
-        else:
-            dates = cal.get("Earnings Date", [])
-
-        today = dt.now(timezone.utc).date()
-        for d in (dates if hasattr(dates, "__iter__") else [dates]):
-            try:
-                edate = d.date() if hasattr(d, "date") else d
-                days  = (edate - today).days
-                if -1 <= days <= config.EARNINGS_BLACKOUT_DAYS:
-                    log.info(f"  📅 {symbol}: earnings in {days}d — blackout active")
-                    _earnings_cache[symbol] = (True, days)
-                    return True, days
-            except Exception:
-                continue
-
-        _earnings_cache[symbol] = (False, 999)
-        return False, 999
+        dates = _earnings_dates(yf.Ticker(symbol).calendar)
     except Exception as e:
-        log.debug(f"Earnings check failed for {symbol}: {e}")
+        # was logged at debug, which hid that the check never worked (backlog #19)
+        log.warning(f"Earnings check failed for {symbol}: {e} — not blocking")
         return False, 999
+
+    result = (False, 999)
+    for edate in dates:
+        days = (edate - today).days
+        if -1 <= days <= config.EARNINGS_BLACKOUT_DAYS:
+            log.info(f"  📅 {symbol}: earnings in {days}d — blackout active")
+            result = (True, days)
+            break
+    _earnings_cache[key] = result
+    return result
 
 
 # ── 3. Cooldown / duplicate prevention ───────────────────────────────────────
@@ -116,9 +137,7 @@ def _load_cooldowns() -> dict:
     return {}
 
 def _save_cooldowns(cd: dict):
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(COOLDOWN_FILE, "w") as f:
-        json.dump(cd, f, indent=2)
+    state_io.write_json(COOLDOWN_FILE, cd, indent=2)
 
 def is_on_cooldown(symbol: str) -> bool:
     """Returns True if we've traded this symbol within TRADE_COOLDOWN_HOURS."""
@@ -237,6 +256,22 @@ def should_trade(decision: dict) -> tuple[bool, str]:
     # Cooldown
     if is_on_cooldown(symbol):
         return False, "cooldown active"
+
+    # Regime — enforce what regime.regime_multipliers promises (and what the
+    # morning Telegram announces): no new buys where allow_longs is False,
+    # and a higher confidence bar (MIN_CONFIDENCE + conf_boost). Backlog #20.
+    try:
+        import regime as _regime
+        reg, _ = _regime.detect_regime()
+        mults = _regime.regime_multipliers(reg)
+        if not mults.get("allow_longs", True):
+            return False, f"regime {reg}: new buys suppressed"
+        need = config.MIN_CONFIDENCE + mults.get("conf_boost", 0.0)
+        conf = decision.get("confidence", 0)
+        if conf < need - 1e-9:
+            return False, f"regime {reg}: confidence {conf:.0%} below {need:.0%}"
+    except Exception as e:
+        log.warning(f"Regime check failed: {e} — not blocking")
 
     # SPY trend — suppress buys in a downtrend
     bullish, spy_pct = market_is_bullish()

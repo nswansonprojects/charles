@@ -50,7 +50,7 @@ STOCK_SECTOR_MAP = {
     # Financials (XLF)
     "JPM":"XLF","BAC":"XLF","GS":"XLF","MS":"XLF","C":"XLF","WFC":"XLF",
     "BX":"XLF","KKR":"XLF","APO":"XLF","SCHW":"XLF",
-    "V":"XLF","MA":"XLF","PYPL":"XLF","SQ":"XLF","COIN":"XLF",
+    "V":"XLF","MA":"XLF","PYPL":"XLF","XYZ":"XLF","COIN":"XLF",
     "SOFI":"XLF","AFRM":"XLF","BILL":"XLF","HOOD":"XLF","NU":"XLF",
     # Healthcare (XLV)
     "LLY":"XLV","NVO":"XLV","ABBV":"XLV","MRK":"XLV","PFE":"XLV",

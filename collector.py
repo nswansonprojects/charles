@@ -3,7 +3,6 @@ collector.py — Fetches market data, news, and sentiment.
 New in v4: Bollinger Bands, ATR, volume confirmation, multi-timeframe RSI.
 """
 
-import json
 import os
 import time
 import logging
@@ -16,6 +15,7 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import finbert_sentiment as fbs
 
 import config
+import state_io
 
 log    = logging.getLogger(__name__)
 vader  = SentimentIntensityAnalyzer()
@@ -139,7 +139,10 @@ def fetch_news(symbols: list) -> list:
 
     for feed_url in config.RSS_FEEDS:
         try:
-            feed = feedparser.parse(feed_url)
+            # feedparser has no timeout; one stalled feed would hang the whole cycle
+            resp = requests.get(feed_url, timeout=15,
+                                headers={"User-Agent": feedparser.USER_AGENT})
+            feed = feedparser.parse(resp.content)
             if not feed.entries:
                 log.warning(f"  ⚠️  No entries from {feed_url}")
                 continue
@@ -195,8 +198,7 @@ def collect_all() -> dict:
         "market":       market,
         "news":         news,
     }
-    with open(os.path.join(DATA_DIR, "latest.json"), "w") as f:
-        json.dump(snapshot, f, indent=2)
+    state_io.write_json(os.path.join(DATA_DIR, "latest.json"), snapshot, indent=2)
     log.info(f"✅ Snapshot saved — {len(market)} symbols")
     return snapshot
 

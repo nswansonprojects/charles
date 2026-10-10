@@ -1,0 +1,18 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.template
+!.env.example
+
+# Runtime state, logs and generated output (written by the live bot)
+data/
+logs/
+reports/
+
+# Caches and build artefacts
+backtest_cache/
+__pycache__/
+*.pyc
+
+# Packaged copies of the project
+*.zip

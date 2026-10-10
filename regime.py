@@ -37,67 +37,70 @@ def detect_regime() -> tuple[str, dict]:
             return "TRENDING_BULL", {}
 
         hist    = hist.dropna(subset=["Close", "High", "Low"])
-        closes  = hist["Close"].tolist()
-        volumes = hist["Volume"].tolist()
-        highs   = hist["High"].tolist()
-        lows    = hist["Low"].tolist()
-
-        # ── Trend strength: ADX proxy ──
-        # Compare 20-day MA vs 50-day MA direction
-        ma20 = sum(closes[-20:]) / 20
-        ma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else sum(closes) / len(closes)
-        price = closes[-1]
-        trend_up   = price > ma20 > ma50
-        trend_down = price < ma20 < ma50
-
-        # ── Volatility: ATR as % of price ──
-        atr = _calc_atr(highs, lows, closes, 14)
-        atr_pct = (atr / price) * 100
-
-        # ── Momentum: 10-day return ──
-        momentum_10d = (closes[-1] - closes[-10]) / closes[-10] * 100 if len(closes) >= 10 else 0
-
-        # ── Volume trend ──
-        avg_vol_20 = sum(volumes[-20:]) / 20
-        avg_vol_5  = sum(volumes[-5:])  / 5
-        vol_expanding = avg_vol_5 > avg_vol_20 * 1.1
-
-        # ── Choppiness: price range vs net move ──
-        price_range = max(closes[-20:]) - min(closes[-20:])
-        net_move    = abs(closes[-1] - closes[-20])
-        choppiness  = 1 - (net_move / price_range) if price_range > 0 else 0.5
-
-        # ── Classify ──
-        if atr_pct > 2.5:
-            regime = "VOLATILE"
-        elif trend_up and momentum_10d > 2 and not choppiness > 0.7:
-            regime = "TRENDING_BULL"
-        elif trend_down and momentum_10d < -2 and not choppiness > 0.7:
-            regime = "TRENDING_BEAR"
-        else:
-            regime = "RANGING"
-
-        detail = {
-            "regime":        regime,
-            "price":         round(price, 2),
-            "ma20":          round(ma20, 2),
-            "ma50":          round(ma50, 2),
-            "atr_pct":       round(atr_pct, 2),
-            "momentum_10d":  round(momentum_10d, 2),
-            "choppiness":    round(choppiness, 2),
-            "vol_expanding": vol_expanding,
-            "trend_up":      trend_up,
-            "trend_down":    trend_down,
-        }
-
+        regime, detail = classify(hist["Close"].tolist(), hist["High"].tolist(),
+                                  hist["Low"].tolist(), hist["Volume"].tolist())
         _cache.update({"ts": now, "regime": regime, "detail": detail})
-        log.info(f"  🌡️  Market regime: {regime} | ATR={atr_pct:.1f}% | "
-                 f"mom={momentum_10d:+.1f}% | chop={choppiness:.2f}")
+        log.info(f"  🌡️  Market regime: {regime} | ATR={detail['atr_pct']:.1f}% | "
+                 f"mom={detail['momentum_10d']:+.1f}% | chop={detail['choppiness']:.2f}")
         return regime, detail
 
     except Exception as e:
         log.warning(f"Regime detection failed: {e} — defaulting to TRENDING_BULL")
         return "TRENDING_BULL", {}
+
+
+def classify(closes: list, highs: list, lows: list, volumes: list) -> tuple[str, dict]:
+    """The regime from SPY daily bars, oldest first (pure; detect_regime fetches them).
+    Shared with backtest_orb.py so the ORB regime filter is tested on the same rule."""
+
+    # ── Trend strength: ADX proxy ──
+    # Compare 20-day MA vs 50-day MA direction
+    ma20 = sum(closes[-20:]) / 20
+    ma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else sum(closes) / len(closes)
+    price = closes[-1]
+    trend_up   = price > ma20 > ma50
+    trend_down = price < ma20 < ma50
+
+    # ── Volatility: ATR as % of price ──
+    atr = _calc_atr(highs, lows, closes, 14)
+    atr_pct = (atr / price) * 100
+
+    # ── Momentum: 10-day return ──
+    momentum_10d = (closes[-1] - closes[-10]) / closes[-10] * 100 if len(closes) >= 10 else 0
+
+    # ── Volume trend ──
+    avg_vol_20 = sum(volumes[-20:]) / 20
+    avg_vol_5  = sum(volumes[-5:])  / 5
+    vol_expanding = avg_vol_5 > avg_vol_20 * 1.1
+
+    # ── Choppiness: price range vs net move ──
+    price_range = max(closes[-20:]) - min(closes[-20:])
+    net_move    = abs(closes[-1] - closes[-20])
+    choppiness  = 1 - (net_move / price_range) if price_range > 0 else 0.5
+
+    # ── Classify ──
+    if atr_pct > 2.5:
+        regime = "VOLATILE"
+    elif trend_up and momentum_10d > 2 and not choppiness > 0.7:
+        regime = "TRENDING_BULL"
+    elif trend_down and momentum_10d < -2 and not choppiness > 0.7:
+        regime = "TRENDING_BEAR"
+    else:
+        regime = "RANGING"
+
+    detail = {
+        "regime":        regime,
+        "price":         round(price, 2),
+        "ma20":          round(ma20, 2),
+        "ma50":          round(ma50, 2),
+        "atr_pct":       round(atr_pct, 2),
+        "momentum_10d":  round(momentum_10d, 2),
+        "choppiness":    round(choppiness, 2),
+        "vol_expanding": vol_expanding,
+        "trend_up":      trend_up,
+        "trend_down":    trend_down,
+    }
+    return regime, detail
 
 
 def regime_multipliers(regime: str) -> dict:

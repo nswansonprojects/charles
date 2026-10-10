@@ -22,10 +22,6 @@ feedparser>=6.0.11
 # Scheduling
 apscheduler>=3.10.4
 
-# Dashboard
-plotly>=5.24.0
-streamlit>=1.40.0
-
 # Broker
 alpaca-py>=0.33.0
 

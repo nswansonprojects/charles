@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 import requests
 import yfinance as yf
 
+import state_io
+
 log = logging.getLogger(__name__)
 
 # Sector rotation — imported lazily to avoid circular deps at startup
@@ -44,9 +46,9 @@ STOCK_UNIVERSE = [
     "PLTR","SNOW","NET","DDOG","ZS","CRWD","S","GTLB","HUBS","NOW",
     "SMCI","DELL","HPE","WDC","STX",
     # ── Fintech / Payments ────────────────────────────────────────────────────
-    "V","MA","PYPL","SQ","COIN","SOFI","AFRM","BILL","HOOD","NU",
+    "V","MA","PYPL","XYZ","COIN","SOFI","AFRM","BILL","HOOD","NU",
     # ── Consumer / Retail ─────────────────────────────────────────────────────
-    "AMZN","WMT","COST","HD","TGT","SHOP","ETSY","UBER","LYFT","ABNB",
+    "WMT","COST","HD","TGT","SHOP","ETSY","UBER","LYFT","ABNB",   # AMZN listed under mega-cap
     # ── Finance / Banks ───────────────────────────────────────────────────────
     "JPM","BAC","GS","MS","C","WFC","BX","KKR","APO","SCHW",
     # ── Healthcare / Biotech ─────────────────────────────────────────────────
@@ -247,12 +249,15 @@ def _score_stock(symbol: str) -> dict | None:
 
 # ── Main screener ─────────────────────────────────────────────────────────────
 
-def run_screener(top_stocks: int = 10, top_crypto: int = 0) -> dict:
+def run_screener(top_stocks: int | None = None, top_crypto: int = 0) -> dict:
     """
     Screen the full universe and return the best candidates.
     Saves results to data/watchlist.json.
     """
     log.info("🔍 Running autonomous screener...")
+    if top_stocks is None:
+        import config
+        top_stocks = config.MAX_SYMBOLS_PER_CYCLE
 
     # Score stocks (shuffle to avoid always hitting same ones first)
     universe = STOCK_UNIVERSE.copy()
@@ -276,9 +281,7 @@ def run_screener(top_stocks: int = 10, top_crypto: int = 0) -> dict:
         "scores":  top_stocks_list,
     }
 
-    os.makedirs(DATA_DIR, exist_ok=True)
-    with open(WATCHLIST_FILE, "w") as f:
-        json.dump(watchlist, f, indent=2)
+    state_io.write_json(WATCHLIST_FILE, watchlist, indent=2)
 
     if top_stocks_list:
         log.info(f"  📈 Top stocks: {watchlist['stocks']}")
@@ -342,7 +345,7 @@ def update_performance_feedback():
         new_conf = min(current_conf + 0.05, 0.85)   # raise bar if losing
         log.info(f"📉 Win rate {win_rate:.0%} — raising confidence threshold to {new_conf:.0%}")
     elif win_rate > 0.65:
-        new_conf = max(current_conf - 0.05, 0.50)   # lower bar if winning
+        new_conf = max(current_conf - 0.05, config.MIN_CONFIDENCE_FLOOR)   # lower bar if winning
         log.info(f"📈 Win rate {win_rate:.0%} — lowering confidence threshold to {new_conf:.0%}")
     else:
         new_conf = current_conf
@@ -359,8 +362,7 @@ def update_performance_feedback():
         "avg_loss":         round(sum(t["pnl"] for t in losses) / len(losses), 2) if losses else 0,
     }
 
-    with open(PERFORMANCE_FILE, "w") as f:
-        json.dump(perf, f, indent=2)
+    state_io.write_json(PERFORMANCE_FILE, perf, indent=2)
 
     log.info(f"✅ Performance feedback saved — win rate {win_rate:.0%}, "
              f"confidence threshold → {new_conf:.0%}")
@@ -373,5 +375,6 @@ def get_tuned_confidence() -> float:
     if os.path.exists(PERFORMANCE_FILE):
         with open(PERFORMANCE_FILE) as f:
             data = json.load(f)
-        return data.get("tuned_confidence", config.MIN_CONFIDENCE)
+        tuned = data.get("tuned_confidence", config.MIN_CONFIDENCE)
+        return max(tuned, config.MIN_CONFIDENCE_FLOOR)
     return config.MIN_CONFIDENCE

@@ -1,0 +1,16 @@
+{
+  "settings": {
+    "MIN_POSITION_SIZE_PCT": 0.10,
+    "MAX_POSITION_SIZE_PCT": 0.15,
+    "MAX_OPEN_POSITIONS": 4,
+    "STOP_LOSS_PCT": 0.05,
+    "TAKE_PROFIT_PCT": 0.15,
+    "TRAILING_STOP_ATR_MULT": 2.0,
+    "MIN_CONFIDENCE_FLOOR": 0.60,
+    "LLM_SELL_MIN_CONFIDENCE": 0.75,
+    "TRADE_COOLDOWN_HOURS": 4,
+    "PROFIT_LOCK_TRIGGER": 0.04,
+    "PROFIT_LOCK_KEEP": 0.5
+  },
+  "last_change": "2026-10-09: owner turned on profit lock (stop keeps half the best gain once a trade is +4%), against the replay on past trades (would have been -$3.51 vs +$1.47 on 4 of 77 trades) — compare with the shadow books."
+}

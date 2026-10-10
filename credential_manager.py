@@ -87,7 +87,6 @@ def validate() -> dict[str, bool]:
     return {
         "alpaca":   bool(alpaca_key() and alpaca_key() != "YOUR_ALPACA_API_KEY_HERE"),
         "telegram": bool(telegram_token()),
-        "ollama":   True,   # checked separately
         "password": bool(dashboard_password()),
     }
 

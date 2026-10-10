@@ -11,10 +11,50 @@ New in v5:
 
 import json
 import logging
+import os
 import requests
+from datetime import datetime, timezone
 
 import config
 log = logging.getLogger(__name__)
+
+DECISIONS_FILE = os.path.join(os.path.dirname(__file__), "data", "decisions.jsonl")
+
+
+# Inputs saved with every decision so a model can later learn which ones predict returns
+# (roadmap: learning model). Scalars only; price_history and the like are left out.
+FEATURE_KEYS = ("change_pct", "intraday_change_pct", "vol_ratio", "market_cap", "rsi_7", "rsi_21",
+                "macd", "macd_signal", "bb_pos", "atr_pct", "ma50_dist_pct", "above_ma50",
+                "hourly_macd", "hourly_macd_signal", "hourly_bb_pos", "hourly_trend")
+
+
+def _log_decision(symbol: str, d: dict, held: bool, regime: str, raw: dict, final: dict,
+                  sentiment: float | None = None):
+    """One line per decision, so the AI can later be scored against the rule signal."""
+    try:
+        rule_signal, rule_score = technical_signal(d)
+        row = {
+            "ts":          datetime.now(timezone.utc).isoformat(),
+            "symbol":      symbol,
+            "price":       d.get("price"),
+            "held":        held,
+            "regime":      regime,
+            "rule_signal": rule_signal,
+            "rule_score":  rule_score,
+            "ai_action":   raw.get("action"),
+            "ai_conf":     raw.get("confidence"),
+            "source":      raw.get("source"),
+            "final":       final.get("action"),
+            "rsi":         d.get("rsi"),
+            "hourly_rsi":  d.get("hourly_rsi"),
+            "mtf":         d.get("mtf_agreement"),
+            "sentiment":   sentiment,
+            "features":    {k: d.get(k) for k in FEATURE_KEYS if d.get(k) is not None},
+        }
+        with open(DECISIONS_FILE, "a") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception as e:
+        log.debug(f"Decision log failed {symbol}: {e}")
 
 
 # ── Rule-based signal ─────────────────────────────────────────────────────────
@@ -119,7 +159,7 @@ def sentiment_for_symbol(symbol: str, news: list) -> float:
     return round(sum(rel) / len(rel), 3) if rel else 0.0
 
 
-# ── Ollama LLM ────────────────────────────────────────────────────────────────
+# ── Groq LLM ──────────────────────────────────────────────────────────────────
 
 def _get_groq_key() -> str:
     """Get Groq API key from credential_manager or config."""
@@ -156,37 +196,15 @@ def _ask_groq(prompt: str) -> str:
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        log.warning(f"Groq error: {e} — falling back to Ollama")
-        return ""
-
-
-def _ask_ollama(prompt: str) -> str:
-    """Call local Ollama — fallback when Groq is not configured."""
-    try:
-        r = requests.post(
-            f"{config.OLLAMA_HOST}/api/generate",
-            json={
-                "model":   config.OLLAMA_MODEL,
-                "prompt":  prompt,
-                "stream":  False,
-                "options": {"temperature": 0.2, "num_predict": 400},
-            },
-            timeout=90,
-        )
-        r.raise_for_status()
-        return r.json().get("response", "")
-    except requests.exceptions.ConnectionError:
-        log.warning("⚠️  Ollama not running — rule-based fallback")
-        return ""
-    except Exception as e:
-        log.warning(f"Ollama error: {e}")
+        log.warning(f"Groq error: {e} — rule-based fallback")
         return ""
 
 
 def _ask_llm(prompt: str) -> tuple[str, str]:
     """
     Unified LLM call. Returns (response_text, provider_used).
-    Uses Groq if key is set, otherwise Ollama.
+    Uses Groq if key is set. An empty response means the caller uses the rule fallback.
+    (The Ollama fallback was removed 2026-10-01: llama3.1 can't load in this server's 3 GB RAM.)
     """
     provider = getattr(config, "LLM_PROVIDER", "auto")
 
@@ -195,10 +213,9 @@ def _ask_llm(prompt: str) -> tuple[str, str]:
         if response:
             log.debug("🚀 Groq responded")
             return response, "groq"
-        log.warning("Groq failed — falling back to Ollama")
+        log.warning("Groq failed — rule-based fallback")
 
-    response = _ask_ollama(prompt)
-    return response, "ollama" if response else "none"
+    return "", "none"
 
 
 def llm_decision(
@@ -226,7 +243,7 @@ def llm_decision(
             action = "SELL"
         return {
             "action":     action,
-            "confidence": 0.55,
+            "confidence": 0.55,   # below MIN_CONFIDENCE on purpose: rules never trade (#21)
             "reasoning":  f"Token budget exhausted this cycle — rule fallback: "
                           f"score={rule_score:+.2f}",
             "source":     "rules",
@@ -244,8 +261,9 @@ def llm_decision(
 - Position value:   ${pos.get('market_value', 0):,.2f}
 - Trailing stop at: ${pos.get('trailing_stop', 0):,.4f}
 - Hold duration:    {pos.get('hold_days', '?')} days
-- Re-evaluate:      Would you still BUY this today given current data?
-  If no → SELL. If yes → HOLD. Consider booking partial profit if P&L > 10%."""
+- Re-evaluate:      Default is HOLD — stops and take-profit manage the exit.
+  SELL only if the daily trend has clearly turned bearish. Mixed hourly
+  signals, low volume, or "would not buy again today" are NOT reasons to SELL."""
     else:
         pos_block = "\n## Current Position\n- Not held. Fresh entry decision."
 
@@ -276,7 +294,7 @@ Regime: {regime} | Sentiment model: FinBERT
 - Price:         ${d.get('price','N/A')}  ({d.get('change_pct',0):+.2f}% today)
 - RSI daily:     {d.get('rsi',50):.1f}  |  RSI 7d: {d.get('rsi_7',50):.1f}
 - MACD:          {d.get('macd',0):.4f}  Signal: {d.get('macd_signal',0):.4f}
-- BB position:   {d.get('bb_pos',0.5):.2f} (0=oversold, 1=overbought)
+- BB position:   {d.get('bb_pos',0.5):.2f} (0=lower band, 1=upper band)
 - ATR:           {d.get('atr_pct',0):.2f}% of price
 
 ### Hourly (momentum, 40% weight)
@@ -298,6 +316,8 @@ Regime: {regime} | Sentiment model: FinBERT
 
 ## Instructions
 Weigh ALL timeframes. Daily sets the trend, hourly confirms timing.
+Only describe RSI as "overbought" if it is above {config.RSI_OVERBOUGHT}, or "oversold" if below {config.RSI_OVERSOLD}.
+Otherwise call it neutral or moderate. Do not use "overbought"/"oversold" language based on BB position, MACD, or general impression — those terms are reserved for RSI crossing its actual threshold.
 {"SHORT = profit from price decline (bear regime only)." if allow_short else ""}
 Respond ONLY with valid JSON, no extra text:
 {{
@@ -327,7 +347,7 @@ Respond ONLY with valid JSON, no extra text:
         action = "SELL"
     return {
         "action":     action,
-        "confidence": 0.55,
+        "confidence": 0.55,   # below MIN_CONFIDENCE on purpose: rules never trade (#21)
         "reasoning":  f"Rule fallback: score={rule_score:+.2f} | MTF={d.get('mtf_agreement','?')} | hourly_rsi={d.get('hourly_rsi',50):.1f}",
         "source":     "rules",
     }
@@ -419,23 +439,23 @@ def analyse_snapshot(
             macro_event=effective_macro,
             force_rules_only=force_rules_only,
         )
+        raw_decision = dict(decision)   # before the sell gate / time filter below
 
-        # Minimum hold time: don't let Groq flip-flop out of a fresh position
-        # unless it's a genuinely high-confidence SELL. Trailing stop is separate
-        # and unaffected by this — it can still close the position mechanically.
-        MIN_HOLD_MINUTES = 15
-        SELL_OVERRIDE_CONFIDENCE = 0.75
-        hold_minutes = pos_ctx.get("hold_minutes")
+        # Don't let Groq flip-flop out of a position: an LLM SELL only goes
+        # through if it's genuinely high-confidence, however long we've held.
+        # Rule-based SELLs and the trailing/fixed stops are separate and
+        # unaffected by this — they can still close the position mechanically.
+        sell_min_conf = getattr(config, "LLM_SELL_MIN_CONFIDENCE", 0.75)
         if (pos_ctx["held"] and decision["action"] == "SELL"
-                and hold_minutes is not None and hold_minutes < MIN_HOLD_MINUTES
-                and decision.get("confidence", 0) < SELL_OVERRIDE_CONFIDENCE):
-            log.info(f"  ⏳ {symbol}: held only {hold_minutes:.0f}m, "
-                     f"confidence {decision.get('confidence', 0):.0%} below "
-                     f"{SELL_OVERRIDE_CONFIDENCE:.0%} override — HOLD instead of SELL")
+                and decision.get("source", "").startswith("llm")
+                and decision.get("confidence", 0) < sell_min_conf):
+            log.info(f"  ⏳ {symbol}: LLM SELL confidence "
+                     f"{decision.get('confidence', 0):.0%} below "
+                     f"{sell_min_conf:.0%} — HOLD instead of SELL")
             decision["action"]    = "HOLD"
-            decision["reasoning"] = (f"Min hold time: {hold_minutes:.0f}m held, "
-                                      f"SELL confidence {decision.get('confidence', 0):.0%} "
-                                      f"too low to exit early. Original: {decision.get('reasoning', '')}")
+            decision["reasoning"] = (f"LLM SELL confidence {decision.get('confidence', 0):.0%} "
+                                      f"below {sell_min_conf:.0%} exit threshold. "
+                                      f"Original: {decision.get('reasoning', '')}")
 
         # Override to HOLD during avoid windows for new entries
         if (sess.get("avoid_trading") and decision["action"] == "BUY"
@@ -443,6 +463,8 @@ def analyse_snapshot(
             log.info(f"  ⏰ {symbol}: time filter ({sess.get('avoid_reason','')}) — HOLD")
             decision["action"]    = "HOLD"
             decision["reasoning"] = f"Time filter: {sess.get('avoid_reason','opening/closing noise')}"
+
+        _log_decision(symbol, d, pos_ctx["held"], regime, raw_decision, decision, sentiment)
 
         decisions.append({
             "symbol":       symbol,

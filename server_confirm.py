@@ -1,7 +1,7 @@
 """
 server_confirm.py — Terminal key confirmation for server startup.
 Shows current API keys from .env and asks user to confirm before launching.
-Runs automatically when charles-start or charles-restart is used.
+Used by update_keys.py (the `charles-keys` command).
 """
 
 import os
@@ -113,7 +113,7 @@ def run_confirmation() -> bool:
 
     # Ask what to do
     print("Options:")
-    print(f"  {GREEN}[1]{RESET} Confirm keys and start bot")
+    print(f"  {GREEN}[1]{RESET} Save keys and restart the bot")
     print(f"  {YELLOW}[2]{RESET} Update a key")
     print(f"  {YELLOW}[3]{RESET} View raw .env file")
     print(f"  {RED}[4]{RESET} Cancel\n")
@@ -123,9 +123,9 @@ def run_confirmation() -> bool:
 
         if choice == "1":
             if not all_required_set:
-                print(f"\n{RED}Cannot start — required keys are missing. Choose [2] to update them.{RESET}\n")
+                print(f"\n{RED}Cannot continue — required keys are missing. Choose [2] to update them.{RESET}\n")
                 continue
-            print(f"\n{GREEN}✅ Keys confirmed — starting Charles...{RESET}\n")
+            print(f"\n{GREEN}✅ Keys confirmed{RESET}\n")
             return True
 
         elif choice == "2":
@@ -167,7 +167,7 @@ def run_confirmation() -> bool:
             print(f"{'─'*55}\n")
 
         elif choice == "4":
-            print(f"\n{YELLOW}Cancelled. Bot not started.{RESET}\n")
+            print(f"\n{YELLOW}Cancelled — nothing changed, the bot keeps running.{RESET}\n")
             return False
 
         else:
@@ -175,6 +175,4 @@ def run_confirmation() -> bool:
 
 
 if __name__ == "__main__":
-    if not run_confirmation():
-        sys.exit(0)
-    print("Starting bot...")
+    print("Run update_keys.py (or `charles-keys`) instead — it also applies the keys and restarts the bot.")

@@ -33,11 +33,14 @@ def _load_equity() -> list:
 
 
 def _spy_return(start_date: str, end_date: str) -> float:
-    """Get SPY return over a date range via yfinance."""
+    """Get SPY return from start_date through end_date (both inclusive) via yfinance."""
     try:
         import yfinance as yf
         spy  = yf.Ticker("SPY")
-        hist = spy.history(start=start_date, end=end_date)
+        # yfinance's end is exclusive: without the +1 day the last day is dropped, and
+        # start == end asks for nothing (logged as "$SPY: possibly delisted").
+        end_excl = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
+        hist = spy.history(start=start_date, end=end_excl)
         if hist.empty or len(hist) < 2: return 0.0
         return round((hist["Close"].iloc[-1] - hist["Close"].iloc[0])
                      / hist["Close"].iloc[0] * 100, 2)
@@ -135,41 +138,61 @@ def _compute_stats(trades: list, equity: list,
 
 # ── Report generators ─────────────────────────────────────────────────────────
 
-def generate_report(period: str, custom_start: str = None,
-                    custom_end: str = None) -> dict:
-    """
-    Generate a report for 'weekly', 'monthly', 'yearly', or 'custom'.
-    Returns stats dict + saves CSV files to reports/ folder.
-    """
-    now = datetime.now(timezone.utc)
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-
+def report_window(period: str, now: datetime, previous: bool = False,
+                  custom_start: str = None, custom_end: str = None) -> tuple:
+    """(start_dt, end_dt, label, fname) for a report period.
+    previous=True gives the last complete month/year (the scheduled reports run on
+    the 1st, when "this month so far" is a single day); otherwise it is to date."""
     if period == "weekly":
-        start_dt = now - timedelta(days=7)
-        label    = f"Week of {(now - timedelta(days=7)).strftime('%b %d')} – {now.strftime('%b %d, %Y')}"
+        start_dt, end_dt = now - timedelta(days=7), now
+        label    = f"Week of {start_dt.strftime('%b %d')} – {now.strftime('%b %d, %Y')}"
         fname    = f"weekly_{now.strftime('%Y_%m_%d')}"
     elif period == "monthly":
-        start_dt = now.replace(day=1, hour=0, minute=0, second=0)
-        label    = now.strftime("%B %Y")
-        fname    = f"monthly_{now.strftime('%Y_%m')}"
+        this_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        if previous:
+            end_dt   = this_month - timedelta(seconds=1)
+            start_dt = end_dt.replace(day=1, hour=0, minute=0, second=0)
+        else:
+            start_dt, end_dt = this_month, now
+        label    = start_dt.strftime("%B %Y")
+        fname    = f"monthly_{start_dt.strftime('%Y_%m')}"
     elif period == "yearly":
-        start_dt = now.replace(month=1, day=1, hour=0, minute=0, second=0)
-        label    = str(now.year)
-        fname    = f"yearly_{now.year}"
+        this_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+        if previous:
+            end_dt   = this_year - timedelta(seconds=1)
+            start_dt = end_dt.replace(month=1, day=1, hour=0, minute=0, second=0)
+        else:
+            start_dt, end_dt = this_year, now
+        label    = str(start_dt.year)
+        fname    = f"yearly_{start_dt.year}"
     elif period == "custom" and custom_start and custom_end:
         start_dt = datetime.fromisoformat(custom_start).replace(tzinfo=timezone.utc)
-        now      = datetime.fromisoformat(custom_end).replace(tzinfo=timezone.utc)
+        end_dt   = datetime.fromisoformat(custom_end).replace(tzinfo=timezone.utc)
         label    = f"{custom_start} to {custom_end}"
         fname    = f"custom_{custom_start}_to_{custom_end}"
     else:
         raise ValueError(f"Unknown period: {period}")
+    return start_dt, end_dt, label, fname
+
+
+def generate_report(period: str, custom_start: str = None,
+                    custom_end: str = None, previous: bool = False) -> dict:
+    """
+    Generate a report for 'weekly', 'monthly', 'yearly', or 'custom'.
+    previous=True: the last complete month/year (used by the scheduled reports).
+    Returns stats dict + saves CSV files to reports/ folder.
+    """
+    now = datetime.now(timezone.utc)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    start_dt, end_dt, label, fname = report_window(period, now, previous,
+                                                   custom_start, custom_end)
 
     trades, equity = _filter_by_period(_load_trades(), _load_equity(),
-                                        start_dt, now)
+                                        start_dt, end_dt)
     stats = _compute_stats(trades, equity)
 
     # SPY benchmark
-    spy_ret = _spy_return(start_dt.strftime("%Y-%m-%d"), now.strftime("%Y-%m-%d"))
+    spy_ret = _spy_return(start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
     stats["spy_return"]   = spy_ret
     stats["alpha"]        = round(stats["period_return"] - spy_ret, 2)
     stats["period"]       = period
@@ -379,35 +402,18 @@ def generate_sample_tax_documents() -> dict:
             "source":     "llm:groq",
         })
 
-    # Temporarily write sample trades
-    sample_file = os.path.join(DATA_DIR, "_sample_trades_temp.json")
-    os.makedirs(DATA_DIR, exist_ok=True)
-    real_file   = os.path.join(DATA_DIR, "trades.json")
+    # Passed in directly — the live data/trades.json is never touched
+    # (this used to swap the real file out while the bot was running).
+    report  = te.generate_report(trades=sample_trades)
+    lots    = report.get("lots", [])
+    summary = report.get("summary", {})
+    summary["label"] = "2026 Tax Year — SAMPLE PREVIEW"
 
-    # Save real trades backup, write sample
-    real_trades = []
-    if os.path.exists(real_file):
-        with open(real_file) as f:
-            real_trades = json.load(f)
-
-    with open(real_file, "w") as f:
-        json.dump(sample_trades, f)
-
-    try:
-        report = te.generate_report()
-        lots   = report.get("lots", [])
-        summary = report.get("summary", {})
-        summary["label"] = "2026 Tax Year — SAMPLE PREVIEW"
-
-        docs = {
-            "form_8949":   te.export_csv(lots),
-            "schedule_d":  te.export_schedule_d_csv(summary),
-            "full_log":    _full_log_csv(sample_trades),
-        }
-    finally:
-        # Restore real trades
-        with open(real_file, "w") as f:
-            json.dump(real_trades, f)
+    docs = {
+        "form_8949":   te.export_csv(lots),
+        "schedule_d":  te.export_schedule_d_csv(summary),
+        "full_log":    _full_log_csv(sample_trades),
+    }
 
     # Save to reports folder
     os.makedirs(REPORTS_DIR, exist_ok=True)

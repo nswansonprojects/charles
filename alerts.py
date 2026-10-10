@@ -9,6 +9,7 @@ import logging
 import os
 import requests
 import config
+import state_io
 
 log = logging.getLogger(__name__)
 
@@ -87,8 +88,7 @@ def _notify(icon: str, title: str, message: str, level: str = "info"):
             "level":   level,
         })
         notifs = notifs[-50:]   # keep last 50
-        with open(_NOTIF_FILE, "w") as f:
-            json.dump(notifs, f)
+        state_io.write_json(_NOTIF_FILE, notifs)
     except Exception as e:
         log.debug(f"Notification log error: {e}")
 
@@ -211,7 +211,7 @@ def error_alert(msg: str):
     _send(f"⚠️ *Bot error*\n`{msg[:300]}`")
 
 
-def daily_summary(summary: dict):
+def daily_summary(summary: dict, extra: list | None = None):
     total  = summary.get("total_value", 0)
     ret    = summary.get("total_return_pct", 0)
     wins   = summary.get("win_rate", 0)
@@ -225,6 +225,7 @@ def daily_summary(summary: dict):
         f"📈 Return: `{sign}{ret:.2f}%`\n"
         f"✅ Win rate: `{wins:.1f}%`\n"
         f"🔄 Total trades: `{trades}`"
+        + "".join(f"\n{line}" for line in (extra or []))
     )
 
 

@@ -239,13 +239,16 @@ def get_open_positions_unrealized(summary: dict) -> list[dict]:
 def generate_report(
     start_date: str | None = None,
     end_date: str | None = None,
+    trades: list[dict] | None = None,
 ) -> dict:
     """
     Full tax report for a date range.
     start_date / end_date: "YYYY-MM-DD" strings or None for all time.
+    trades: use these instead of data/trades.json (e.g. sample data).
     Returns dict with lots, summary, and export-ready data.
     """
-    trades = _load_trades()
+    if trades is None:
+        trades = _load_trades()
 
     # Filter by date range
     if start_date or end_date:

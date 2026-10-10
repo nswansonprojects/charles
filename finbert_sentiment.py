@@ -11,6 +11,14 @@ import os
 
 log = logging.getLogger(__name__)
 
+# Once the model is in the local cache, keep Hugging Face offline: otherwise every load
+# checks the Hub (logging "unauthenticated requests to the HF Hub ... set a HF_TOKEN").
+# Must be set before transformers/huggingface_hub are imported; this module is the only
+# importer. With no cache yet, stay online so the first run can download the model.
+_CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "finbert_cache")
+if os.path.isdir(os.path.join(_CACHE_DIR, "models--ProsusAI--finbert", "snapshots")):
+    os.environ.setdefault("HF_HUB_OFFLINE", "1")
+
 # Cache the model so we only load it once
 _pipeline = None
 _use_finbert = None
@@ -26,7 +34,7 @@ def _load_model():
         import torch
 
         log.info("🧠 Loading FinBERT sentiment model (first run may take a minute)...")
-        cache_dir = os.path.join(os.path.dirname(__file__), "data", "finbert_cache")
+        cache_dir = _CACHE_DIR
         os.makedirs(cache_dir, exist_ok=True)
 
         _pipeline = hf_pipeline(

@@ -1,113 +1,136 @@
-# Charles
+# Charles — self-hosted AI paper-trading bot
 
-Self-hosted AI trading bot powered by Groq's LLM. Charles screens a stock universe, scores signals using a combination of technical indicators and an LLM reasoning layer, checks the setup against a market-regime filter, and trades on Alpaca's paper trading API.
+Charles trades US stocks on an **Alpaca paper account**. No real money is involved:
+the Alpaca client is hard-coded to `paper=True`. An AI model (Groq, `openai/gpt-oss-20b`)
+makes the buy/sell calls. Rule-based safety checks, position sizing and stop-losses around
+it decide whether and how much to trade. It runs 24/7 as a systemd service. A mobile-friendly
+dashboard (`webdash.py`) runs on port 8502, and Telegram alerts are optional.
 
-Paper trading by default — no real money at risk. Live trading is optional and requires your own funded Alpaca account.
+Website and step-by-step guide: [charles-bot.xyz](https://charles-bot.xyz)
 
-## Features
-
-- Autonomous screener across sectors, with a mid-day refresh
-- Technical signals: RSI, MACD, moving-average structure
-- LLM-based reasoning layer for signal scoring and news/sentiment context (via Groq)
-- Market regime detection (trending bull, trending bear, ranging, volatile) that gates position sizing and shorting
-- Four trading modes — mild, medium, hot, extreme — trading off frequency, position sizing, and risk
-- Dynamic trailing stops, earnings blackout, daily loss kill switch
-- Streamlit dashboard
-- Telegram alerts
-
-## Requirements
-
-- Python 3.11
-- Free API keys:
-  - [Alpaca](https://alpaca.markets) (paper trading)
-  - [Groq](https://console.groq.com) (LLM reasoning engine)
-  - [Telegram bot token](https://core.telegram.org/bots) (for alerts, optional)
-
-## Setup
-
-You can run Charles on your own computer or on a cloud server so it runs 24/7. Either way, the steps are the same.
-
-1. Clone the repo:
-   ```
-   git clone https://github.com/nswansonprojects/charles.git
-   cd charles
-   ```
-
-2. Install dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Copy `.env.example` to `.env` and fill in your API keys:
-   ```
-   cp .env.example .env
-   ```
-   ```
-   ALPACA_API_KEY=your_key
-   ALPACA_SECRET_KEY=your_secret
-   GROQ_API_KEY=your_groq_key
-   TELEGRAM_BOT_TOKEN=your_token       # optional
-   TELEGRAM_CHAT_ID=your_chat_id       # optional
-   ```
-
-4. Run Charles:
-   ```
-   python main.py
-   ```
-
-5. A setup wizard opens in your browser to finish configuration. Once it's done, the dashboard is available at `http://localhost:8501`.
-
-First startup can take a few minutes while it loads models and connects to Alpaca and Groq.
-
-## Trading modes
-
-Charles ships with four modes that trade off trading frequency, position sizing, and risk tolerance. Switch modes with:
+## Install (Ubuntu server)
 
 ```
-charles-mode mild
-charles-mode medium
-charles-mode hot
-charles-mode extreme
+curl -fsSL https://charles-bot.xyz/install.sh -o install.sh && bash install.sh
 ```
 
-(Run with no argument to see the current mode.) The bot restarts automatically to apply the change.
+The installer clones this repo to `/root/charles`, creates a Python 3.11 conda env, installs
+the requirements and sets up two services: `charles` (the bot) and `charles-web` (the dashboard).
+Then:
 
-| Mode | Max positions | Max position size | Min confidence | Scan interval | Shorting |
-|------|---------------|--------------------|-----------------|----------------|----------|
-| mild | 4 | 20% | 0.65 | 30 min | No |
-| medium | 6 | 25% | 0.62 | 15 min | No |
-| hot | 10 | 30% | 0.59 | 5 min | Yes, when regime allows |
-| extreme | ~uncapped | 80% | 0.56 | 3 min | Yes, per-symbol technical trigger, regardless of regime |
+1. Add your keys: `charles-keys`. You need [Alpaca](https://alpaca.markets) paper keys and a
+   free [Groq](https://console.groq.com) key. A [Telegram bot](https://core.telegram.org/bots)
+   token and chat ID are optional.
+2. Start the bot: `charles-start`
+3. Open the dashboard: `http://<server-ip>:8502`
 
-**Extreme mode carries substantially more risk than the others** — a single position can consume most of the account's capital, and shorting is not gated by the overall market regime. The daily loss kill switch is raised in this mode but not removed; it remains the only hard backstop. Consider running mild or medium first to get a feel for how the bot behaves before switching to hot or extreme.
+The first start can take a few minutes while it loads the sentiment model.
 
-## Running 24/7 on a server
+### Manual install
 
-To keep Charles running continuously, deploy it on a cloud server (e.g. a $12/month DigitalOcean droplet) instead of your own machine. The setup steps are the same as above.
+```
+git clone https://github.com/nswansonprojects/charles.git && cd charles
+pip install -r requirements.txt          # Python 3.11
+cp .env.example .env                     # then fill in your keys
+python main.py                           # the bot
+python webdash.py                        # the dashboard, in a second terminal
+```
 
-Full walkthrough: [charles-bot.xyz/setup.html](https://charles-bot.xyz/setup.html)
+## A trading day (times are US Eastern)
 
-## Command reference
+| Time | What happens |
+|------|--------------|
+| 8:45 | Morning routine: screener picks the day's watchlist, market regime check, earnings and time-based exits |
+| 9:00–15:30, every 30 min | Trading cycle: prices + news + sentiment → AI decision per stock → pre-trade checks → order |
+| 9:00–16:45, every 15 min | Stop checks: trailing stops, fixed stops, broker stop orders kept in sync |
+| 13:00 | Mid-day screener refresh |
+| 16:30 | Daily summary on Telegram |
+| every hour | News refresh and heartbeat message |
 
-If deployed via the server setup script, these commands manage the bot:
+## How a trade is decided
 
-| Command | What it does |
-|---------|--------------|
-| `charles-start` | Starts the bot |
-| `charles-stop` | Stops the bot |
-| `charles-restart` | Restarts the bot |
-| `charles-status` | Shows whether it's running |
-| `charles-logs` | Watches the live log stream |
-| `charles-mode [mild\|medium\|hot\|extreme]` | Switches trading mode and restarts |
+1. **AI decision** (`brain.py`): BUY / SELL / HOLD with a confidence score. When Groq is
+   unavailable, a rule signal is used, but it is stamped 55% confidence, so it never trades
+   (on purpose: the rule signal has no track record).
+2. **Pre-trade checks** (`alpaca_executor.execute_decision`, `market_filter.should_trade`).
+   A buy needs all of:
+   - confidence of at least 60%, plus the regime's boost (ranging +5, volatile +15);
+     no new buys at all in a bear regime;
+   - the daily-loss kill switch not tripped;
+   - no earnings within 3 days, no 4-hour cooldown on the symbol;
+   - SPY not in a downtrend; no macro-event blackout; not in the first 30 minutes or the
+     last 15 minutes of the session.
 
-## Dashboard
+   Sells and stops are never blocked by these checks.
+3. **Sizing**: 10–15% of the account, scaled by confidence, then reduced in weak regimes
+   and during drawdowns from the peak. At most 4 positions.
+4. **Exits**: every position gets a trailing stop (2× ATR, never wider than the 5% stop)
+   and a stop order at the broker. There's a take-profit at +15%, a profit lock that sells
+   half at +4%, and a time exit for flat trades after 7 days. The AI may sell a holding only
+   at 75%+ confidence.
 
-Once running, visit `http://localhost:8501` (or `http://YOUR_SERVER_IP:8501` on a server) to view live positions, market regime, and the trading log.
+## Extras
 
-## Disclaimer
+- **Options sleeve** (`options_bot.py`): when Charles buys a stock, it also buys one call
+  debit spread on it, 2–6 weeks out (at most $60 per trade, 20% of the account, 3 open).
+  Take profit at half the maximum, cut at half the debit lost, closed 5 days before expiry.
+  Needs options enabled on the Alpaca paper account; without that it just logs a warning.
+- **Opening range breakout** (`orb.py`, off unless `ORB_ENABLED=true` in `.env`): one intraday
+  QQQ trade a day on a breakout of the first 5 minutes, stop at the range low, flat by 15:55.
+  The backtest (`backtest_orb.py`) found **no edge** at the defaults; it is an experiment.
+  The dashboard has an on/off button for it.
+- **Shadow books** (`shadow.py`, `shadow_daily.py`): simulated $1,000 portfolios that test
+  rule changes and other strategies on the same live data, without placing orders. The
+  dashboard compares them.
 
-Charles trades in Alpaca's paper trading environment by default — simulated orders, no real money. This is for educational and research purposes, not financial advice. Live trading is possible by configuring live Alpaca keys, but you take on full responsibility and risk for doing so. Backtesting on this project's own strategy has shown it can substantially underperform simply buying and holding during strong bull markets, and its clearest advantage so far has been reducing losses during downturns rather than outperforming in general. Trade accordingly.
+## Settings — where things live
 
-## Support
+| What | Where |
+|------|-------|
+| Strategy and sizing (position size, stops, confidence bars, cooldown…) | `strategy.json`, clamped to the limits in `strategy_settings.py` |
+| Everything else (news feeds, schedule, Groq budget, daily-loss limit) | `config.py` |
+| API keys | `.env` (never commit it). Update with `charles-keys`. |
 
-Setup help and documentation: [charles-bot.xyz/setup.html](https://charles-bot.xyz/setup.html)
+Restart after a change: `charles-restart`.
+
+## Commands (installed by install.sh)
+
+| Command | Does |
+|---------|------|
+| `charles-start`, `charles-stop`, `charles-restart` | Control the bot |
+| `charles-status` / `charles-logs` | Service status / follow the log |
+| `charles-keys` | Update API keys (then restarts) |
+| `charles-update` | Pull the latest version from this repo and restart |
+
+## Files
+
+```
+main.py               startup, scheduler, cycles, heartbeat
+brain.py              AI prompt + decision, rule fallback, decision log
+collector.py          prices, indicators, news (RSS feeds) + FinBERT sentiment
+screener.py           daily watchlist from the stock universe
+market_filter.py      pre-trade checks, earnings, cooldowns, confidence-based sizing
+risk_manager.py       ATR, trailing stops, daily-loss kill switch, drawdown sizing
+alpaca_executor.py    orders, broker stop orders, stop checks, trade log
+regime.py             market regime (trending bull/bear, ranging, volatile)
+options_bot.py        call-spread sleeve
+orb.py                opening range breakout sleeve (off unless ORB_ENABLED)
+shadow.py, shadow_daily.py   simulated test portfolios
+strategy_settings.py  loads strategy.json within hard limits
+state_io.py           crash-safe (atomic) JSON state writes
+alerts.py             Telegram messages
+webdash.py, web/      dashboard (port 8502; set WEBDASH_PORT to change)
+backtest_live.py, backtest_orb.py   backtests
+update_keys.py, server_confirm.py, credential_manager.py   API key handling
+tests/                unit tests: cd tests && python -m unittest discover -s . -t .
+data/  logs/  reports/   runtime state and output (not in git)
+```
+
+## Notes
+
+- **Paper trading only.** Nothing here places real-money orders.
+- **The dashboard has no login.** Anyone who can reach port 8502 can see it and use the ORB
+  on/off button; it can't place orders. Firewall the port if you want it private.
+- Upgrading from the old version (Streamlit dashboard on 8501, setup wizard): your keys and
+  `data/` are kept. Re-run the installer to set up the new `charles-web` service.
+- Not financial advice. Use at your own risk.

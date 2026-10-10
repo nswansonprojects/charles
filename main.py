@@ -1,63 +1,11 @@
 """
-main.py — v1.0
-Automatically uses Python 3.11 regardless of PyCharm interpreter setting.
+main.py — Charles trading bot entry point.
+Runs under systemd (service `charles`) in the conda env `tradingbot`.
 """
 
-# ── Python 3.11 version guard ────────────────────────────────────────────────
-import sys, os, subprocess
-
-def _relaunch_with_311():
-    user = os.environ.get("USERNAME", "user")
-    py311_paths = [
-        os.path.join("C:", os.sep, "Users", user, "AppData", "Local",
-                     "Python", "python3.11-64", "python.exe"),
-        os.path.join("C:", os.sep, "Users", user, "AppData", "Local",
-                     "Programs", "Python", "Python311", "python.exe"),
-        os.path.join("C:", os.sep, "Python311", "python.exe"),
-    ]
-
-    # Best option: use py launcher
-    py311 = None
-    try:
-        r = subprocess.run(["py", "-3.11", "-c", "import sys; print(sys.executable)"],
-                           capture_output=True, text=True, timeout=5)
-        if r.returncode == 0:
-            py311 = r.stdout.strip()
-    except Exception:
-        pass
-
-    if not py311:
-        for p in py311_paths:
-            if os.path.exists(p):
-                py311 = p
-                break
-
-    if not py311:
-        print("Python 3.11 not found. Run in PowerShell: py install 3.11")
-        sys.exit(1)
-
-    # Check if venv exists with 3.11
-    venv_dir    = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".venv"))
-    venv_python = os.path.join(venv_dir, "Scripts", "python.exe")
-
-    if not os.path.exists(venv_python):
-        print("Creating Python 3.11 virtual environment...")
-        subprocess.run([py311, "-m", "venv", venv_dir], check=True)
-        req = os.path.join(os.path.dirname(os.path.abspath(__file__)), "requirements.txt")
-        print("Installing packages (this takes a few minutes)...")
-        subprocess.run([venv_python, "-m", "pip", "install", "-r", req, "--quiet"], check=True)
-        print("Done! Relaunching...")
-
-    os.execv(venv_python, [venv_python] + sys.argv)
-
-# Only redirect if NOT already in a 3.11 venv
-_ver = sys.version_info
-if not (_ver.major == 3 and _ver.minor == 11):
-    print(f"Python {_ver.major}.{_ver.minor} detected — redirecting to Python 3.11...")
-    _relaunch_with_311()
-
-import logging, os, subprocess, sys, time, threading
+import json, logging, os, subprocess, sys, time, threading
 import fcntl as _fcntl   # file locking to prevent duplicate instances
+from datetime import datetime, timezone
 
 # ── Single instance lock ──────────────────────────────────────────────────────
 _LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", ".bot.lock")
@@ -72,63 +20,6 @@ except (IOError, OSError):
     print("⚠️  Another instance of Charles is already running.")
     print("   Run 'charles-stop' first, or check: ps aux | grep main.py")
     sys.exit(1)
-from datetime import datetime, timezone
-
-# ── Auto-install ──────────────────────────────────────────────────────────────
-def install_packages():
-    import sys as _sys
-    # Skip if conda environment
-    conda_env = os.environ.get("CONDA_DEFAULT_ENV","") or os.environ.get("CONDA_PREFIX","")
-    if conda_env:
-        print(f"📦 Conda env detected — skipping pip install")
-        # Install missing packages — use conda-forge for pyarrow to avoid DLL issues
-        conda_prefix = os.environ.get("CONDA_PREFIX", "")
-        for pkg in ["pyarrow", "pyzmq"]:
-            try:
-                __import__(pkg)
-            except ImportError:
-                print(f"  📦 Installing {pkg} via conda-forge...")
-                # Find conda executable
-                conda_exe = os.path.join(conda_prefix, "Scripts", "conda.exe") if conda_prefix else ""
-                if os.path.exists(conda_exe):
-                    result = subprocess.run(
-                        [conda_exe, "install", "-c", "conda-forge", pkg, "-y", "--quiet"],
-                        capture_output=True, text=True, timeout=120
-                    )
-                    if result.returncode == 0:
-                        print(f"  ✅ {pkg} installed via conda")
-                    else:
-                        # Fallback to pip
-                        subprocess.run([sys.executable, "-m", "pip", "install", pkg, "--quiet"],
-                                       capture_output=True, timeout=60)
-                        print(f"  ✅ {pkg} installed via pip")
-                else:
-                    subprocess.run([sys.executable, "-m", "pip", "install", pkg, "--quiet"],
-                                   capture_output=True, timeout=60)
-                    print(f"  ✅ {pkg} installed via pip")
-        return
-    # Skip if numpy already works fine (avoid breaking working installs)
-    try:
-        import numpy as _np
-        import numpy.random as _npr
-        print(f"📦 numpy {_np.__version__} already working — skipping install")
-        return
-    except Exception:
-        pass
-    req = os.path.join(os.path.dirname(__file__), "requirements.txt")
-    print("📦 Checking / installing dependencies...")
-    # Never let pip upgrade numpy — pin it
-    _sys.argv = []
-    r = subprocess.run(
-        [sys.executable, "-m", "pip", "install", "-r", req,
-         "--quiet", "--constraint",
-         os.path.join(os.path.dirname(__file__), "constraints.txt")],
-        capture_output=True, text=True
-    )
-    print("✅ All packages ready.\n" if r.returncode == 0
-          else f"⚠️  Some packages failed:\n{r.stderr[-1500:]}")
-
-install_packages()
 
 from apscheduler.schedulers.background import BackgroundScheduler
 import requests
@@ -141,13 +32,12 @@ import screener
 import alpaca_executor as alpaca
 import alerts
 import reports as rpt
-import market_filter   as mf
 import regime          as reg_mod
 import risk_manager    as rm
 import equity_tracker
 import timeofday
+import strategy_settings
 import macro_calendar
-import reports as rep
 
 # ── Logging ───────────────────────────────────────────────────────────────────
 os.makedirs(os.path.join(os.path.dirname(__file__), "logs"), exist_ok=True)
@@ -201,10 +91,6 @@ def check_llm() -> bool:
         config.LLM_PROVIDER = "rules"
         return False
 
-def check_ollama() -> bool:
-    return check_llm()
-
-
 def check_alpaca() -> bool:
     if not sec.validate()["alpaca"]:
         log.error("❌ Alpaca keys not set in config.py")
@@ -247,14 +133,58 @@ def _detect_and_log_regime() -> str:
 
 
 def _execute_decisions(decisions: list):
-    placed = 0
+    placed, buys = 0, []
     for d in decisions:
         log.info(f"  {d['symbol']:10s} → {d['action']:5s} | "
                  f"conf={d.get('confidence',0):.0%} | {d.get('reasoning','')[:65]}")
         trade = alpaca.execute_decision(d)
         if trade:
             placed += 1
+            if trade.get("action") == "BUY":
+                buys.append(trade)
+    if buys:
+        _open_option_spreads(buys)
     return placed
+
+
+def _open_option_spreads(buys: list):
+    """Options sleeve (options_bot.py): a call spread on each stock Charles just bought."""
+    try:
+        import options_bot
+        options_bot.on_stock_buys(buys)
+    except Exception as e:
+        log.warning(f"Options sleeve failed: {e}")
+
+
+def _manage_options():
+    try:
+        import options_bot
+        options_bot.manage()
+    except Exception as e:
+        log.warning(f"Options check failed: {e}")
+
+
+def _orb_tick():
+    """Opening Range Breakout sleeve: one minute of orb.py (scheduled only when ORB_ENABLED)."""
+    try:
+        import orb
+        orb.tick()
+    except Exception as e:
+        log.error(f"[orb] tick failed: {e}")
+
+
+def _update_shadow(decisions: list, snapshot: dict, regime: str):
+    """Feed this cycle to the shadow portfolios (shadow.py). Never affects live trading."""
+    try:
+        import shadow
+        shadow.on_cycle(decisions, snapshot.get("market", {}), regime)
+    except Exception as e:
+        log.warning(f"Shadow portfolios update failed: {e}")
+    try:
+        import shadow_daily                      # daily-data strategy books (once a day, 15:30 ET)
+        shadow_daily.maybe_run()
+    except Exception as e:
+        log.warning(f"Daily shadow books update failed: {e}")
 
 
 def _record_equity():
@@ -353,6 +283,7 @@ def _run_stock_cycle():
                                               open_positions=pos_context)
         placed      = _execute_decisions([d for d in decisions
                                           if d.get("type") in ("stock","hedge")])
+        _update_shadow(decisions, merged, regime)
         _record_equity()
         log.info(f"  ✅ Stock cycle done — {placed} trades placed")
     except Exception as e:
@@ -419,9 +350,6 @@ def _morning_routine():
 def _send_heartbeat():
     """Hourly status ping to Telegram."""
     try:
-        import json, os
-        from datetime import date
-
         # Alpaca portfolio
         summary     = alpaca.get_account_summary()
         total_value = summary.get("total_value", config.VIRTUAL_CASH)
@@ -433,9 +361,9 @@ def _send_heartbeat():
         try:
             curve = equity_tracker.load_curve()
             if curve:
-                # Find first snapshot from today
-                today_str = str(date.today())
-                today_pts = [p for p in curve if p["ts"][:10] == today_str]
+                # Find first snapshot from today (ET trading day; curve ts is UTC)
+                today_str = timeofday.market_date()
+                today_pts = [p for p in curve if timeofday.market_date(p["ts"]) == today_str]
                 if today_pts:
                     start_today = today_pts[0]["value"]
                     daily_pnl     = total_value - start_today
@@ -461,7 +389,9 @@ def _send_heartbeat():
             if os.path.exists(tf):
                 with open(tf) as f2:
                     trades = json.load(f2)
-                today_trades = [t for t in trades if t.get("timestamp","")[:10] == str(date.today())]
+                today_str    = timeofday.market_date()
+                today_trades = [t for t in trades
+                                if timeofday.market_date(t.get("timestamp", "")) == today_str]
                 trades_today = len(today_trades)
                 if today_trades:
                     lt = today_trades[-1]
@@ -521,10 +451,26 @@ def _send_heartbeat():
         log.warning(f"Heartbeat failed: {e}")
 
 
+def _score_decisions():
+    """Grade logged decisions by what the stocks did next (data/decision_scorecard.json)."""
+    try:
+        import decision_scorer
+        decision_scorer.run()
+    except Exception as e:
+        log.warning(f"Decision scoring failed: {e}")
+
+
 def _daily_summary():
     s = alpaca.get_account_summary()
     if s:
-        alerts.daily_summary(s)
+        extra = None
+        if config.ORB_ENABLED:
+            try:
+                import orb
+                extra = ["📐 " + orb.summary_line(orb.load_state(), orb.trades())]
+            except Exception as e:
+                log.warning(f"ORB summary line failed: {e}")
+        alerts.daily_summary(s, extra)
         log.info(f"📊 Daily summary — return: {s['total_return_pct']:+.2f}%")
 
 
@@ -538,14 +484,14 @@ def _weekly_report():
 
 def _monthly_report():
     try:
-        stats = rpt.generate_report("monthly")
+        stats = rpt.generate_report("monthly", previous=True)
         rpt.send_report_telegram(stats)
     except Exception as e:
         log.warning(f"Monthly report failed: {e}")
 
 def _yearly_report():
     try:
-        stats = rpt.generate_report("yearly")
+        stats = rpt.generate_report("yearly", previous=True)
         rpt.send_report_telegram(stats)
     except Exception as e:
         log.warning(f"Yearly report failed: {e}")
@@ -624,6 +570,7 @@ def _midday_screener_refresh():
                                                   open_positions=pos_context)
             placed = _execute_decisions([d for d in decisions
                                          if d.get("type") in ("stock", "hedge")])
+            _update_shadow(decisions, merged, regime)
             log.info(f"  ✅ Mid-day cycle done — {placed} trades placed")
         else:
             log.warning("  ⚠️  Mid-day screener returned no stocks — keeping current watchlist")
@@ -642,8 +589,6 @@ def start_scheduler():
                   hour="9-15", minute=f"*/{config.STOCK_SCAN_INTERVAL_MIN}",
                   day_of_week="mon-fri", id="stocks")
 
-    # Crypto scans — every 15 min, 24/7
-
     # News refresh — top of every hour
     sched.add_job(_refresh_news, "cron", minute=0, id="news")
 
@@ -656,9 +601,24 @@ def start_scheduler():
                   hour="9-16", minute="*/15",
                   day_of_week="mon-fri", id="stops")
 
+    # Options sleeve exits — every 15 min in market hours, offset from the stop checks
+    sched.add_job(_manage_options, "cron",
+                  hour="9-15", minute="7-59/15",
+                  day_of_week="mon-fri", id="options")
+
+    # Opening Range Breakout sleeve (orb.py) — every minute in market hours, only when enabled
+    if config.ORB_ENABLED:
+        sched.add_job(_orb_tick, "cron",
+                      hour="9-15", minute="*", second=10,
+                      day_of_week="mon-fri", id="orb", max_instances=1, coalesce=True)
+
     # Daily summary — 4:30 PM ET
     sched.add_job(_daily_summary, "cron",
                   hour=16, minute=30, day_of_week="mon-fri", id="summary")
+
+    # Decision scorecard — 5:05 PM ET, after the close
+    sched.add_job(_score_decisions, "cron",
+                  hour=17, minute=5, day_of_week="mon-fri", id="decision_scores")
 
     # Heartbeat — every hour on the hour, 24/7
     sched.add_job(_send_heartbeat, "cron",
@@ -672,13 +632,15 @@ def start_scheduler():
     # Yearly report — Jan 1st 8 PM ET
     sched.add_job(_yearly_report, "cron",
                   month=1, day=1, hour=20, minute=0, id="yearly_report")
-    # Weekly report — Sunday at 6 PM ET
     sched.start()
     log.info("⏰ Scheduler active:")
     log.info(f"   📈 Stocks:   every {config.STOCK_SCAN_INTERVAL_MIN} min  09:00–16:00 ET")
     log.info(f"   🔄 Mid-day:  screener refresh 01:00 PM ET")
     log.info(f"   📰 News:     top of every hour")
     log.info(f"   🛡️  Stops:    every 15 min (trailing + fixed)")
+    log.info(f"   🧩 Options:  spread exits every 15 min (:07/:22/:37/:52)")
+    if config.ORB_ENABLED:
+        log.info(f"   📐 ORB:      every minute 09:30–15:55 ET ({', '.join(config.ORB_SYMBOLS)}, strategy=orb)")
     log.info(f"   🌅 Screener: 08:45 AM ET")
     log.info(f"   📊 Summary:  04:30 PM ET")
     log.info(f"   💓 Heartbeat: every hour on the hour")
@@ -690,67 +652,16 @@ def start_scheduler():
 
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 def launch_dashboard():
-    dash = os.path.join(os.path.dirname(__file__), "dashboard.py")
-    log.info(f"🌐 Dashboard → http://localhost:{config.STREAMLIT_PORT}")
-    subprocess.Popen(
-        [sys.executable, "-m", "streamlit", "run", dash,
-         "--server.port", str(config.STREAMLIT_PORT),
-         "--server.headless", "false",
-         "--browser.gatherUsageStats", "false"],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    )
+    # The dashboard is its own service (charles-web, webdash.py); the Streamlit one was
+    # retired 2026-10-08. This line marks the end of startup for ops/restart-and-verify.
+    log.info("🌐 Dashboard → http://localhost:8502 (service charles-web)")
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 # ── Launch flag paths ────────────────────────────────────────────────────────
+# Optional. Written by the old setup wizard; when present it overrides sizing,
+# daily-loss and credential settings (see _apply_wizard_settings).
 _LAUNCH_FLAG = os.path.join(os.path.dirname(__file__), "data", "launch_authorized.json")
-_WIZARD_PORT = 8502   # wizard runs here, dashboard on STREAMLIT_PORT
-
-
-def _run_setup_wizard():
-    """Launch the setup wizard and block until user clicks Launch."""
-    wizard_path = os.path.join(os.path.dirname(__file__), "setup_wizard.py")
-
-    # Clear any stale launch flag
-    if os.path.exists(_LAUNCH_FLAG):
-        os.remove(_LAUNCH_FLAG)
-
-    print("\n" + "=" * 60)
-    print("  🤖  AI Paper Trading Bot — Setup Wizard")
-    print("=" * 60)
-    print(f"\n🌐 Opening setup wizard at http://localhost:{_WIZARD_PORT}")
-    print("   Complete all steps and click Launch to start the bot.\n")
-
-    # Open browser automatically
-    import threading, webbrowser
-    def _open_browser():
-        time.sleep(2)
-        webbrowser.open(f"http://localhost:{_WIZARD_PORT}")
-    threading.Thread(target=_open_browser, daemon=True).start()
-
-    # Run wizard as subprocess — blocks until wizard process ends
-    wizard_proc = subprocess.Popen([
-        sys.executable, "-m", "streamlit", "run", wizard_path,
-        "--server.port", str(_WIZARD_PORT),
-        "--server.headless", "false",
-        "--browser.gatherUsageStats", "false",
-        "--server.runOnSave", "false",
-        "--logger.level", "error",
-    ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-    # Poll for launch flag — written by wizard when Launch is clicked
-    print("   Waiting for setup wizard to complete...")
-    while wizard_proc.poll() is None:
-        if os.path.exists(_LAUNCH_FLAG):
-            wizard_proc.terminate()
-            break
-        time.sleep(0.5)
-
-    if not os.path.exists(_LAUNCH_FLAG):
-        print("\n⛔ Setup wizard closed without launching. Re-run main.py to try again.")
-        sys.exit(0)
-
-    print("✅ Setup wizard complete — launching bot...\n")
 
 
 def _apply_wizard_settings():
@@ -778,8 +689,6 @@ def _apply_wizard_settings():
         # Only set from wizard if value is non-empty AND not already set from .env
         if data.get("groq_key"):
             os.environ.setdefault("GROQ_API_KEY", data["groq_key"])
-        if data.get("ollama_model"):     config.OLLAMA_MODEL          = data["ollama_model"]
-        if data.get("ollama_host"):      config.OLLAMA_HOST           = data["ollama_host"]
         if data.get("alpaca_key"):       os.environ["ALPACA_API_KEY"]    = data["alpaca_key"]
         if data.get("alpaca_secret"):    os.environ["ALPACA_SECRET_KEY"] = data["alpaca_secret"]
         if data.get("tg_token"):         os.environ["TELEGRAM_BOT_TOKEN"] = data["tg_token"]
@@ -792,12 +701,11 @@ def _apply_wizard_settings():
 
 
 if __name__ == "__main__":
-    import json   # ensure json available here
-
-    # ── Run setup wizard first — bot only starts after Launch is clicked ──────
-    if not os.path.exists(_LAUNCH_FLAG):
-        _run_setup_wizard()
-    _apply_wizard_settings()
+    if os.path.exists(_LAUNCH_FLAG):
+        _apply_wizard_settings()
+    else:
+        log.info("No data/launch_authorized.json — using keys from .env and sizing from config.py")
+    strategy_settings.apply()   # strategy.json overrides config + launch sizing
 
     print("\n" + "=" * 60)
     print("  🤖  Charles AI Trading Bot  v1.0")
@@ -814,8 +722,8 @@ if __name__ == "__main__":
         alerts.bot_started()
         log.info("✅ Telegram alerts active")
     else:
-        log.warning("⚠️  Telegram not working — check your token and chat ID in setup wizard")
-        log.warning("    You can re-run the wizard by deleting data/launch_authorized.json")
+        log.warning("⚠️  Telegram not working — check TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID "
+                    "(.env, overridden by tg_token / tg_chat_id in data/launch_authorized.json)")
 
     time.sleep(2)
     _send_heartbeat()
@@ -828,7 +736,7 @@ if __name__ == "__main__":
     launch_dashboard()
 
     print(f"\n✅ Bot running — v1.0")
-    print(f"📊 Dashboard:   http://localhost:{config.STREAMLIT_PORT}")
+    print("📊 Dashboard:   http://localhost:8502")
     llm_mode = config.LLM_PROVIDER if hasattr(config, "LLM_PROVIDER") else "rules"
     print(f"🧠 AI Engine:   {llm_mode.upper()}")
     print(f"📱 Telegram:    {'configured ✅' if os.environ.get('TELEGRAM_BOT_TOKEN') else 'not set (optional)'}")
