@@ -56,6 +56,21 @@ VARIANTS = {
                                 "baseline rules at 30% scale",
                        "time_exit": True,  "ai_sells": True,  "sizing": "confidence", "entry_window": None,
                        "core": ("SPY", 0.70)},
+    # roadmap task 6 (owner said "build all of it", 2026-10-11): measured here before any live change
+    "idle_cash":      {"about": "live rules, plus cash not in trades earns T-bill interest (SGOV/BIL, "
+                                "assumed 4%/yr)",
+                       "time_exit": True,  "ai_sells": True,  "sizing": "confidence", "entry_window": None,
+                       "cash_yield": 0.04},
+    # roadmap task 9 (AI as a news veto): a fixed rule picks the buys; the two books differ only in
+    # whether the AI may block a pick on bad news. rules_only alone answers "do we need the AI at all?"
+    "rules_only":     {"about": "a fixed trend rule picks the buys (no AI): above the 50-day average, "
+                                "RSI 50–70, MACD rising, not at the top of today's range",
+                       "time_exit": True,  "ai_sells": False, "sizing": "fixed", "entry_window": None,
+                       "entry": "trend_rule"},
+    "news_veto":      {"about": "same trend rule, but the AI can block a buy: it says SELL, or the "
+                                "news sentiment is clearly negative",
+                       "time_exit": True,  "ai_sells": False, "sizing": "fixed", "entry_window": None,
+                       "entry": "trend_rule", "veto": True},
 }
 # Optional rule flags; books that leave them out get the live behaviour.
 #   entry_cycles:  buy only in the cycles that start at these ET times (decisions arrive
@@ -71,8 +86,32 @@ VARIANTS = {
 #                  the first cycle with a price; the rest (the satellite) trades the book's rules,
 #                  sized and daily-loss-limited on its own slice. No satellite entries before
 #                  the core is bought.
+#   cash_yield:    annual interest on uninvested cash, accrued between cycles (T-bill ETF stand-in)
+#   entry:         "trend_rule" = buys come from trend_rule() on the cycle's market data, not AI BUYs
+#   veto:          with entry="trend_rule": skip a pick when the AI says SELL or sentiment is negative
 RISK_PER_TRADE = 0.01       # risk_sized: 1% of book equity at risk per trade
 MAX_RISK_SIZE_PCT = 0.20    # risk_sized: never more than 20% of the book in one position
+FIXED_SIZE_PCT = 0.125      # sizing "fixed": midpoint of the live 10–15% range
+VETO_SENTIMENT = -0.2       # news_veto: sentiment at or below this blocks a rule pick
+
+
+def trend_rule(d: dict) -> bool:
+    """Rule-only buy signal on one symbol's indicators (the cycle's market data): uptrend not
+    stretched (above the 50-day average by at most 15%), RSI 50–70, daily MACD above its signal,
+    and not buying at the top of today's hourly range."""
+    rsi = d.get("rsi")
+    return bool(d.get("above_ma50") and d.get("ma50_dist_pct") is not None and d["ma50_dist_pct"] <= 15
+                and rsi is not None and 50 <= rsi <= 70
+                and (d.get("macd") or 0) > (d.get("macd_signal") or 0)
+                and (d.get("hourly_bb_pos") if d.get("hourly_bb_pos") is not None else 1) < 0.8)
+
+
+def vetoed(decision: dict | None) -> bool:
+    """news_veto: the AI blocks a rule pick on a SELL call or clearly negative news sentiment."""
+    if not decision:
+        return False
+    return (str(decision.get("action")).upper() == "SELL"
+            or (decision.get("sentiment") or 0) <= VETO_SENTIMENT)
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
@@ -157,7 +196,9 @@ def _size_value(rules: dict, peak: float, equity: float, conf: float, price: flo
     import market_filter as mf
     import risk_manager as rm
     dd = rm.drawdown_size_multiplier(equity, peak_value=peak)
-    if rules["sizing"] == "risk":
+    if rules["sizing"] == "fixed":
+        value = FIXED_SIZE_PCT * equity
+    elif rules["sizing"] == "risk":
         value = min(RISK_PER_TRADE * equity / (stop_dist / price), MAX_RISK_SIZE_PCT * equity)
     else:
         value = mf.position_size_pct(conf) * equity
@@ -165,8 +206,14 @@ def _size_value(rules: dict, peak: float, equity: float, conf: float, price: flo
 
 
 def _update_book(name: str, book: dict, decisions: list, prices: dict, atrs: dict,
-                 checks: dict, now: datetime):
+                 checks: dict, now: datetime, market: dict | None = None):
     rules = VARIANTS[name]
+    if rules.get("cash_yield") and book.get("equity"):    # interest on idle cash since last cycle
+        last = datetime.fromisoformat(book["equity"][-1][0])
+        days = max(0.0, (now - last).total_seconds() / 86400)
+        earned = book["cash"] * rules["cash_yield"] * days / 365
+        book["cash"] += earned
+        book["interest"] = round(book.get("interest", 0.0) + earned, 4)
     today = timeofday.market_date(now.isoformat())
     if book.get("day") != today:
         book["day"], book["day_pnl"] = today, 0.0
@@ -239,10 +286,17 @@ def _update_book(name: str, book: dict, decisions: list, prices: dict, atrs: dic
         starts = [int(t[:2]) * 60 + int(t[3:]) for t in rules["entry_cycles"]]
         blocked = blocked or not any(s <= mins < s + config.STOCK_SCAN_INTERVAL_MIN for s in starts)
     need = config.MIN_CONFIDENCE + checks["mults"].get("conf_boost", 0.0)
-    for sym, d in by_symbol.items():
+    if rules.get("entry") == "trend_rule":
+        candidates = {s: by_symbol.get(s, {}) for s, md in (market or {}).items()
+                      if md.get("type", "stock") in ("stock", None) and trend_rule(md)
+                      and not (rules.get("veto") and vetoed(by_symbol.get(s)))}
+    else:
+        candidates = by_symbol
+    for sym, d in candidates.items():
         if blocked:
             break
-        if str(d.get("action")).upper() != "BUY" or d.get("confidence", 0) < need - 1e-9:
+        if rules.get("entry") != "trend_rule" and (
+                str(d.get("action")).upper() != "BUY" or d.get("confidence", 0) < need - 1e-9):
             continue
         if sym in book["positions"] or len(book["positions"]) >= config.MAX_OPEN_POSITIONS:
             continue
@@ -292,7 +346,7 @@ def on_cycle(decisions: list, market: dict, regime: str, now: datetime | None = 
                 if p:
                     prices[sym] = p
     for name in VARIANTS:
-        _update_book(name, books[name], decisions, prices, atrs, checks, now)
+        _update_book(name, books[name], decisions, prices, atrs, checks, now, market)
     save(books, path)
     return books
 

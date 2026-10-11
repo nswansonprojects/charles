@@ -87,6 +87,7 @@ button.switch:disabled { opacity: .6; cursor: progress; }
 main { max-width: 1180px; margin: 0 auto; padding: 16px; }
 .view { display: none; } .view.on { display: block; }
 .grid { display: grid; gap: 16px; }
+.home > .col { display: contents; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
 .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .card-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
@@ -170,10 +171,22 @@ td.r, th.r { text-align: right; }
 .badge.BUY { background: var(--accent-soft); color: var(--series-1); }
 .badge.SELL { background: color-mix(in srgb, var(--c2) 14%, transparent); color: var(--c2); }
 .why { font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
+.md { font-size: 14px; line-height: 1.55; }
+.md h3 { font-size: 14px; font-weight: 650; margin: 16px 0 6px; }
+.md h3:first-child { margin-top: 0; }
+.md h4 { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 4px; }
+.md p { margin: 6px 0; }
+.md ul { margin: 4px 0; padding-left: 18px; }
+.md li { margin: 3px 0; }
+.md code { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.mile { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.mile:last-child { border-bottom: 0; }
+.mile-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.mile-top b { font-weight: 650; }
 .empty { color: var(--muted); font-size: 13.5px; padding: 18px 0; text-align: center; }
 
 nav#tabs {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 6; display: grid; grid-template-columns: repeat(4, 1fr);
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 6; display: grid; grid-template-columns: repeat(5, 1fr);
   background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
 }
@@ -187,6 +200,7 @@ nav button.on { color: var(--series-1); }
   nav#tabs { display: none; }
   #tabs-top { display: inline-flex; }
   .home { grid-template-columns: 1fr 1.5fr; align-items: start; }
+  .home > .col { display: flex; flex-direction: column; gap: 16px; }
   .two { grid-template-columns: 1fr 1fr; }
   .chart { height: 280px; }
 }
@@ -221,6 +235,7 @@ nav button.on { color: var(--series-1); }
   <!-- HOME -->
   <section class="view on" id="v-home">
     <div class="grid home">
+     <div class="col">
       <div class="card">
         <div class="card-head"><h2>Portfolio</h2><span class="aside" id="updated"></span></div>
         <div class="hero-val num" id="value">—</div>
@@ -237,7 +252,23 @@ nav button.on { color: var(--series-1); }
         <div id="halt"></div>
       </div>
 
-      <div class="card">
+      <div class="card" style="order:3">
+        <div class="card-head"><h2>Track record</h2><span class="aside" id="nclosed"></span></div>
+        <div class="kpis" style="margin-top:0">
+          <div class="kpi"><div class="label">Win rate</div><div class="v num" id="winrate">—</div></div>
+          <div class="kpi"><div class="label">Avg win</div><div class="v num up" id="avgwin">—</div></div>
+          <div class="kpi"><div class="label">Avg loss</div><div class="v num down" id="avgloss">—</div></div>
+        </div>
+        <div class="limit" id="giveback-wrap" style="display:none">
+          <div class="row"><span>Kept of best gains</span><span class="num" id="giveback-label"></span></div>
+          <div class="meter"><i id="giveback-meter" style="width:0"></i></div>
+          <div class="note" id="giveback-note" style="margin-top:8px"></div>
+        </div>
+      </div>
+     </div>
+
+     <div class="col">
+      <div class="card" style="order:2">
         <div class="card-head">
           <h2>Charles vs SPY</h2>
           <div class="legend" id="legend"></div>
@@ -256,24 +287,11 @@ nav button.on { color: var(--series-1); }
         <details><summary>Show as table</summary><div class="tbl" id="chart-table"></div></details>
       </div>
 
-      <div class="card">
-        <div class="card-head"><h2>Track record</h2><span class="aside" id="nclosed"></span></div>
-        <div class="kpis" style="margin-top:0">
-          <div class="kpi"><div class="label">Win rate</div><div class="v num" id="winrate">—</div></div>
-          <div class="kpi"><div class="label">Avg win</div><div class="v num up" id="avgwin">—</div></div>
-          <div class="kpi"><div class="label">Avg loss</div><div class="v num down" id="avgloss">—</div></div>
-        </div>
-        <div class="limit" id="giveback-wrap" style="display:none">
-          <div class="row"><span>Kept of best gains</span><span class="num" id="giveback-label"></span></div>
-          <div class="meter"><i id="giveback-meter" style="width:0"></i></div>
-          <div class="note" id="giveback-note" style="margin-top:8px"></div>
-        </div>
-      </div>
-
-      <div class="card">
+      <div class="card" style="order:4">
         <div class="card-head"><h2>Watching today</h2></div>
         <div class="chips" id="watch"></div>
       </div>
+     </div>
     </div>
   </section>
 
@@ -325,6 +343,25 @@ nav button.on { color: var(--series-1); }
     </div>
   </section>
 
+  <!-- SELF-TUNING: what Claude's check-up is waiting on, from its reports and project plan -->
+  <section class="view" id="v-claude">
+    <div class="grid two">
+      <div class="card">
+        <div class="card-head"><h2>Waiting on data</h2></div>
+        <div id="cl-miles"></div>
+      </div>
+      <div class="card" id="cl-ideas-card">
+        <div class="card-head"><h2>Changes being tested</h2><span class="aside">each goes live only if the data backs it</span></div>
+        <div id="cl-ideas"></div>
+      </div>
+      <div class="card" style="grid-column: 1 / -1" id="cl-notes-card">
+        <details id="cl-report-box"><summary style="margin-top:0">Claude's latest report <span class="muted" id="cl-when"></span></summary>
+          <div class="md" id="cl-report" style="margin-top:12px"></div></details>
+        <details id="cl-plan-box"><summary>Claude's full plan</summary><div class="md" id="cl-plan" style="margin-top:12px"></div></details>
+      </div>
+    </div>
+  </section>
+
   <!-- ACTIVITY -->
   <section class="view" id="v-act">
     <div class="card">
@@ -342,6 +379,7 @@ const TABS = [
   ["home", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
   ["hold", "Holdings", '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
   ["exp", "Experiments", '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/>'],
+  ["claude", "Self-Tuning", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
   ["act", "Activity", '<path d="M3 12h4l3-8 4 16 3-8h4"/>'],
 ];
 const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["All", 1e5]];
@@ -397,6 +435,38 @@ function setTab(t) {
   document.querySelectorAll("[data-t]").forEach(b => b.classList.toggle("on", b.dataset.t === tab));
   window.scrollTo(0, 0);
   if (tab === "home" && S) renderChart();
+}
+
+/* minimal Markdown for Claude's notes: #/##/### headings, - bullets, **bold**, `code`, paragraphs (escaped first) */
+function md(text) {
+  const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  let html = "", list = false, para = [];
+  const flush = () => { if (para.length) { html += `<p>${inline(para.join(" "))}</p>`; para = []; } };
+  const close = () => { if (list) { html += "</ul>"; list = false; } };
+  for (const raw of String(text).split("\n")) {
+    const line = raw.trimEnd();
+    let m;
+    if (!line.trim()) { flush(); close(); }
+    else if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flush(); close();
+      if (m[1].length > 1) html += `<${m[1].length <= 2 ? "h3" : "h4"}>${inline(m[2])}</${m[1].length <= 2 ? "h3" : "h4"}>`; }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { flush(); if (!list) { html += "<ul>"; list = true; } html += `<li>${inline(m[1])}</li>`; }
+    else if (list && /^\s+/.test(line)) { html = html.replace(/<\/li>$/, " " + inline(line.trim()) + "</li>"); }
+    else { close(); para.push(line.trim()); }
+  }
+  flush(); close();
+  return html;
+}
+
+/* "- **Title.** text" bullets under the plan's "## Watching" heading */
+function planIdeas(plan) {
+  const out = []; let on = false;
+  for (const line of plan.split("\n")) {
+    if (/^##\s/.test(line)) { on = /^##\s+watching/i.test(line); continue; }
+    const m = on && line.match(/^\s*-\s+\*\*(.+?)\*\*\s*(.*)$/);
+    if (m) out.push({title: m[1].replace(/[.:]$/, ""), text: m[2]});
+    else if (on && out.length && /^\s+\S/.test(line)) out[out.length - 1].text += " " + line.trim();
+  }
+  return out;
 }
 
 function maxDrop(vals) { let peak = -Infinity, worst = 0;
@@ -635,6 +705,34 @@ function render() {
       better === 0 ? "So far the AI's picks do worse than the average candidate. Small sample; the scorecard keeps counting." :
       "Mixed so far: better on some horizons, worse on others. Small sample.";
   } else { $("ai").innerHTML = `<div class="empty">Not enough scored decisions yet.</div>`; $("ai-note").textContent = ""; }
+
+  // Claude
+  const C = S.claude || {};
+  $("cl-when").textContent = C.report ? new Date(C.report.date + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"}) : "";
+  $("cl-report").innerHTML = C.report ? md(C.report.text) : `<div class="empty">The first report comes with the next weekday check-up (8:15 AM ET).</div>`;
+  $("cl-plan").innerHTML = C.plan ? md(C.plan) : "";
+  // without Claude's check-up (no ops/ notes, e.g. a fresh install) the tab is just the progress bars
+  $("cl-ideas-card").hidden = !C.plan;
+  $("cl-report-box").hidden = !C.report;
+  $("cl-plan-box").hidden = !C.plan;
+  $("cl-notes-card").hidden = !C.report && !C.plan;
+  $("cl-miles").innerHTML = (C.milestones || []).map(m => `<div class="mile">
+      <div class="mile-top"><b>${esc(m.name)}</b><span class="small muted">${esc(m.detail)}</span></div>
+      <div class="exp-about" style="margin-bottom:0">${esc(m.about)}</div>
+      <div class="prog"><div class="meter"><i style="width:${m.progress * 100}%"></i></div><span>${Math.round(m.progress * 100)}% of ${esc(m.needs)}</span></div>
+    </div>`).join("");
+  // the plan's "Watching" ideas: title, first sentence as the why, and the bar of the shadow book that tests it
+  const books = Object.fromEntries((S.experiments || []).map(e => [e.name, e]));
+  const ideas = planIdeas(C.plan || "");
+  $("cl-ideas").innerHTML = ideas.map(i => {
+    const b = (i.text.match(/`([a-z_]+)`/g) || []).map(x => books[x.slice(1, -1)]).find(Boolean);
+    const plain = i.text.replace(/\*\*|`/g, "");
+    const why = (plain.match(/^.+?[.!?](?=\s|$)/) || [plain])[0];
+    return `<div class="mile">
+      <div class="mile-top"><b>${esc(i.title)}</b></div>
+      <div class="exp-about" style="margin-bottom:0">${esc(why)}</div>
+      ${b ? `<div class="prog"><div class="meter"><i style="width:${b.progress * 100}%"></i></div><span>${Math.round(b.progress * 100)}% of ${esc(b.needs)}</span></div>` : ""}
+    </div>`; }).join("") || `<div class="empty">Nothing being tested right now.</div>`;
 
   // Activity
   const exitBy = {};

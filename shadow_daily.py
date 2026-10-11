@@ -207,6 +207,37 @@ def pre_earnings_runup(bars, book, today, earnings):
     return out
 
 
+def unusual_volume(bars, book, today, earnings):
+    """Stocks trading at least 3× their 20-day average volume that close above their 20-day
+    high: buy 15% each, max 3 (biggest volume surge first). Skips anything under $5 or under
+    500k average shares/day. Sell after 3 trading days, or when the close falls 1.5×ATR below
+    the highest close since entry. Runs at 15:30 ET, so today's volume is ~6/6.5 of a full day
+    (the test is a little stricter than on full-day volume). bars need a "volume" list."""
+    out = {}
+    for s, held in book["positions"].items():
+        b = bars.get(s)
+        if not b:
+            out[s] = KEEP
+            continue
+        since = [c for d, c in zip(b["date"], b["close"]) if d >= held["opened"]] or b["close"][-1:]
+        a = atr(b)
+        stop = max(since) - 1.5 * a if a else None
+        out[s] = 0 if held.get("days", 0) >= 3 or (stop and b["close"][-1] < stop) else KEEP
+    slots = 3 - len(book["positions"])
+    picks = []
+    for s, b in bars.items():
+        v, c = b.get("volume") or [], b["close"]
+        if s in book["positions"] or len(c) < 21 or len(v) != len(c) or b["date"][-1] != today:
+            continue
+        avg = sum(v[-21:-1]) / 20
+        if c[-1] < 5 or avg < 500_000 or v[-1] < 3 * avg or c[-1] <= max(b["high"][-21:-1]):
+            continue
+        picks.append((v[-1] / avg, s))
+    for _, s in sorted(picks, reverse=True)[:max(slots, 0)]:
+        out[s] = 0.15
+    return out
+
+
 STRATEGIES = {
     "etf_mean_reversion": {"fn": etf_mean_reversion, "monthly": False,
                            "about": "daily: buy SPY/QQQ dips in an uptrend, sell on the bounce"},
@@ -224,6 +255,9 @@ STRATEGIES = {
     "pre_earnings_runup": {"fn": pre_earnings_runup, "monthly": False, "bars": True,
                            "about": "daily: buy uptrending stocks 7 trading days before earnings; "
                                     "sell the day before the report"},
+    "unusual_volume":     {"fn": unusual_volume, "monthly": False, "bars": True,
+                           "about": "daily: buy stocks on a 3× volume surge to a new 20-day high; "
+                                    "3-day hold or 1.5×ATR trailing stop, 15% each, max 3"},
 }
 TICKERS = sorted({"SPY", "QQQ", "EFA", "GLD", "BIL", "AGG", "TLT", "BTC-USD", "ETH-USD", *SECTORS})
 
@@ -341,12 +375,13 @@ def _fetch_bars() -> dict:
     out = {}
     for s in syms:
         try:
-            d = df.xs(s, axis=1, level=1)[["Open", "High", "Low", "Close"]].dropna()
+            d = df.xs(s, axis=1, level=1)[["Open", "High", "Low", "Close", "Volume"]].dropna()
         except KeyError:
             continue
         out[s] = {"date": [t.strftime("%Y-%m-%d") for t in d.index],
                   "open": d["Open"].tolist(), "high": d["High"].tolist(),
-                  "low": d["Low"].tolist(), "close": d["Close"].tolist()}
+                  "low": d["Low"].tolist(), "close": d["Close"].tolist(),
+                  "volume": [float(x) for x in d["Volume"].tolist()]}
     return out
 
 

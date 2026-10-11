@@ -41,7 +41,8 @@ class Shadow(BotTestCase):
     def test_buy_opens_in_every_book_with_different_sizes(self):
         books = self.cycle([buy(conf=0.80)], mkt(atr=1.0), lookup={"SPY": 500.0}.get)
         for name in shadow.VARIANTS:
-            if name != "swing":                               # 12:00 is not a swing entry cycle
+            if name != "swing" and not shadow.VARIANTS[name].get("entry"):   # swing: not its cycle;
+                                                                             # rule books ignore AI BUYs
                 self.assertIn("XYZ", books[name]["positions"], name)
         conf_value = books["baseline"]["positions"]["XYZ"]["qty"] * 100
         risk_value = books["risk_sized"]["positions"]["XYZ"]["qty"] * 100
@@ -218,6 +219,40 @@ class Shadow(BotTestCase):
                            lookup={"SPY": 500.0}.get)
         self.assertEqual(books["core_satellite"]["positions"], {})
         self.assertIn("ABC", books["baseline"]["positions"])
+
+    def test_idle_cash_earns_interest_between_cycles(self):
+        self.cycle([], mkt())
+        books = self.cycle([], mkt(), now=T0 + timedelta(days=365))
+        self.assertAlmostEqual(books["idle_cash"]["cash"], 1040.0, places=2)
+        self.assertAlmostEqual(books["baseline"]["cash"], 1000.0)
+        self.assertAlmostEqual(books["idle_cash"]["interest"], 40.0, places=2)
+
+    def test_trend_rule(self):
+        good = {"price": 100.0, "atr": 1.0, "above_ma50": True, "ma50_dist_pct": 5.0, "rsi": 60,
+                "macd": 1.0, "macd_signal": 0.5, "hourly_bb_pos": 0.5}
+        self.assertTrue(shadow.trend_rule(good))
+        for k, v in {"above_ma50": False, "ma50_dist_pct": 20.0, "rsi": 75, "macd": 0.1,
+                     "hourly_bb_pos": 0.9}.items():
+            with self.subTest(k):
+                self.assertFalse(shadow.trend_rule(dict(good, **{k: v})))
+        self.assertFalse(shadow.trend_rule({"price": 100.0}))          # missing data → no buy
+
+    def test_rule_books_buy_on_rule_and_veto_blocks_bad_news(self):
+        ind = {"atr": 1.0, "above_ma50": True, "ma50_dist_pct": 5.0, "rsi": 60, "macd": 1.0,
+               "macd_signal": 0.5, "hourly_bb_pos": 0.5}
+        market = {"AAA": dict(ind, price=100.0), "BBB": dict(ind, price=50.0),
+                  "CCC": dict(ind, price=20.0, rsi=80)}
+        hold = lambda s, **kw: dict({"symbol": s, "type": "stock", "action": "HOLD", "confidence": 0.7,
+                                     "sentiment": 0.0}, **kw)
+        books = self.cycle([hold("AAA"), hold("BBB", action="SELL"), hold("CCC")], market)
+        self.assertEqual(sorted(books["rules_only"]["positions"]), ["AAA", "BBB"])     # AI HOLD ignored
+        self.assertEqual(sorted(books["news_veto"]["positions"]), ["AAA"])             # SELL vetoes BBB
+        self.assertAlmostEqual(books["rules_only"]["positions"]["AAA"]["qty"] * 100, 125.0)   # fixed 12.5%
+        self.assertEqual(books["baseline"]["positions"], {})                           # no AI BUY
+        os.remove(self.path)
+        books = self.cycle([hold("AAA", sentiment=-0.5)], {"AAA": market["AAA"]})
+        self.assertIn("AAA", books["rules_only"]["positions"])
+        self.assertNotIn("AAA", books["news_veto"]["positions"])
 
     def test_summary(self):
         self.cycle([buy()], mkt(100.0))

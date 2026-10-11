@@ -1,4 +1,5 @@
 """webdash: equity thinning, market hours, SPY-since-date and the experiments table."""
+import os
 from datetime import datetime, timezone
 
 from base import BotTestCase
@@ -118,3 +119,28 @@ class OrbSwitchEndpoint(BotTestCase):
         self.assertEqual(self.post("/api/orb", b'{}'), 400)
         self.assertEqual(self.post("/api/state", b'{"on": false}'), 404)
         self.assertTrue(self.orb.switched_on())
+
+
+class ClaudeTab(BotTestCase):
+    def test_latest_journal_picks_newest_dated_report(self):
+        folder = os.path.join(self.tmp, "journal")
+        os.makedirs(folder)
+        for name, text in (("2026-10-09.md", "old"), ("2026-10-12.md", "new"), ("notes.md", "x")):
+            with open(os.path.join(folder, name), "w") as f:
+                f.write(text)
+        self.assertEqual(wd.latest_journal(folder), {"date": "2026-10-12", "text": "new", "count": 2})
+        self.assertIsNone(wd.latest_journal(os.path.join(self.tmp, "none")))
+
+    def test_milestones(self):
+        now = datetime(2026, 10, 17, tzinfo=timezone.utc)
+        card = {"groups": {"model B · all candidates (baseline)": {"5d": {"n": 25}}}}
+        summary = {"baseline": {"closed": 40, "return_pct": 0, "realized_pnl": 0, "max_drawdown_pct": 0},
+                   "swing": {"closed": 31, "return_pct": 1, "realized_pnl": 1, "max_drawdown_pct": 0},
+                   "midday_entries": {"closed": 3, "return_pct": 1, "realized_pnl": 1, "max_drawdown_pct": 0}}
+        m = {x["name"]: x for x in wd.milestones(now, card, {"labelled_weeks": 3, "needs_weeks": 12,
+                                                              "progress": 0.25}, summary)}
+        self.assertAlmostEqual(m["First promotion review"]["progress"], 0.5)      # Oct 1 → Nov 2, day 16
+        self.assertIn("16 days to go · 1 of 2 books have enough data", m["First promotion review"]["detail"])
+        self.assertEqual((m["Second AI model"]["progress"], m["Second AI model"]["detail"]), (0.25, "25 graded"))
+        self.assertEqual(m["Learning model"]["detail"], "3 of 12 weeks")
+        self.assertEqual(wd.milestones(now, {}, {}, {})[1]["progress"], 0.0)       # nothing yet

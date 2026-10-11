@@ -76,8 +76,25 @@ class Scorer(BotTestCase):
             f.write(json.dumps(dec("UP", ai="BUY")) + "\nnot json\n")
         self.patch(ds, "DECISIONS_FILE", path)
         self.patch(ds, "SCORECARD_FILE", os.path.join(self.tmp, "scorecard.json"))
+        self.patch(ds, "MODEL_B_FILE", os.path.join(self.tmp, "none.jsonl"))
         self.patch(ds, "_yf_closes", lambda s, start: CLOSES[s])
         card = ds.run()
         self.assertEqual(card["decisions"], 1)
         with open(ds.SCORECARD_FILE) as f:
             self.assertEqual(json.load(f)["groups"]["AI BUY"]["1d"]["n"], 1)
+
+    def test_run_grades_second_model_alongside(self):
+        live, model_b = os.path.join(self.tmp, "decisions.jsonl"), os.path.join(self.tmp, "b.jsonl")
+        with open(live, "w") as f:
+            f.write(json.dumps(dec("UP", ai="BUY")) + "\n")
+        with open(model_b, "w") as f:
+            f.write(json.dumps(dec("UP", ai="HOLD")) + "\n")
+        self.patch(ds, "DECISIONS_FILE", live)
+        self.patch(ds, "MODEL_B_FILE", model_b)
+        self.patch(ds, "SCORECARD_FILE", os.path.join(self.tmp, "scorecard.json"))
+        self.patch(ds, "_yf_closes", lambda s, start: CLOSES[s])
+        card = ds.run()
+        self.assertEqual(card["model_b_decisions"], 1)
+        self.assertIn("AI BUY", card["groups"])
+        self.assertIn("model B · AI passed (HOLD/SELL)", card["groups"])
+        self.assertNotIn("model B · AI BUY", card["groups"])

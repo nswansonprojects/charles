@@ -181,6 +181,11 @@ def _update_shadow(decisions: list, snapshot: dict, regime: str):
     except Exception as e:
         log.warning(f"Shadow portfolios update failed: {e}")
     try:
+        import shadow_model                      # second AI model on the same prompts (background thread)
+        shadow_model.start(decisions, regime)
+    except Exception as e:
+        log.warning(f"Second-model comparison failed to start: {e}")
+    try:
         import shadow_daily                      # daily-data strategy books (once a day, 15:30 ET)
         shadow_daily.maybe_run()
     except Exception as e:
@@ -458,6 +463,11 @@ def _score_decisions():
         decision_scorer.run()
     except Exception as e:
         log.warning(f"Decision scoring failed: {e}")
+    try:
+        import learning_model                    # progress only until 12 weeks of data, then walk-forward
+        learning_model.run()
+    except Exception as e:
+        log.warning(f"Learning model failed: {e}")
 
 
 def _daily_summary():

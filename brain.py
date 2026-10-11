@@ -57,6 +57,17 @@ def _log_decision(symbol: str, d: dict, held: bool, regime: str, raw: dict, fina
         log.debug(f"Decision log failed {symbol}: {e}")
 
 
+# The last AI prompt per symbol, for shadow_model.py (a second model scored on the same inputs).
+# Written here, read and cleared only by take_last_prompts(); never affects a decision.
+_LAST_PROMPTS: dict = {}
+
+
+def take_last_prompts() -> dict:
+    out = dict(_LAST_PROMPTS)
+    _LAST_PROMPTS.clear()
+    return out
+
+
 # ── Rule-based signal ─────────────────────────────────────────────────────────
 
 def technical_signal(d: dict) -> tuple[str, float]:
@@ -326,6 +337,8 @@ Respond ONLY with valid JSON, no extra text:
   "reasoning":  "one concise sentence covering both timeframes"
 }}"""
 
+    _LAST_PROMPTS[symbol] = {"prompt": prompt, "held": bool(position_context and position_context.get("held")),
+                             "rule_signal": rule_signal, "price": d.get("price")}
     raw, provider = _ask_llm(prompt)
 
     try:

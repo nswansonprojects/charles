@@ -30,6 +30,10 @@ PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
 ET = ZoneInfo("America/New_York")
 EVIDENCE_TRADES = 30          # roadmap task 8: closed trades a book needs before promotion
 REVIEW_FROM = "2026-11-02"    # roadmap task 8: first promotion review
+DATA_FROM = "2026-10-01"      # measurement started (shadow books, scorecard)
+JOURNAL = os.path.join(ROOT, "ops", "journal")         # Claude's daily reports (check-up)
+PLAN = os.path.join(ROOT, "ops", "claude-plan.md")     # Claude's own project plan
+MODEL_B_GRADED = 100          # second-model decisions graded at 5 days before comparing
 
 
 # ── Pure helpers (tested in tests/test_webdash.py) ────────────────────────────
@@ -110,6 +114,53 @@ def ai_check(scorecard: dict) -> list:
                         "ai_up": ai[h]["up_pct"], "all_mean": allc[h]["mean_pct"],
                         "all_n": allc[h]["n"], "all_up": allc[h]["up_pct"]})
     return out
+
+
+def milestones(now: datetime, scorecard: dict, learning: dict, summary: dict) -> list:
+    """What is still collecting data before it can be judged: [{name, about, progress, needs, detail}]."""
+    import promotion
+    day = now.date()
+    start, review = datetime.fromisoformat(DATA_FROM).date(), datetime.fromisoformat(REVIEW_FROM).date()
+    span = max(1, (review - start).days)
+    books = [v for n, v in promotion.review(summary, [], [], now)["books"].items() if n != "baseline"] \
+        if summary else []
+    enough = sum(v["checks"][0]["passed"] for v in books)          # first check = amount of evidence
+    left = (review - day).days
+    out = [{"name": "First promotion review", "about": "Shadow books that beat the live rules can go live, one at a time.",
+            "progress": round(min(1.0, max(0, (day - start).days) / span), 2),
+            "needs": "Nov 2", "detail": (f"{left} days to go" if left > 0 else "open")
+                                        + f" · {enough} of {len(books)} books have enough data"}]
+    model_b = scorecard.get("groups", {}).get("model B · all candidates (baseline)", {}).get("5d", {}).get("n", 0)
+    out.append({"name": "Second AI model", "about": "A bigger model answers the same questions; it replaces the "
+                "live AI only if its picks do better.", "progress": round(min(1.0, model_b / MODEL_B_GRADED), 2),
+                "needs": f"{MODEL_B_GRADED} graded picks", "detail": f"{model_b} graded"})
+    lw, nw = learning.get("labelled_weeks", 0), learning.get("needs_weeks", 12)
+    res = learning.get("result") or {}
+    out.append({"name": "Learning model", "about": "Charles learns from its own past decisions which setups "
+                "actually went up.", "progress": learning.get("progress", 0.0), "needs": f"{nw} weeks of decisions",
+                "detail": ("beats the AI and 'always up'" if res.get("beats_both") else
+                           "trained, not better yet" if res else f"{lw} of {nw} weeks")})
+    return out
+
+
+def latest_journal(folder: str = JOURNAL) -> dict | None:
+    """Newest ops/journal/YYYY-MM-DD.md as {"date", "text"}."""
+    try:
+        names = sorted(n for n in os.listdir(folder) if len(n) == 13 and n.endswith(".md"))
+    except FileNotFoundError:
+        return None
+    if not names:
+        return None
+    with open(os.path.join(folder, names[-1])) as f:
+        return {"date": names[-1][:10], "text": f.read()[:20000], "count": len(names)}
+
+
+def _text(path):
+    try:
+        with open(path) as f:
+            return f.read()[:20000]
+    except FileNotFoundError:
+        return None
 
 
 # ── Data sources (cached; any failure becomes a missing section, never a crash) ──
@@ -274,6 +325,10 @@ def build_state() -> dict:
         "options": _cached("options", 30, _options) or {},
         "orb": _cached("orb", 20, _orb) or {},
         "exits": exits_summary(position_tracker.history()),
+        "claude": {"report": latest_journal(), "plan": _text(PLAN),
+                   "milestones": milestones(now, _read("decision_scorecard.json", {}),
+                                            _read("learning_model.json", {}),
+                                            _cached("shadow", 60, _shadow_summary) or {})},
     }
 
 

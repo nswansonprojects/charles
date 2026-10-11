@@ -108,6 +108,47 @@ class EarningsDrift(BotTestCase):
         self.assertEqual(sd.earnings_drift({}, book(A=3), "d19", set), {"A": sd.KEEP})   # no data: hold
 
 
+class UnusualVolume(BotTestCase):
+    def surge(self, close=111.0, vol=3_500_000.0, avg=1_000_000.0):
+        """20 flat days at 100 (high 101), then today: close `close` on `vol` shares."""
+        b = bars([100.0] * 20 + [close])
+        b["volume"] = [avg] * 20 + [vol]
+        return b
+
+    def test_buys_volume_surge_to_new_high(self):
+        self.assertEqual(sd.unusual_volume({"A": self.surge()}, book(), "d20", set), {"A": 0.15})
+
+    def test_filters(self):
+        cases = {"volume under 3×": self.surge(vol=2_900_000.0),
+                 "no new 20-day high": self.surge(close=100.5),
+                 "thin stock": self.surge(vol=1_200_000.0, avg=400_000.0),
+                 "under $5": dict(self.surge(), close=[4.0] * 20 + [4.5])}
+        for name, b in cases.items():
+            with self.subTest(name):
+                self.assertEqual(sd.unusual_volume({"A": b}, book(), "d20", set), {})
+        self.assertEqual(sd.unusual_volume({"A": self.surge()}, book(), "d21", set), {})       # stale
+        no_vol = self.surge()
+        del no_vol["volume"]
+        self.assertEqual(sd.unusual_volume({"A": no_vol}, book(), "d20", set), {})
+
+    def test_max_three_biggest_surge_first(self):
+        b = {s: self.surge(vol=v) for s, v in (("A", 3e6 * 1.1), ("B", 5e6), ("C", 4e6), ("D", 6e6))}
+        self.assertEqual(sd.unusual_volume(b, book(), "d20", set), {"D": 0.15, "B": 0.15, "C": 0.15})
+        held = book(H1=0, H2=0)
+        out = sd.unusual_volume(b, held, "d20", set)
+        self.assertEqual(out, {"H1": sd.KEEP, "H2": sd.KEEP, "D": 0.15})
+
+    def test_exits_after_3_days_or_on_trailing_stop(self):
+        b = book(A=2)
+        b["positions"]["A"]["opened"] = "d10"
+        rise = [100.0] * 10 + [100.0 + i for i in range(10)]       # peak close 109, ATR ≈ 2
+        self.assertEqual(sd.unusual_volume({"A": bars(rise)}, b, "d19", set)["A"], sd.KEEP)
+        drop = rise + [105.5]                                        # 109 - 1.5×ATR ≈ 106
+        self.assertEqual(sd.unusual_volume({"A": bars(drop)}, b, "d20", set)["A"], 0)
+        b["positions"]["A"]["days"] = 3
+        self.assertEqual(sd.unusual_volume({"A": bars(rise)}, b, "d19", set)["A"], 0)
+
+
 class PreEarningsRunup(BotTestCase):
     TODAY = "2026-10-09"                                  # a Friday
     E = "2026-10-20"                                      # 7 trading days later

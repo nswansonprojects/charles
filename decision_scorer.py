@@ -25,6 +25,8 @@ log = logging.getLogger(__name__)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 DECISIONS_FILE = os.path.join(DATA_DIR, "decisions.jsonl")
+MODEL_B_FILE = os.path.join(DATA_DIR, "decisions_model_b.jsonl")    # shadow_model.py
+MODEL_B_PREFIX = "model B · "
 SCORECARD_FILE = os.path.join(DATA_DIR, "decision_scorecard.json")
 HORIZONS = (1, 3, 5)   # trading days
 
@@ -66,10 +68,11 @@ def _groups(d: dict) -> list:
     return g
 
 
-def score(decisions: list, closes_for) -> dict:
+def score(decisions: list, closes_for, prefix: str = "") -> dict:
     """
     closes_for(symbol) -> list of (ET date 'YYYY-MM-DD', close) sorted by date.
-    Returns {group: {"1d": {n, mean_pct, median_pct, up_pct}, ...}}.
+    Returns {group: {"1d": {n, mean_pct, median_pct, up_pct}, ...}}; prefix goes before each
+    group name (used for the second model's decisions).
     """
     seen, samples = set(), defaultdict(lambda: defaultdict(list))
     cache = {}
@@ -84,7 +87,7 @@ def score(decisions: list, closes_for) -> dict:
                 log.warning(f"Scorer: no prices for {sym}: {e}")
                 cache[sym] = []
         after = [c for (dt, c) in cache[sym] if dt > day]   # trading days after the decision day
-        for group in _groups(d):
+        for group in (prefix + g for g in _groups(d)):
             key = (group, sym, day)
             if key in seen:
                 continue
@@ -116,10 +119,20 @@ def run() -> dict:
         log.info("📏 Decision scorer: no decisions logged yet")
         return {}
     start = min(timeofday.market_date(d.get("ts", "")) or "9999" for d in decisions)
-    groups = score(decisions, lambda s: _yf_closes(s, start))
+    cache = {}
+
+    def closes(s):
+        if s not in cache:
+            cache[s] = _yf_closes(s, start)
+        return cache[s]
+    groups = score(decisions, closes)
+    model_b = load_decisions(MODEL_B_FILE)
+    if model_b:
+        groups.update(score(model_b, closes, prefix=MODEL_B_PREFIX))
     card = {
         "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "decisions": len(decisions),
+        "model_b_decisions": len(model_b),
         "first_decision_day": start,
         "horizons_trading_days": list(HORIZONS),
         "groups": groups,
