@@ -29,7 +29,11 @@ guaranteed sets (`network.py`, `evaluate.py`, `maker.py`). These are rare.
 
 ## Run it
 
-Python 3.11+ in its own virtual environment (not Charles's):
+**With the installer** (https://charles-bot.xyz/install.sh): nothing to do — it sets up this bot's
+own Python env, a 15-minute timer (`kalshi-net.timer`) and its dashboard (`kalshi-web`), and
+`charles-update` keeps it current. Log: `kalshi-logs`.
+
+**By hand:** Python 3.11+ in its own virtual environment (not Charles's):
 
     cd kalshi
     python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
