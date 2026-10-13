@@ -633,7 +633,7 @@ const SHEETS = {
       <div class="sh-sub num">${+p.shares.toFixed(4)} shares · bought at ${usd(p.avg_price)}</div>
       <div class="sh-hero num">${usd(p.market_value)}</div>
       <div class="sh-line num ${cls(p.unrealized_pnl)}">${arrow(p.unrealized_pnl)}${sgnUsd(p.unrealized_pnl)} (${pct(p.unrealized_pct, 1)}) so far</div>
-      ${facts([["Paid", usd(p.avg_price * p.shares)], ["Price now", usd(p.current_price)],
+      ${facts([["Bought at", usd(p.avg_price) + " a share"], ["Price now", usd(p.current_price) + " a share"],
         p.peak_pnl != null && ["Best so far", `${sgnUsd(p.peak_pnl)} (${pct(p.peak_pct, 1)})`, cls(p.peak_pnl)],
         p.trough_pnl != null && ["Worst so far", sgnUsd(p.trough_pnl), cls(p.trough_pnl)],
         p.stop && ["Stop", usd(p.stop)], p.stop && ["Room to stop", p.stop_dist_pct + "%", p.stop_dist_pct < 2 ? "down" : ""]])}
