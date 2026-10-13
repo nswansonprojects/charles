@@ -355,6 +355,7 @@ button.bl:hover { background: var(--surface-2); }
           <div class="tabs" id="range" role="group" aria-label="Time range" style="margin-left:auto"></div>
         </div>
         <div class="chart" id="chart"></div>
+        <p class="note" id="chart-note"></p>
         <div class="versus">
           <div class="vs"><div class="label">Return</div>
             <div class="row"><span>Charles</span><b class="num" id="r-bot">—</b></div>
@@ -729,9 +730,40 @@ function planIdeas(plan) {
 function maxDrop(vals) { let peak = -Infinity, worst = 0;
   for (const v of vals) { peak = Math.max(peak, v); worst = Math.min(worst, v / peak - 1); } return worst * 100; }
 
+// Market-time helpers (ET). Holidays aren't known here, so they count as trading days.
+const etFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hourCycle: "h23",
+  year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"});
+function etParts(ms) { const o = {}; for (const x of etFmt.formatToParts(ms)) o[x.type] = +x.value; return o; }
+// ms (UTC) of hh:mm ET on ET calendar day y-m-d
+function etAt(y, m, d, hh, mm) {
+  const guess = Date.UTC(y, m - 1, d, hh, mm), p = etParts(guess);
+  return guess - (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - guess);
+}
+const isWeekday = (y, m, d) => { const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); return w > 0 && w < 6; };
+// Milliseconds of regular session (9:30–4:00 ET, weekdays) between a and b.
+function marketMs(a, b) {
+  let total = 0, p = etParts(a), day = Date.UTC(p.year, p.month - 1, p.day);
+  for (;;) {
+    const q = new Date(day), y = q.getUTCFullYear(), m = q.getUTCMonth() + 1, d = q.getUTCDate();
+    const open = etAt(y, m, d, 9, 30), close = etAt(y, m, d, 16, 0);
+    if (open > b) break;
+    if (isWeekday(y, m, d)) total += Math.max(0, Math.min(b, close) - Math.max(a, open));
+    day += 864e5;
+  }
+  return total;
+}
+// 4 PM ET on the last weekday before the ET day that is `days` days ago: every range starts from a close.
+function rangeStart(days) {
+  const p = etParts(Date.now() - days * 864e5);
+  let day = Date.UTC(p.year, p.month - 1, p.day);
+  do { day -= 864e5; } while (![1, 2, 3, 4, 5].includes(new Date(day).getUTCDay()));
+  const q = new Date(day);
+  return etAt(q.getUTCFullYear(), q.getUTCMonth() + 1, q.getUTCDate(), 16, 0);
+}
+
 function series() {
   const days = RANGES.find(r => r[0] === range)[1];
-  const cut = new Date(Date.now() - days * 864e5).toISOString();
+  const cut = days >= 1e5 ? "" : new Date(rangeStart(days)).toISOString();
   let pts = S.equity.filter(p => p[0] >= cut);
   if (pts.length < 2) pts = S.equity.slice(-2);
   // SPY as it stood at each Charles point: the last hourly close that had already happened.
@@ -742,7 +774,12 @@ function series() {
   const spyAt = t => { let c = null; for (const [ts, v] of ref) { if (ts <= t) c = v; else break; } return c; };
   const base = spyAt(+new Date(pts[0][0]));
   const spyVals = base ? pts.map(p => pts[0][1] * (spyAt(+new Date(p[0])) ?? base) / base) : null;
-  return {pts, spyVals};
+  // x positions in market time: trading hours keep their width, nights/weekends shrink to a sliver,
+  // weekdays the bot missed still take a full day's room.
+  const xs = [0];
+  for (let i = 1; i < pts.length; i++)
+    xs.push(xs[i - 1] + Math.max(marketMs(+new Date(pts[i - 1][0]), +new Date(pts[i][0])), 15 * 6e4));
+  return {pts, spyVals, xs};
 }
 function niceTicks(lo, hi, n) {
   const span = hi - lo || 1, mag = Math.pow(10, Math.floor(Math.log10(span / n)));
@@ -757,12 +794,16 @@ function renderChart() {
   const box = $("chart");
   if (!S || S.equity.length < 2) { box.innerHTML = `<div class="empty">Not enough history yet.</div>`; return; }
   if (!box.clientWidth) return;              // hidden tab: drawn when shown
-  const {pts, spyVals} = series(), vals = pts.map(p => p[1]);
+  const {pts, spyVals, xs} = series(), vals = pts.map(p => p[1]);
   const W = box.clientWidth, H = box.clientHeight, m = {l: 58, r: 10, t: 10, b: 24};
   const all = vals.concat(spyVals || []);
   let lo = Math.min(...all), hi = Math.max(...all);
   const padv = Math.max((hi - lo) * 0.12, 1); lo -= padv; hi += padv;
-  const X = i => m.l + i * (W - m.l - m.r) / Math.max(1, pts.length - 1);
+  const xEnd = xs.at(-1) || 1;
+  const X = i => m.l + xs[i] * (W - m.l - m.r) / xEnd;
+  const nearest = x => { let lo = 0, hi = xs.length - 1;     // index whose position is closest to x (market-time units)
+    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] <= x) lo = mid; else hi = mid; }
+    return x - xs[lo] <= xs[hi] - x ? lo : hi; };
   const Y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
   const line = arr => arr.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
   const span = new Date(pts.at(-1)[0]) - new Date(pts[0][0]);
@@ -772,7 +813,7 @@ function renderChart() {
     `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">$${v.toLocaleString("en-US", {maximumFractionDigits: v % 1 ? 2 : 0})}</text>`;
   const nt = Math.max(1, Math.min(5, Math.floor((W - m.l - m.r) / 100)));
   for (let k = 0; k <= nt; k++) {
-    const i = Math.round(k * (pts.length - 1) / nt);
+    const i = nearest(k * xEnd / nt);
     grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(pts[i][0]))}</text>`;
   }
   box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Charles portfolio value vs SPY. Arrow keys read values.">
@@ -803,7 +844,7 @@ function renderChart() {
   };
   const hide = () => { tip.style.display = "none"; [cross, dot, sdot].forEach(e => e && e.setAttribute("opacity", 0)); };
   const at = ev => { const r = svg.getBoundingClientRect();
-    show(Math.round((ev.clientX - r.left - m.l) / (W - m.l - m.r) * (pts.length - 1))); };
+    show(nearest((ev.clientX - r.left - m.l) / (W - m.l - m.r) * xEnd)); };
   svg.onpointermove = at; svg.onpointerdown = at; svg.onpointerleave = hide; svg.onblur = hide;
   svg.onpointerup = ev => { if (ev.pointerType !== "mouse") setTimeout(hide, 1500); };
   svg.onkeydown = ev => {
@@ -821,6 +862,8 @@ function renderChart() {
     $("verdict").innerHTML = `<span class="ico ${ok ? "up" : "muted"}">${ok ? "✓" : "○"}</span><span><b class="${ok ? "up" : ""}">${ok ? "Meeting the goal" : "Not meeting the goal yet"}</b>
       <span class="muted">· ${ahead ? "ahead of" : "behind"} SPY by ${Math.abs(rb - rs).toFixed(2)} pts, worst drop ${safer ? "no deeper than" : "deeper than"} SPY's.</span></span>`;
   } else $("verdict").textContent = "";
+  $("chart-note").textContent = `Both lines start at Charles's value on ${new Date(pts[0][0]).toLocaleString("en-US",
+    {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}${range === "All" ? "" : " (the market close before this range)"}; SPY shows what the same money in SPY would be worth. Nights and weekends are squeezed so trading hours line up.`;
   $("chart-table").innerHTML = `<table><tr><th>Time</th><th class="r">Charles</th>${spyVals ? `<th class="r">SPY, same money</th>` : ""}</tr>` +
     pts.map((p, i) => [p, i]).reverse().slice(0, 60).map(([p, i]) => `<tr><td>${new Date(p[0]).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric"})}</td>
       <td class="r num">${usd(vals[i])}</td>${spyVals ? `<td class="r num">${usd(spyVals[i])}</td>` : ""}</tr>`).join("") + `</table>`;
