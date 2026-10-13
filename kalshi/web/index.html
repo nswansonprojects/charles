@@ -241,9 +241,82 @@ nav#tabs { grid-template-columns: repeat(4, 1fr); }
 .filters button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text-2); cursor: pointer; }
 .filters button[aria-pressed="true"] { background: var(--text); color: var(--surface); border-color: var(--text); }
+
+/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
+.view.on { animation: view-in .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin: 2px 2px 14px; }
+.loading .hero-val, .loading .kpi .v { color: transparent; border-radius: 8px; width: fit-content; min-width: 60%;
+  background: linear-gradient(90deg, var(--surface-2) 30%, var(--border) 50%, var(--surface-2) 70%) 0 0 / 300% 100%;
+  animation: shimmer 1.2s linear infinite; }
+.loading .kpi .v { min-width: 70%; }
+@keyframes shimmer { to { background-position: -150% 0; } }
+
+.brief-card { margin-bottom: 16px; }
+.brief { display: flex; gap: 12px; align-items: center; }
+.brief .logo { width: 44px; height: 44px; border-radius: 12px; flex: none; }
+.brief .logo svg { width: 40px; height: 40px; }
+.brief h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.brief-list { display: grid; gap: 2px; margin-top: 12px; }
+.bl { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; text-align: left; width: 100%;
+  font: inherit; font-size: 14px; color: var(--text); background: none; border: 0; border-radius: 10px; padding: 8px 6px; }
+button.bl { cursor: pointer; }
+button.bl:hover { background: var(--surface-2); }
+.bi { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
+.bi svg { width: 16px; height: 16px; }
+.bi.up { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good-ink); }
+.bi.down { background: color-mix(in srgb, var(--critical) 13%, transparent); color: var(--critical-ink); }
+.bi.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: color-mix(in srgb, var(--warn) 60%, var(--text)); }
+.bi.info { background: var(--accent-soft); color: var(--series-1); }
+.chev { color: var(--muted); width: 16px; height: 16px; }
+
+/* rows that open the detail sheet */
+.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px;
+  transition: background .15s, transform .1s; }
+.tap:hover { background: var(--surface-2); }
+.tap:active { transform: scale(.99); }
+.tap:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.38); opacity: 0; transition: opacity .25s; }
+.scrim.on { opacity: 1; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--surface); color: var(--text);
+  border-radius: 20px 20px 0 0; box-shadow: 0 -8px 40px rgba(0,0,0,.18); max-height: 88vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 8px 20px calc(24px + env(safe-area-inset-bottom)); transform: translateY(105%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+.sheet.on { transform: none; }
+.sheet:focus { outline: none; }
+.grab { width: 38px; height: 5px; border-radius: 3px; background: var(--border); margin: 0 auto 14px; touch-action: none; cursor: grab; }
+.sh-close { position: absolute; top: 12px; right: 14px; }
+.sh-title { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0 40px 2px 0; }
+.sh-sub { font-size: 13.5px; color: var(--muted); margin-right: 40px; }
+.sh-hero { font-size: 34px; font-weight: 700; letter-spacing: -.03em; margin: 14px 0 2px; }
+.sh-line { font-weight: 600; font-size: 14px; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0 4px; }
+.facts > div { background: var(--surface-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
+.facts .l { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.facts b { display: block; font-size: 15px; margin-top: 1px; overflow-wrap: anywhere; }
+.sh-h { font-size: 12.5px; font-weight: 650; color: var(--text-2); margin: 18px 0 4px; }
+.sh-p { font-size: 14.5px; line-height: 1.55; margin: 0; }
+@media (min-width: 860px) {
+  .sheet { left: 50%; right: auto; bottom: auto; top: 50%; width: 460px; max-height: 84vh; border-radius: 20px;
+    padding-bottom: 24px; opacity: 0; transform: translate(-50%, -46%); transition: transform .25s, opacity .2s; }
+  .sheet.on { opacity: 1; transform: translate(-50%, -50%); }
+  .grab { visibility: hidden; height: 0; margin-bottom: 8px; }
+  .page-title { display: none; }
+}
+@media (max-width: 640px) {
+  .bar { flex-wrap: nowrap; gap: 6px; }
+  .brand { font-size: 16px; }
+  .bar .chip.paper, #st-mkt { display: none; }
+  #st-bot { padding: 0; width: 32px; height: 32px; justify-content: center; }
+  #st-bot > span:last-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view.on, .loading .hero-val, .loading .kpi .v { animation: none; }
+  .sheet, .scrim, .tap { transition: none; }
+}
 </style>
 </head>
-<body>
+<body class="loading">
 <header>
   <div class="bar">
     <div class="brand">
@@ -268,6 +341,11 @@ nav#tabs { grid-template-columns: repeat(4, 1fr); }
 <main>
   <!-- HOME -->
   <section class="view on" id="v-home">
+    <div class="card brief-card">
+      <div class="brief"><span class="logo" id="brief-logo" aria-hidden="true"></span>
+        <div><h1 id="greet">Hello.</h1><div class="small muted" id="brief-sub"></div></div></div>
+      <div class="brief-list" id="brief-list"></div>
+    </div>
     <div class="grid home">
      <div class="col">
       <div class="card">
@@ -369,6 +447,13 @@ nav#tabs { grid-template-columns: repeat(4, 1fr); }
 </main>
 
 <nav id="tabs"></nav>
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
+  <div class="grab" id="grab"></div>
+  <button class="icon sh-close" id="sh-close" aria-label="Close">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+  <div id="sheet-body"></div>
+</div>
 
 <script>
 "use strict";
@@ -403,11 +488,182 @@ const ago = iso => { if (!iso) return "—"; const s = (Date.now() - new Date(is
   return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
 const day = iso => new Date(iso).toLocaleDateString("en-US", {month: "short", day: "numeric"});
 const valueNow = b => b.contracts * (b.bid ?? b.avg_price);   // same mark as betting.mark()
+const SEEN_KEY = "kn-seen";
+
+/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const IC = {
+  up: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>', down: '<path d="M4 10l6 6 4-4 6 6M14 18h6v-6"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', alert: '<path d="M12 4l9 16H3zM12 10v4M12 17v.5"/>',
+  check: '<path d="M5 12l5 5 9-10"/>', spark: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>', dot: '<circle cx="12" cy="12" r="3"/>',
+};
+const svgI = (d, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const CHEV = svgI('<path d="M9 6l6 6-6 6"/>', "chev");
+
+/* "since you last looked": the last value seen, kept per browser; refreshed after 10+ minutes away */
+let prevSeen = null;
+const readSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); } catch (e) { return null; } };
+prevSeen = readSeen();
+function markSeen(value) { try { localStorage.setItem(SEEN_KEY, JSON.stringify({ts: new Date().toISOString(), value})); } catch (e) {} }
+document.addEventListener("visibilitychange", () => {
+  const s = !document.hidden && readSeen();
+  if (s && Date.now() - new Date(s.ts) > 6e5) prevSeen = s;
+});
+const away = () => prevSeen && Date.now() - new Date(prevSeen.ts) > 6e5 ? prevSeen : null;
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening.";
+}
+/* lines: [{icon, tone, html, go: tab | fn}] */
+function renderBrief(sub, lines) {
+  $("greet").textContent = greeting();
+  $("brief-sub").textContent = sub;
+  const list = $("brief-list");
+  list.innerHTML = lines.map((l, i) => {
+    const inner = `<span class="bi ${l.tone || ""}">${svgI(IC[l.icon] || IC.dot)}</span><span>${l.html}</span>${l.go ? CHEV : "<span></span>"}`;
+    return l.go ? `<button class="bl" data-i="${i}">${inner}</button>` : `<div class="bl">${inner}</div>`;
+  }).join("");
+  list.querySelectorAll("button.bl").forEach(b => b.onclick = () => {
+    const go = lines[+b.dataset.i].go;
+    typeof go === "function" ? go(b) : setTab(go);
+  });
+}
+
+/* count the hero number up on first paint */
+function countUp(el, to, fmt) {
+  if (REDUCED || el.dataset.counted) { el.textContent = fmt(to); return; }
+  el.dataset.counted = 1;
+  const from = to * 0.985, t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+/* detail sheet: slides up on phones, a centred card on desktop */
+let sheetFrom = null;
+function openSheet(html, from) {
+  sheetFrom = from || document.activeElement;
+  $("sheet-body").innerHTML = html;
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = sc.hidden = false;
+  sh.style.transform = "";
+  sh.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  if (sh.hidden) return;
+  sh.classList.remove("on"); sc.classList.remove("on"); sh.style.transform = "";
+  document.body.style.overflow = "";
+  setTimeout(() => { sh.hidden = sc.hidden = true; }, REDUCED ? 0 : 320);
+  if (sheetFrom && sheetFrom.focus) sheetFrom.focus();
+}
+const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c]) =>
+  `<div><span class="l">${l}</span><b class="num ${c || ""}">${v}</b></div>`).join("")}</div>`;
+(function () {
+  $("scrim").onclick = closeSheet;
+  $("sh-close").onclick = closeSheet;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+  // drag the handle down to dismiss
+  const g = $("grab"), sh = $("sheet");
+  let y0 = null, dy = 0;
+  g.onpointerdown = e => { y0 = e.clientY; dy = 0; g.setPointerCapture(e.pointerId); sh.style.transition = "none"; };
+  g.onpointermove = e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); sh.style.transform = `translateY(${dy}px)`; };
+  g.onpointerup = g.onpointercancel = () => { if (y0 == null) return; y0 = null; sh.style.transition = "";
+    if (dy > 90) closeSheet(); else sh.style.transform = ""; };
+  // any [data-open] row opens its sheet (click, Enter or Space)
+  const open = el => { const fn = SHEETS[el.dataset.open]; const html = fn && fn(el.dataset.k); if (html) openSheet(html, el); };
+  document.addEventListener("click", e => { const el = e.target.closest("[data-open]"); if (el && !e.target.closest("a,button:not([data-open])")) open(el); });
+  document.addEventListener("keydown", e => { const el = e.target.closest && e.target.closest("[data-open]");
+    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(el); } });
+})();
+const tapAttrs = (kind, key) => `data-open="${kind}" data-k="${esc(key)}" tabindex="0" role="button"`;
+function addPageTitles() {
+  TABS.forEach(([k, l]) => { const v = $("v-" + k); if (k !== "home" && v && !v.querySelector(".page-title"))
+    v.insertAdjacentHTML("afterbegin", `<h1 class="page-title">${l}</h1>`); });
+}
+
+/* the betting book's briefing: what settled, what's new and what settles soon */
+const STRAT_ABOUT = {
+  weather: "Weather: the National Weather Service forecast and a spread of weather models, blended with the market's own price.",
+  sports: "Sports: sportsbook odds (DraftKings, via ESPN) with the bookmaker's cut taken out.",
+  econ: "Inflation: the Cleveland Fed's inflation nowcast, blended with the market's own price.",
+  longshot: "Longshot: cheap contracts win less often than their price says, so the bot bets against them.",
+};
+const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const inTime = iso => { const h = (new Date(iso) - Date.now()) / 36e5;
+  return h < 0 ? "over, waiting on Kalshi's result" : h < 1 ? "in under an hour" : h < 36 ? `in ${Math.round(h)} h` : `in ${Math.round(h / 24)} days`; };
+function kalshiBrief() {
+  const a = B.account, sc = S.scanner, lines = [], seen = away();
+  if (!sc.healthy) lines.push({icon: "alert", tone: "down", html: sc.last ? `<b>The scanner is late.</b> Its last scan was ${ago(sc.last.ts)}.` : "No scans yet."});
+  if (seen && seen.value != null) {
+    const d = a.account_value - seen.value;
+    lines.push(Math.abs(d) < 0.01 ? {icon: "check", tone: "info", html: `Nothing has moved since you last looked (${ago(seen.ts)}).`}
+      : {icon: d > 0 ? "up" : "down", tone: d > 0 ? "up" : "down",
+         html: `Since you last looked (${ago(seen.ts)}), the book ${d > 0 ? "rose" : "fell"} <b class="num">${usd(Math.abs(d))}</b> to <b class="num">${usd(a.account_value)}</b>.`});
+  } else {
+    const r = a.all_time_pnl;
+    lines.push({icon: r >= 0 ? "up" : "down", tone: r >= 0 ? "up" : "down",
+      html: `The book is ${r >= 0 ? "up" : "down"} <b class="num">${usd(Math.abs(r))}</b> (${pct(a.all_time_pct)}) since the ${usd(a.start_cash, 0)} start.`});
+  }
+  const since = seen ? new Date(seen.ts) : new Date(Date.now() - 864e5), when = seen ? "since then" : "in the last day";
+  const settled = B.closed.filter(b => new Date(b.closed) > since);
+  if (settled.length) {
+    const n = k => settled.filter(b => b.how === k).length, net = settled.reduce((t, b) => t + (b.pnl || 0), 0);
+    const parts = [n("won") && `${n("won")} won`, n("lost") && `${n("lost")} lost`, n("sold") && `${n("sold")} sold early`, n("void") && `${n("void")} refunded`].filter(Boolean);
+    lines.push({icon: net >= 0 ? "check" : "down", tone: net >= 0 ? "up" : "down", go: "act",
+      html: `${plural(settled.length, "bet")} finished ${when}: ${parts.join(", ")}. Net <b class="num ${cls(net)}">${sgnUsd(net)}</b>.`});
+  }
+  const placed = B.open.concat(B.closed).filter(b => new Date(b.opened) > since);
+  if (placed.length) lines.push({icon: "spark", tone: "info", go: "act",
+    html: `The bot placed ${plural(placed.length, "new bet")} ${when}, ${usd(placed.reduce((t, b) => t + b.cost, 0))} in all.`});
+  const soon = B.open.filter(b => new Date(b.close_time) - Date.now() < 12 * 36e5), over = soon.filter(b => new Date(b.close_time) < Date.now());
+  if (soon.length) lines.push({icon: "clock", tone: "info", go: "hold",
+    html: `${plural(soon.length, "bet")} settle${soon.length === 1 ? "s" : ""} within 12 hours: ${usd(soon.reduce((t, b) => t + b.cost, 0))} bet, <span class="up num">${sgnUsd(soon.reduce((t, b) => t + b.contracts - b.cost, 0))}</span> if ${soon.length === 1 ? "it wins" : "they all win"}.${over.length ? ` ${over.length} ${over.length === 1 ? "is" : "are"} already over and waiting on Kalshi's result.` : ""}`});
+  else if (!B.open.length) lines.push({icon: "dot", html: "No open bets. The bot looks for new ones every 15 minutes."});
+  const R = S.review || {};
+  if (R.report && R.report.date === new Date().toLocaleDateString("en-CA"))
+    lines.push({icon: "check", tone: "info", go: "claude", html: "Claude's review for today is in."});
+  renderBrief(`${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric"})}${sc.last ? " · last scan " + ago(sc.last.ts) : ""}`, lines.slice(0, 5));
+}
+
+/* a tapped bet: what it costs, what it pays, and why the bot took it */
+const SHEETS = {
+  bet(id) {
+    const b = B.open.concat(B.closed).find(x => x.id === id);
+    if (!b) return "";
+    const side = b.side.toUpperCase(), p = winChance(b), mkt = b.market_yes == null ? null : b.side === "yes" ? b.market_yes : 1 - b.market_yes;
+    const head = `<div class="sh-title" id="sh-title">${esc(b.sub || b.title)} <span class="side ${b.side}">${side}</span></div>
+      <div class="sh-sub">${b.sub && b.sub !== b.title ? esc(b.title) + " · " : ""}${esc(STRAT[b.strategy] || b.strategy)}</div>`;
+    const why = `<div class="sh-h">Why the bot bet ${side}</div>
+      <p class="sh-p">It gave ${side} a ${sure(b.fair)} chance${mkt != null ? `, while the market priced it at ${cents(mkt)}` : ""} and the bot paid ${cents(b.avg_price)} a contract. Each contract pays $1 if ${side} wins.</p>
+      ${b.source ? `<p class="note">Source: ${esc(b.source)}</p>` : ""}
+      ${STRAT_ABOUT[b.strategy] ? `<p class="note">${esc(STRAT_ABOUT[b.strategy])}</p>` : ""}`;
+    if (b.closed) {
+      return head + `<div class="sh-hero num ${cls(b.pnl)}">${sgnUsd(b.pnl)}</div>
+        <div class="sh-line">${HOW[b.how] || "CLOSED"} · ${new Date(b.closed).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
+        ${facts([["Bet", usd(b.cost)], ["Got back", usd(b.received)], ["Contracts", `${b.contracts} at ${cents(b.avg_price)}`], ["Placed", day(b.opened)]])}` + why;
+    }
+    const v = valueNow(b), pnl = v - b.cost;
+    return head + `<div class="sh-hero num up">${sgnUsd(b.contracts - b.cost)}</div>
+      <div class="sh-line">if it wins · ${sure(p)} likely · settles ${inTime(b.close_time)}</div>
+      ${facts([["Bet", usd(b.cost)], ["Contracts", `${b.contracts} at ${cents(b.avg_price)}`],
+        ["If it wins", `${sgnUsd(b.contracts - b.cost)} (pays ${usd(b.contracts)})`, "up"], ["If it loses", sgnUsd(-b.cost), "down"],
+        ["Bot's odds now", `${sure(p)}${b.fair_now != null && b.fair_now !== b.fair ? ` (was ${sure(b.fair)})` : ""}`],
+        ["Expected", sgnUsd(expected(b)), cls(expected(b))],
+        ["Worth now", `${usd(v)} <span class="${cls(pnl)}">${sgnUsd(pnl)}</span>`],
+        ["Settles", new Date(b.close_time).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})]])}
+      <p class="note">"Worth now" is what selling right away would fetch. It moves with the market every scan; only the result decides the bet.</p>` + why;
+  },
+};
 
 /* inside Charles's dashboard (port 8502, /kalshi/): one app, same name and logo (owner 2026-10-11) */
 if (location.pathname.startsWith("/kalshi")) {
   $("appswitch").hidden = false;
   document.title = "Charles";
+  // Charles's dashboard serves the app manifest and icons, so "Add to Home Screen" works from here too
+  document.head.insertAdjacentHTML("beforeend", '<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-180.png">');
   document.querySelector(".brand").innerHTML = '<span class="logo" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 32 32"><path d="M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z" fill="#fff" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/><path d="M9.2 10.4 L9.8 7.3 L11.8 8.8 Z M22.8 10.4 L22.2 7.3 L20.2 8.8 Z" fill="#f2b8c0" stroke="#f2b8c0" stroke-width=".6" stroke-linejoin="round"/><path d="M16 7.4c3.2 0 5.6 1 7.4 3.2c1.6 1.9 2.3 4.3 2.1 6.9l1.4 1.6l-1.9.4c-.5 2.6-2 4.8-4 6.2l.4 1.9l-1.8-.9l-.6 2l-1.4-1.4l-1.6 1.8l-1.6-1.8l-1.4 1.4l-.6-2l-1.8.9l.4-1.9c-2-1.4-3.5-3.6-4-6.2l-1.9-.4l1.4-1.6c-.2-2.6.5-5 2.1-6.9C10.4 8.4 12.8 7.4 16 7.4Z" fill="#fff"/><ellipse cx="16" cy="21" rx="5.6" ry="3.9" fill="#edf1f6"/><path d="M10.4 13.1l1.2-.9l1 .6l1-.6l.9.7M21.6 13.1l-1.2-.9l-1 .6l-1-.6l-.9.7" stroke="#c3cedb" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.6" cy="15.5" r="1.3" fill="#1f2937"/><circle cx="19.4" cy="15.5" r="1.3" fill="#1f2937"/><circle cx="13" cy="15.1" r=".4" fill="#fff"/><circle cx="19.8" cy="15.1" r=".4" fill="#fff"/><path d="M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z" fill="#fff" stroke="#d3dbe5" stroke-width=".45" stroke-linejoin="round"/><path d="M14.8 21.4q-2 .7-3.4 2.4M17.2 21.4q2 .7 3.4 2.4" stroke="#d3dbe5" stroke-width=".5" fill="none" stroke-linecap="round"/><path d="M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3" stroke="#fff" stroke-width=".6" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="18.7" rx="2" ry="1.4" fill="#1f2937"/></svg></span>Charles';
 }
 
@@ -436,6 +692,8 @@ function buildTabs() {
   document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r;
     try { localStorage.setItem("kn-range", range); } catch (e) {} renderChart(); });
   $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Book</span><span class="key">${keySvg("--ref", true)}$1,000 start</span>`;
+  addPageTitles();
+  $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
   setTab(tab);
 }
 function keySvg(color, dashed) {
@@ -610,7 +868,7 @@ const expected = b => winChance(b) == null ? 0 : winChance(b) * b.contracts - b.
 function betRows(bets) {
   return bets.map(b => {
     const v = valueNow(b), pnl = v - b.cost, win = b.contracts - b.cost, p = winChance(b), ev = expected(b);
-    return `<div class="row-i">
+    return `<div class="row-i tap" ${tapAttrs("bet", b.id)}>
       <div><span class="sym">${esc(b.sub || b.title)}</span> <span class="side ${b.side}">${b.side.toUpperCase()}</span></div>
       <div class="right num small muted">${sure(p)} likely</div>
       <div class="small muted" style="grid-column:1/-1">${esc(b.sub && b.sub !== b.title ? b.title : "")}${b.sub && b.sub !== b.title ? " · " : ""}${esc(STRAT[b.strategy] || b.strategy)} · ${b.contracts} contracts at ${cents(b.avg_price)} · settles ${day(b.close_time)}</div>
@@ -629,7 +887,7 @@ function render() {
   $("st-bot").title = sc.last ? "Last scan " + ago(sc.last.ts) + ", every " + sc.every_min + " minutes" : "";
   $("updated").textContent = sc.last ? "Last scan " + ago(sc.last.ts) : "";
 
-  $("value").textContent = usd(a.account_value);
+  countUp($("value"), a.account_value, usd);
   $("ret").innerHTML = `<span class="${cls(a.all_time_pnl)}">${arrow(a.all_time_pnl)}${sgnUsd(a.all_time_pnl)} (${pct(a.all_time_pct)})</span><span class="muted" style="font-weight:500">since ${usd(a.start_cash, 0)} start</span>`;
   $("today").textContent = sgnUsd(a.day_pnl); $("today").className = "v num " + cls(a.day_pnl);
   $("cash").textContent = usd(a.cash, 0); $("nbets").textContent = a.open_bets;
@@ -687,12 +945,16 @@ function render() {
     const d = new Date(ts), dd = d.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
     if (dd !== lastDay) { html += `<div class="day">${dd}</div>`; lastDay = dd; }
     const p = kind === "BET" ? b.fair : null;
-    html += `<div class="act"><div class="badge ${kind}">${kind}</div>
+    html += `<div class="act tap" ${tapAttrs("bet", b.id)}><div class="badge ${kind}">${kind}</div>
       <div><b>${esc(b.sub || b.title)}</b> <span class="side ${b.side}">${b.side.toUpperCase()}</span> <span class="muted small num">${usd(b.cost)} · ${d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"})}</span>
         <div class="why">${esc(STRAT[b.strategy] || b.strategy)}${b.sub && b.sub !== b.title ? " · " + esc(b.title) : ""}${p != null ? ` · ${sure(p)} likely · if it wins ${sgnUsd(b.contracts - b.cost)}, if it loses ${sgnUsd(-b.cost)}` : ""}</div></div>
       <div class="right num small ${cls(kind === "BET" ? null : b.pnl)}">${kind === "BET" ? "" : sgnUsd(b.pnl)}</div></div>`;
   }
   $("trades").innerHTML = html || `<div class="empty">No bets yet.</div>`;
+
+  kalshiBrief();
+  markSeen(a.account_value);
+  document.body.classList.remove("loading");
 }
 
 async function load() {

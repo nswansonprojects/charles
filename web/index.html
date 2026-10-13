@@ -9,6 +9,8 @@
 <meta name="apple-mobile-web-app-title" content="Charles">
 <title>Charles</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z' fill='%23fff' stroke='%23fff' stroke-width='2.6' stroke-linejoin='round'/><path d='M9.2 10.4 L9.8 7.3 L11.8 8.8 Z M22.8 10.4 L22.2 7.3 L20.2 8.8 Z' fill='%23f2b8c0' stroke='%23f2b8c0' stroke-width='.6' stroke-linejoin='round'/><path d='M16 7.4c3.2 0 5.6 1 7.4 3.2c1.6 1.9 2.3 4.3 2.1 6.9l1.4 1.6l-1.9.4c-.5 2.6-2 4.8-4 6.2l.4 1.9l-1.8-.9l-.6 2l-1.4-1.4l-1.6 1.8l-1.6-1.8l-1.4 1.4l-.6-2l-1.8.9l.4-1.9c-2-1.4-3.5-3.6-4-6.2l-1.9-.4l1.4-1.6c-.2-2.6.5-5 2.1-6.9C10.4 8.4 12.8 7.4 16 7.4Z' fill='%23fff'/><ellipse cx='16' cy='21' rx='5.6' ry='3.9' fill='%23edf1f6'/><path d='M10.4 13.1l1.2-.9l1 .6l1-.6l.9.7M21.6 13.1l-1.2-.9l-1 .6l-1-.6l-.9.7' stroke='%23c3cedb' stroke-width='1' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='12.6' cy='15.5' r='1.3' fill='%231f2937'/><circle cx='19.4' cy='15.5' r='1.3' fill='%231f2937'/><circle cx='13' cy='15.1' r='.4' fill='%23fff'/><circle cx='19.8' cy='15.1' r='.4' fill='%23fff'/><path d='M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z' fill='%23fff' stroke='%23d3dbe5' stroke-width='.45' stroke-linejoin='round'/><path d='M14.8 21.4q-2 .7-3.4 2.4M17.2 21.4q2 .7 3.4 2.4' stroke='%23d3dbe5' stroke-width='.5' fill='none' stroke-linecap='round'/><path d='M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3' stroke='%23fff' stroke-width='.6' fill='none' stroke-linecap='round'/><ellipse cx='16' cy='18.7' rx='2' ry='1.4' fill='%231f2937'/></svg>">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -209,9 +211,82 @@ nav button.on { color: var(--series-1); }
   .exp-stats { grid-template-columns: repeat(2, 1fr); }
   .bar .chip.paper { display: none; }
 }
+
+/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
+.view.on { animation: view-in .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin: 2px 2px 14px; }
+.loading .hero-val, .loading .kpi .v { color: transparent; border-radius: 8px; width: fit-content; min-width: 60%;
+  background: linear-gradient(90deg, var(--surface-2) 30%, var(--border) 50%, var(--surface-2) 70%) 0 0 / 300% 100%;
+  animation: shimmer 1.2s linear infinite; }
+.loading .kpi .v { min-width: 70%; }
+@keyframes shimmer { to { background-position: -150% 0; } }
+
+.brief-card { margin-bottom: 16px; }
+.brief { display: flex; gap: 12px; align-items: center; }
+.brief .logo { width: 44px; height: 44px; border-radius: 12px; flex: none; }
+.brief .logo svg { width: 40px; height: 40px; }
+.brief h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.brief-list { display: grid; gap: 2px; margin-top: 12px; }
+.bl { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; text-align: left; width: 100%;
+  font: inherit; font-size: 14px; color: var(--text); background: none; border: 0; border-radius: 10px; padding: 8px 6px; }
+button.bl { cursor: pointer; }
+button.bl:hover { background: var(--surface-2); }
+.bi { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; background: var(--surface-2); color: var(--text-2); }
+.bi svg { width: 16px; height: 16px; }
+.bi.up { background: color-mix(in srgb, var(--good) 14%, transparent); color: var(--good-ink); }
+.bi.down { background: color-mix(in srgb, var(--critical) 13%, transparent); color: var(--critical-ink); }
+.bi.warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: color-mix(in srgb, var(--warn) 60%, var(--text)); }
+.bi.info { background: var(--accent-soft); color: var(--series-1); }
+.chev { color: var(--muted); width: 16px; height: 16px; }
+
+/* rows that open the detail sheet */
+.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px;
+  transition: background .15s, transform .1s; }
+.tap:hover { background: var(--surface-2); }
+.tap:active { transform: scale(.99); }
+.tap:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
+
+.scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.38); opacity: 0; transition: opacity .25s; }
+.scrim.on { opacity: 1; }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--surface); color: var(--text);
+  border-radius: 20px 20px 0 0; box-shadow: 0 -8px 40px rgba(0,0,0,.18); max-height: 88vh; overflow-y: auto; overscroll-behavior: contain;
+  padding: 8px 20px calc(24px + env(safe-area-inset-bottom)); transform: translateY(105%); transition: transform .32s cubic-bezier(.2,.8,.2,1); }
+.sheet.on { transform: none; }
+.sheet:focus { outline: none; }
+.grab { width: 38px; height: 5px; border-radius: 3px; background: var(--border); margin: 0 auto 14px; touch-action: none; cursor: grab; }
+.sh-close { position: absolute; top: 12px; right: 14px; }
+.sh-title { font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin: 0 40px 2px 0; }
+.sh-sub { font-size: 13.5px; color: var(--muted); margin-right: 40px; }
+.sh-hero { font-size: 34px; font-weight: 700; letter-spacing: -.03em; margin: 14px 0 2px; }
+.sh-line { font-weight: 600; font-size: 14px; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 16px 0 4px; }
+.facts > div { background: var(--surface-2); border-radius: 10px; padding: 8px 11px; min-width: 0; }
+.facts .l { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.facts b { display: block; font-size: 15px; margin-top: 1px; overflow-wrap: anywhere; }
+.sh-h { font-size: 12.5px; font-weight: 650; color: var(--text-2); margin: 18px 0 4px; }
+.sh-p { font-size: 14.5px; line-height: 1.55; margin: 0; }
+@media (min-width: 860px) {
+  .sheet { left: 50%; right: auto; bottom: auto; top: 50%; width: 460px; max-height: 84vh; border-radius: 20px;
+    padding-bottom: 24px; opacity: 0; transform: translate(-50%, -46%); transition: transform .25s, opacity .2s; }
+  .sheet.on { opacity: 1; transform: translate(-50%, -50%); }
+  .grab { visibility: hidden; height: 0; margin-bottom: 8px; }
+  .page-title { display: none; }
+}
+@media (max-width: 640px) {
+  .bar { flex-wrap: nowrap; gap: 6px; }
+  .brand { font-size: 16px; }
+  .bar .chip.paper, #st-mkt { display: none; }
+  #st-bot { padding: 0; width: 32px; height: 32px; justify-content: center; }
+  #st-bot > span:last-child { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .view.on, .loading .hero-val, .loading .kpi .v { animation: none; }
+  .sheet, .scrim, .tap { transition: none; }
+}
 </style>
 </head>
-<body>
+<body class="loading">
 <header>
   <div class="bar">
     <div class="brand">
@@ -234,6 +309,11 @@ nav button.on { color: var(--series-1); }
 <main>
   <!-- HOME -->
   <section class="view on" id="v-home">
+    <div class="card brief-card">
+      <div class="brief"><span class="logo" id="brief-logo" aria-hidden="true"></span>
+        <div><h1 id="greet">Hello.</h1><div class="small muted" id="brief-sub"></div></div></div>
+      <div class="brief-list" id="brief-list"></div>
+    </div>
     <div class="grid home">
      <div class="col">
       <div class="card">
@@ -372,6 +452,13 @@ nav button.on { color: var(--series-1); }
 </main>
 
 <nav id="tabs"></nav>
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
+  <div class="grab" id="grab"></div>
+  <button class="icon sh-close" id="sh-close" aria-label="Close">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+  <div id="sheet-body"></div>
+</div>
 
 <script>
 "use strict";
@@ -398,6 +485,174 @@ const ago = iso => { if (!iso) return "—"; const s = (Date.now() - new Date(is
   return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
 const pretty = n => n.replace(/_/g, " ");
 const NS = "http://www.w3.org/2000/svg";
+const SEEN_KEY = "charles-seen";
+
+/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const IC = {
+  up: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>', down: '<path d="M4 10l6 6 4-4 6 6M14 18h6v-6"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', alert: '<path d="M12 4l9 16H3zM12 10v4M12 17v.5"/>',
+  check: '<path d="M5 12l5 5 9-10"/>', spark: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>', dot: '<circle cx="12" cy="12" r="3"/>',
+};
+const svgI = (d, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const CHEV = svgI('<path d="M9 6l6 6-6 6"/>', "chev");
+
+/* "since you last looked": the last value seen, kept per browser; refreshed after 10+ minutes away */
+let prevSeen = null;
+const readSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); } catch (e) { return null; } };
+prevSeen = readSeen();
+function markSeen(value) { try { localStorage.setItem(SEEN_KEY, JSON.stringify({ts: new Date().toISOString(), value})); } catch (e) {} }
+document.addEventListener("visibilitychange", () => {
+  const s = !document.hidden && readSeen();
+  if (s && Date.now() - new Date(s.ts) > 6e5) prevSeen = s;
+});
+const away = () => prevSeen && Date.now() - new Date(prevSeen.ts) > 6e5 ? prevSeen : null;
+function greeting() {
+  const h = new Date().getHours();
+  return h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening.";
+}
+/* lines: [{icon, tone, html, go: tab | fn}] */
+function renderBrief(sub, lines) {
+  $("greet").textContent = greeting();
+  $("brief-sub").textContent = sub;
+  const list = $("brief-list");
+  list.innerHTML = lines.map((l, i) => {
+    const inner = `<span class="bi ${l.tone || ""}">${svgI(IC[l.icon] || IC.dot)}</span><span>${l.html}</span>${l.go ? CHEV : "<span></span>"}`;
+    return l.go ? `<button class="bl" data-i="${i}">${inner}</button>` : `<div class="bl">${inner}</div>`;
+  }).join("");
+  list.querySelectorAll("button.bl").forEach(b => b.onclick = () => {
+    const go = lines[+b.dataset.i].go;
+    typeof go === "function" ? go(b) : setTab(go);
+  });
+}
+
+/* count the hero number up on first paint */
+function countUp(el, to, fmt) {
+  if (REDUCED || el.dataset.counted) { el.textContent = fmt(to); return; }
+  el.dataset.counted = 1;
+  const from = to * 0.985, t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+
+/* detail sheet: slides up on phones, a centred card on desktop */
+let sheetFrom = null;
+function openSheet(html, from) {
+  sheetFrom = from || document.activeElement;
+  $("sheet-body").innerHTML = html;
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = sc.hidden = false;
+  sh.style.transform = "";
+  sh.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  if (sh.hidden) return;
+  sh.classList.remove("on"); sc.classList.remove("on"); sh.style.transform = "";
+  document.body.style.overflow = "";
+  setTimeout(() => { sh.hidden = sc.hidden = true; }, REDUCED ? 0 : 320);
+  if (sheetFrom && sheetFrom.focus) sheetFrom.focus();
+}
+const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c]) =>
+  `<div><span class="l">${l}</span><b class="num ${c || ""}">${v}</b></div>`).join("")}</div>`;
+(function () {
+  $("scrim").onclick = closeSheet;
+  $("sh-close").onclick = closeSheet;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+  // drag the handle down to dismiss
+  const g = $("grab"), sh = $("sheet");
+  let y0 = null, dy = 0;
+  g.onpointerdown = e => { y0 = e.clientY; dy = 0; g.setPointerCapture(e.pointerId); sh.style.transition = "none"; };
+  g.onpointermove = e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); sh.style.transform = `translateY(${dy}px)`; };
+  g.onpointerup = g.onpointercancel = () => { if (y0 == null) return; y0 = null; sh.style.transition = "";
+    if (dy > 90) closeSheet(); else sh.style.transform = ""; };
+  // any [data-open] row opens its sheet (click, Enter or Space)
+  const open = el => { const fn = SHEETS[el.dataset.open]; const html = fn && fn(el.dataset.k); if (html) openSheet(html, el); };
+  document.addEventListener("click", e => { const el = e.target.closest("[data-open]"); if (el && !e.target.closest("a,button:not([data-open])")) open(el); });
+  document.addEventListener("keydown", e => { const el = e.target.closest && e.target.closest("[data-open]");
+    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(el); } });
+})();
+const tapAttrs = (kind, key) => `data-open="${kind}" data-k="${esc(key)}" tabindex="0" role="button"`;
+function addPageTitles() {
+  TABS.forEach(([k, l]) => { const v = $("v-" + k); if (k !== "home" && v && !v.querySelector(".page-title"))
+    v.insertAdjacentHTML("afterbegin", `<h1 class="page-title">${l}</h1>`); });
+}
+
+/* Charles's briefing: what changed since the last look, in a few plain lines */
+const SOURCE = {"risk_management": "the trailing stop or risk rules", "time_exit": "the time limit on holding a stock", "rules": "the rule-based picker"};
+const srcText = s => !s ? "" : s.startsWith("llm:") ? "the AI picker (" + s.slice(4) + ")" : SOURCE[s] || s.replace(/_/g, " ");
+function charlesBrief() {
+  const a = S.account, lines = [], seen = away();
+  if (!S.bot_running) lines.push({icon: "alert", tone: "down", html: "<b>Charles is stopped.</b> No trades until it's started again."});
+  if (S.today.halted) lines.push({icon: "alert", tone: "down", html: "Trading is paused for today: the daily loss limit was hit."});
+  if (a && seen && seen.value != null) {
+    const d = a.total_value - seen.value;
+    lines.push(Math.abs(d) < 0.01 ? {icon: "check", tone: "info", html: `Nothing has moved since you last looked (${ago(seen.ts)}).`}
+      : {icon: d > 0 ? "up" : "down", tone: d > 0 ? "up" : "down",
+         html: `Since you last looked (${ago(seen.ts)}), the portfolio ${d > 0 ? "rose" : "fell"} <b class="num">${usd(Math.abs(d))}</b> to <b class="num">${usd(a.total_value)}</b>.`});
+  } else if (a) {
+    const r = a.total_return;
+    lines.push({icon: r >= 0 ? "up" : "down", tone: r >= 0 ? "up" : "down",
+      html: `The portfolio is ${r >= 0 ? "up" : "down"} <b class="num">${usd(Math.abs(r))}</b> (${pct(a.total_return_pct)}) since the ${usd(S.start_cash, 0)} start${S.today.pnl ? `, <span class="${cls(S.today.pnl)}">${sgnUsd(S.today.pnl)}</span> today` : ""}.`});
+  }
+  const since = seen ? new Date(seen.ts) : new Date(Date.now() - 864e5);
+  const recent = S.trades.filter(t => new Date(t.timestamp) > since);
+  if (recent.length) {
+    const said = recent.slice(0, 3).map(t => `${(t.action || "").startsWith("BUY") ? "bought" : "sold"} <b>${esc(t.symbol)}</b>${t.pnl != null ? ` (<span class="${cls(t.pnl)}">${sgnUsd(t.pnl)}</span>)` : ""}`);
+    lines.push({icon: "spark", tone: "info", go: "act",
+      html: `${seen ? "Since then" : "In the last day"}, Charles ${said.join(", ")}${recent.length > 3 ? ` and made ${recent.length - 3} more trade${recent.length > 4 ? "s" : ""}` : ""}.`});
+  }
+  const P = S.positions;
+  const near = P.filter(p => p.stop && p.stop_dist_pct < 2).sort((x, y) => x.stop_dist_pct - y.stop_dist_pct)[0];
+  if (near) lines.push({icon: "alert", tone: "warn", go: b => openSheet(SHEETS.pos(near.symbol), b),
+    html: `<b>${esc(near.symbol)}</b> is only ${near.stop_dist_pct}% above its stop. Charles sells if it drops to ${usd(near.stop)}.`});
+  else if (P.length) {
+    const s = [...P].sort((x, y) => y.unrealized_pct - x.unrealized_pct), best = s[0], worst = s.at(-1);
+    lines.push({icon: best.unrealized_pct >= 0 ? "up" : "down", tone: best.unrealized_pct >= 0 ? "up" : "down", go: "hold",
+      html: `${P.length} holding${P.length > 1 ? "s" : ""}: <b>${esc(best.symbol)}</b> leads at <span class="${cls(best.unrealized_pct)}">${pct(best.unrealized_pct, 1)}</span>${P.length > 1 ? `, <b>${esc(worst.symbol)}</b> trails at <span class="${cls(worst.unrealized_pct)}">${pct(worst.unrealized_pct, 1)}</span>` : ""}.`});
+  } else lines.push({icon: "dot", go: "hold", html: "No holdings right now. Everything is in cash."});
+  const M = {open: "The market is open. Charles is looking for trades.", pre: "Pre-market. Charles starts trading at 9:30 AM ET.",
+             after: "After hours. Charles is done trading for today.", closed: "The market is closed. Charles picks up again at the next open, 9:30 AM ET."};
+  if (S.bot_running && M[S.market]) lines.push({icon: "clock", tone: "info", html: M[S.market]});
+  const C = S.claude || {};
+  if (C.report && C.report.date === new Date().toLocaleDateString("en-CA"))
+    lines.push({icon: "check", tone: "info", go: "claude", html: "Claude's check-up report for today is in."});
+  renderBrief(new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric"}), lines.slice(0, 5));
+}
+
+/* what a tapped row opens */
+const SHEETS = {
+  pos(sym) {
+    const p = S.positions.find(x => x.symbol === sym);
+    if (!p) return "";
+    const buy = S.trades.find(t => t.symbol === sym && (t.action || "").startsWith("BUY"));
+    return `<div class="sh-title" id="sh-title">${esc(p.symbol)}</div>
+      <div class="sh-sub num">${+p.shares.toFixed(4)} shares · bought at ${usd(p.avg_price)}</div>
+      <div class="sh-hero num">${usd(p.market_value)}</div>
+      <div class="sh-line num ${cls(p.unrealized_pnl)}">${arrow(p.unrealized_pnl)}${sgnUsd(p.unrealized_pnl)} (${pct(p.unrealized_pct, 1)}) so far</div>
+      ${facts([["Paid", usd(p.avg_price * p.shares)], ["Price now", usd(p.current_price)],
+        p.peak_pnl != null && ["Best so far", `${sgnUsd(p.peak_pnl)} (${pct(p.peak_pct, 1)})`, cls(p.peak_pnl)],
+        p.trough_pnl != null && ["Worst so far", sgnUsd(p.trough_pnl), cls(p.trough_pnl)],
+        p.stop && ["Stop", usd(p.stop)], p.stop && ["Room to stop", p.stop_dist_pct + "%", p.stop_dist_pct < 2 ? "down" : ""]])}
+      ${p.stop ? `<p class="sh-p">If ${esc(p.symbol)} falls to ${usd(p.stop)}, Charles sells it automatically. The stop moves up as the price rises, so part of any gain is kept.</p>` : ""}
+      ${buy ? `<div class="sh-h">Why Charles bought it · ${new Date(buy.timestamp).toLocaleDateString("en-US", {month: "short", day: "numeric"})}</div><p class="sh-p">${esc(buy.reasoning)}</p>` : ""}`;
+  },
+  trade(i) {
+    const t = S.trades[+i];
+    if (!t) return "";
+    const buy = (t.action || "").startsWith("BUY"), held = buy && S.positions.find(p => p.symbol === t.symbol);
+    return `<div class="sh-title" id="sh-title">${buy ? "Bought" : "Sold"} ${esc(t.symbol)}</div>
+      <div class="sh-sub">${new Date(t.timestamp).toLocaleString("en-US", {weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
+      <div class="sh-hero num">${usd(t.value)}</div>
+      ${t.pnl != null ? `<div class="sh-line num ${cls(t.pnl)}">${arrow(t.pnl)}${sgnUsd(t.pnl)}${t.pnl_pct != null ? ` (${pct(t.pnl_pct, 1)})` : ""} on this trade</div>` : ""}
+      ${held ? `<div class="sh-line num muted">Still held · now ${usd(held.market_value)} <span class="${cls(held.unrealized_pnl)}">${sgnUsd(held.unrealized_pnl)}</span></div>` : ""}
+      <div class="sh-h">${buy ? "Why Charles bought" : "Why Charles sold"}</div><p class="sh-p">${esc(t.reasoning || "No reason was recorded.")}</p>
+      ${t.source ? `<p class="note">Decided by ${esc(srcText(t.source))}.</p>` : ""}`;
+  },
+};
 
 /* theme */
 (function () {
@@ -423,6 +678,8 @@ function buildTabs() {
   document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r;
     try { localStorage.setItem("range", range); } catch (e) {} renderChart(); });
   $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Charles</span><span class="key">${keySvg("--ref", true)}SPY, same money</span>`;
+  addPageTitles();
+  $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
   setTab(tab);
 }
 function keySvg(color, dashed) {
@@ -577,7 +834,7 @@ function render() {
   $("updated").textContent = "Last cycle " + ago(S.last_cycle);
 
   if (a) {
-    $("value").textContent = usd(a.total_value);
+    countUp($("value"), a.total_value, usd);
     $("ret").innerHTML = `<span class="${cls(a.total_return)}">${arrow(a.total_return)}${sgnUsd(a.total_return)} (${pct(a.total_return_pct)})</span><span class="muted" style="font-weight:500">since ${usd(S.start_cash, 0)} start</span>`;
     $("cash").textContent = usd(a.cash, 0); $("npos").textContent = a.open_positions;
   } else { $("value").textContent = "—"; $("ret").textContent = "Alpaca not reachable right now"; }
@@ -618,7 +875,7 @@ function render() {
   }
   $("positions").innerHTML = P.length ? P.map(p => {
     const room = p.stop_dist_pct;
-    return `<div class="row-i">
+    return `<div class="row-i tap" ${tapAttrs("pos", p.symbol)}>
       <div><span class="sym">${esc(p.symbol)}</span> <span class="muted small num">${+p.shares.toFixed(4)} sh @ ${usd(p.avg_price)}</span></div>
       <div class="right num"><b>${usd(p.market_value)}</b></div>
       <div class="small muted num">now ${usd(p.current_price)}${p.peak_pnl != null ? ` · best ${sgnUsd(p.peak_pnl)} (${pct(p.peak_pct, 1)})` : ""}</div>
@@ -738,17 +995,21 @@ function render() {
   const exitBy = {};
   for (const x of (S.exits?.rows || [])) exitBy[x.symbol + (x.closed || "").slice(0, 13)] = x;
   let html = "", lastDay = "";
-  for (const tr of S.trades) {
+  for (const [ti, tr] of S.trades.entries()) {
     const d = new Date(tr.timestamp), day = d.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
     if (day !== lastDay) { html += `<div class="day">${day}</div>`; lastDay = day; }
     const act = (tr.action || "").startsWith("BUY") ? "BUY" : "SELL";
-    html += `<div class="act"><div class="badge ${act}">${esc(tr.action)}</div>
+    html += `<div class="act tap" ${tapAttrs("trade", ti)}><div class="badge ${act}">${esc(tr.action)}</div>
       <div><b>${esc(tr.symbol)}</b> <span class="muted small num">${usd(tr.value)} · ${d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"})}</span>
         <div class="why">${esc(tr.reasoning)}</div>${(() => { const x = act === "SELL" && exitBy[tr.symbol + (tr.timestamp || "").slice(0, 13)];
           return x ? `<div class="small muted num" style="margin-top:2px">best was ${sgnUsd(x.peak_pnl)} (${pct(x.peak_pct, 1)}) · gave back ${usd(Math.max(0, x.gave_back))}</div>` : ""; })()}</div>
       <div class="right num small ${cls(tr.pnl)}">${tr.pnl == null ? "" : sgnUsd(tr.pnl)}</div></div>`;
   }
   $("trades").innerHTML = html || `<div class="empty">No trades yet.</div>`;
+
+  charlesBrief();
+  if (a) markSeen(a.total_value);
+  document.body.classList.remove("loading");
 }
 
 $("orb-switch").addEventListener("click", async () => {

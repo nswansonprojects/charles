@@ -44,6 +44,15 @@ class WebDash(BotTestCase):
         early = datetime(2026, 10, 9, 19, 0, tzinfo=timezone.utc)   # 3 PM ET: the 3:30 bar isn't done
         self.assertEqual(len(wd.hourly_closes(rows, early)), 1)
 
+    def test_manifest_icons_are_served_files(self):
+        import json
+        m = json.loads(wd.MANIFEST)
+        self.assertEqual(m["display"], "standalone")
+        for icon in m["icons"]:
+            self.assertIn(icon["src"], wd.STATIC)
+        for path in wd.STATIC:
+            self.assertTrue(os.path.isfile(os.path.join(wd.ROOT, "web", path[1:])), path)
+
     def test_kalshi_proxy_only_passes_known_paths_and_reports_a_down_dashboard(self):
         self.assertEqual(set(wd.KALSHI_PATHS), {"/kalshi/", "/kalshi/index.html", "/kalshi/api/state"})
         old = wd.KALSHI_URL

@@ -27,6 +27,14 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
 PAGE = os.path.join(ROOT, "web", "index.html")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
+# "Add to Home Screen": the manifest and the terrier icons, so the dashboard opens like an app
+STATIC = {"/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
+MANIFEST = json.dumps({
+    "name": "Charles", "short_name": "Charles", "start_url": "/", "scope": "/", "display": "standalone",
+    "background_color": "#f4f4f2", "theme_color": "#2a78d6",
+    "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
+              {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}],
+}).encode()
 ET = ZoneInfo("America/New_York")
 EVIDENCE_TRADES = 30          # roadmap task 8: closed trades a book needs before promotion
 REVIEW_FROM = "2026-11-02"    # roadmap task 8: first promotion review
@@ -366,6 +374,11 @@ class Handler(BaseHTTPRequestHandler):
         if path in ("/", "/index.html"):
             with open(PAGE, "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path == "/manifest.webmanifest":
+            self._send(200, MANIFEST, "application/manifest+json")
+        elif path in STATIC:
+            with open(os.path.join(ROOT, "web", path[1:]), "rb") as f:
+                self._send(200, f.read(), STATIC[path])
         elif path == "/kalshi":
             self.send_response(301)
             self.send_header("Location", "/kalshi/")
