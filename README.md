@@ -82,6 +82,10 @@ python webdash.py                        # the dashboard, in a second terminal
 - **Shadow books** (`shadow.py`, `shadow_daily.py`): simulated $1,000 portfolios that test
   rule changes and other strategies on the same live data, without placing orders. The
   dashboard compares them.
+- **Kalshi paper bot** (`kalshi/`, separate program): paper-bets a pretend $1,000 on Kalshi
+  prediction markets (weather, sports, inflation, longshots) using public data only — no Kalshi
+  account or key. Runs on its own every 15 minutes; when its dashboard is running, Charles's
+  dashboard gets a **Kalshi** tab. Setup: [kalshi/README.md](kalshi/README.md).
 
 ## Settings — where things live
 
@@ -123,6 +127,7 @@ webdash.py, web/      dashboard (port 8502; set WEBDASH_PORT to change)
 backtest_live.py, backtest_orb.py   backtests
 update_keys.py, server_confirm.py, credential_manager.py   API key handling
 tests/                unit tests: cd tests && python -m unittest discover -s . -t .
+kalshi/               Kalshi paper bot (separate; see kalshi/README.md)
 data/  logs/  reports/   runtime state and output (not in git)
 ```
 

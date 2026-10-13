@@ -780,7 +780,7 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) load
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => S && renderChart(), 120); });
 </script>
 <script>
-// The Kalshi tab shows only when a Kalshi dashboard answers behind /kalshi/ (not part of this repo).
+// The Kalshi tab shows only when the Kalshi dashboard (kalshi/, run separately) answers behind /kalshi/.
 fetch("/kalshi/api/state", {cache: "no-store"}).then(r => { if (r.ok) document.getElementById("appswitch").hidden = false; }).catch(() => {});
 </script>
 </body>

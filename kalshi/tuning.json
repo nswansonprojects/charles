@@ -1,0 +1,14 @@
+{
+  "about": "Betting-book settings the daily review may tune (weekly, at most 2 per week, each by at most its max_step in betting.LIMITS). Anything missing here uses betting.RULES. A strategy cap of 0 pauses that strategy.",
+  "settings": {
+    "trust_model": {"weather": 0.25, "sports": 1.0, "econ": 0.5, "longshot": 1.0},
+    "min_edge": {"weather": 0.07, "sports": 0.04, "econ": 0.06, "longshot": 0.015},
+    "strategy_cap_pct": {"weather": 0.30, "sports": 0.30, "econ": 0.20, "longshot": 0.30},
+    "kelly_fraction": 0.25,
+    "max_bet_pct": 0.03
+  },
+  "last_change": "2026-10-11: safety brake, trust_model.weather 0.5 -> 0.25 because the weather model's Brier (0.362) is far worse than the market's (0.139) over 13 graded bets and weather has lost $182.88 all-time",
+  "history": [
+    {"date": "2026-10-11", "setting": "trust_model.weather", "from": 0.5, "to": 0.25, "why": "safety brake: 13 graded bets, model Brier 0.362 vs market 0.139, all-time P&L -$182.88"}
+  ]
+}
