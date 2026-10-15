@@ -9,19 +9,29 @@ a real order. It runs alongside Charles and shows up as the **Kalshi** tab on Ch
 Every 15 minutes it downloads Kalshi's open markets, then:
 
 **Betting book (main).** Four strategies (`strategies.py`) each estimate the chance a market
-resolves YES from an outside source. When that beats the price by more than fees, it takes a paper bet.
+resolves YES from an outside source. When that beats the price by more than fees, it may take a paper bet.
 
 | Strategy | Probability comes from |
 |---|---|
-| weather | NWS point forecast + Open-Meteo GFS/ECMWF ensemble spread, days 1–3 ahead |
-| sports | DraftKings moneylines via ESPN, bookmaker's cut removed |
+| weather | NWS point forecast blended with 5 Open-Meteo models (ECMWF, GFS, ICON, GEM, UKMO) + GFS/ECMWF ensemble spread, days 1–3 ahead |
+| sports | DraftKings moneylines via ESPN, bookmaker's cut removed (NFL, NBA, NHL, MLB, WNBA, college football and basketball) |
 | econ | Cleveland Fed CPI nowcast |
 | longshot | cheap YES contracts win less often than priced, so it bets NO |
 
-Weather and econ forecasts are blended with the market price (`trust_model`) until they prove they
-beat it. Sizing is quarter-Kelly with caps per bet, per event and per strategy. Bets settle at
-Kalshi's result or are sold early once the market catches up. All settings: `betting.RULES`,
-with overrides in `tuning.json`.
+**A strategy has to earn its money.** Every market each strategy prices is logged and graded
+against Kalshi's own price when it settles, along with the bets it *would* have made
+(`predictions.py`). Strategies move through levels automatically (`gates.py`):
+
+- **predict** (where every strategy starts): no money, predictions only
+- **small** ($5 bets): once its odds beat the market's (Brier score) over 50+ settled markets and its would-be bets made money after fees
+- **normal**: after 30 small bets in profit
+
+A strategy whose odds fall behind the market, or whose bets lose too much, drops back to predict.
+
+Forecasts are blended with the market price (`trust_model`). Sizing is quarter-Kelly with caps per bet,
+per event and per strategy, and a win must pay at least the stake. Bets settle at Kalshi's result or
+are sold early (in part, if the bids are thin) once the market catches up. All settings:
+`betting.RULES`, with overrides in `tuning.json`.
 
 **Arbitrage scanner (side).** Looks for linked markets whose prices contradict each other by
 more than fees (e.g. "above 200" priced higher than "above 100") and paper-trades the

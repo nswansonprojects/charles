@@ -1,6 +1,7 @@
 """Outside data for the betting strategies (public, no API keys), cached under data/cache/.
 
 - weather():  Open-Meteo ensemble forecasts (GFS + ECMWF, ~80 runs) per NWS station, hourly.
+- models():   Open-Meteo deterministic runs (ECMWF, GFS, ICON, GEM, UKMO) per station, hourly.
 - nws():      NWS official point forecasts per station (the weather picks' center).
 - sports():   ESPN scoreboards with DraftKings moneylines, today + next 3 days (ET).
 - nowcasts(): Cleveland Fed inflation nowcasts (month-over-month and year-over-year).
@@ -64,6 +65,28 @@ def _weather() -> dict:
 
 def weather() -> dict:
     return _cached("weather", 60, _weather)
+
+
+MODELS = "ecmwf_ifs025,gfs_seamless,icon_seamless,gem_seamless,ukmo_seamless"
+
+
+def _models() -> dict:
+    codes = list(strategies.STATIONS)
+    r = requests.get("https://api.open-meteo.com/v1/forecast", timeout=60, params={
+        "latitude": ",".join(str(strategies.STATIONS[c][0]) for c in codes),
+        "longitude": ",".join(str(strategies.STATIONS[c][1]) for c in codes),
+        "hourly": "temperature_2m", "models": MODELS, "temperature_unit": "fahrenheit",
+        "timezone": "GMT", "forecast_days": 5})
+    r.raise_for_status()
+    body = r.json()
+    body = body if isinstance(body, list) else [body]
+    return {code: {"time": loc["hourly"]["time"],
+                   "members": [v for k, v in loc["hourly"].items() if k.startswith("temperature_2m")]}
+            for code, loc in zip(codes, body)}
+
+
+def models() -> dict:
+    return _cached("models", 60, _models)
 
 
 NWS_UA = {"User-Agent": "kalshi-bot paper research (charles-bot.xyz)", "Accept": "application/geo+json"}
@@ -130,6 +153,7 @@ def _scoreboard(league: str, day: str, groups: str | None) -> list:
         book, lines = odds
         games.append({"id": ev.get("id"), "start": ev.get("date", ""), "name": ev.get("name", ""),
                       "state": ((ev.get("status") or {}).get("type") or {}).get("state", ""), "book": book,
+                      "season_type": (ev.get("season") or {}).get("type"),  # ESPN: 1 preseason, 2 regular, 3 post
                       "teams": [{**{k: t.get("team", {}).get(k) for k in
                                     ("location", "displayName", "shortDisplayName", "name", "abbreviation")},
                                  "home": t.get("homeAway") == "home", "ml": lines[t.get("homeAway")]}
@@ -142,7 +166,9 @@ def _sports() -> dict:
     days = [(now + timedelta(days=i)).strftime("%Y%m%d") for i in range(4)]
     out = {}
     for league in sorted(set(strategies.LEAGUES.values())):
-        groups = ("80", "81") if league == "football/college-football" else (None,)  # FBS + FCS
+        groups = {"football/college-football": ("80", "81"),  # FBS + FCS
+                  "basketball/mens-college-basketball": ("50",),  # all of Division I, not just the top 25
+                  "basketball/womens-college-basketball": ("50",)}.get(league, (None,))
         games = {}
         for day in days:
             for g in groups:

@@ -60,3 +60,12 @@ def incentive_programs() -> list[dict]:
         cursor = d.get("next_cursor")
         if not cursor or not d.get("incentive_programs"):
             return out
+
+
+def markets(tickers: list[str]) -> list[dict]:
+    """Markets by ticker, 100 per request (works for settled ones too, unlike open_events)."""
+    out = []
+    for i in range(0, len(tickers), 100):
+        chunk = tickers[i:i + 100]
+        out += _get("/markets", {"tickers": ",".join(chunk), "limit": len(chunk)}).get("markets", [])
+    return out

@@ -12,7 +12,9 @@ from zoneinfo import ZoneInfo
 
 import betting
 import evaluate
+import gates
 import paper
+import predictions
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
@@ -65,16 +67,15 @@ def review() -> dict:
 
 
 STRATEGY_INFO = {
-    "weather": ("Weather", "Daily high/low temperatures, 24 cities. NWS forecast + 80-run ensemble spread."),
-    "sports": ("Sports", "Game winners (NFL, college football, NHL, NBA, MLB) vs DraftKings odds with the book's cut removed."),
+    "weather": ("Weather", "Daily high/low temperatures, 24 cities. NWS forecast blended with 5 weather models, 80-run ensemble spread."),
+    "sports": ("Sports", "Game winners (NFL, college football and basketball, NHL, NBA, MLB) vs DraftKings odds with the book's cut removed."),
     "econ": ("Inflation", "CPI markets vs the Cleveland Fed's inflation nowcast."),
     "longshot": ("Longshot bias", "Bets NO on 3-10c long shots, which win less often than their price says."),
 }
 
 
-GRADED_NEEDED = 30  # settled bets before a strategy's forecast score says much (bar on the Self-Tuning tab)
-# No bar for these: the owner's 2x-payout rule (2026-10-12) leaves longshot nothing it may buy.
-CANT_BET = {"longshot"}
+# Levels (gates.py, owner 2026-10-15): what each strategy may bet, and what it shows on the Self-Tuning tab
+LEVEL_TEXT = {"predict": "predicting only, no money", "small": "small bets ($5 max)", "normal": "betting normally"}
 TUNE_SETTING = {"trust_model": "forecast trust", "min_edge": "smallest gap it bets on",
                 "strategy_cap_pct": "share of the book", "kelly_fraction": "bet size", "max_bet_pct": "biggest bet"}
 
@@ -94,24 +95,32 @@ def _change_text(h: dict) -> str:
     return f"Last change {when}: {name} {fmt(h['from'])} → {fmt(h['to'])}."
 
 
-def milestones(now: datetime, led: dict, st: dict) -> list:
+def sgn(v: float) -> str:
+    return f"{'+' if v >= 0 else '−'}${abs(v):,.2f}"
+
+
+def milestones(now: datetime, led: dict, st: dict, levels: dict) -> list:
     """What is still collecting data before it can be judged: [{key, name, about, progress, needs, detail}].
-    One bar per strategy still betting (not paused or CANT_BET, with a bet open or in the last week),
-    plus the weekly tune."""
-    week = (now - timedelta(days=7)).isoformat()
+    One bar per strategy (its way to the next level, gates.py), plus the weekly tune."""
     out = []
+    g = gates.GATES
     for k, (name, _) in STRATEGY_INFO.items():
-        s = st[k]
-        if k in CANT_BET or not betting.RULES["strategy_cap_pct"][k]:
-            continue
-        if not s["open"] and not any(b["strategy"] == k and b["opened"] >= week for b in led["closed"]):
-            continue
-        g, bm, bk = s["graded"], s["brier_model"], s["brier_market"]
-        detail = f"{g} settled" + ("" if bm is None else " · beating the market so far" if bm < bk
-                                    else " · behind the market so far")
-        out.append({"key": k, "name": f"{name} forecasts", "progress": round(min(1.0, g / GRADED_NEEDED), 2),
-                    "about": "Are its odds better than Kalshi's own price? Its say in each bet grows only if so.",
-                    "needs": f"{GRADED_NEEDED} settled bets", "detail": detail})
+        lv = levels[k]
+        card = lv["card"]
+        if lv["level"] == "predict":
+            progress, needs = lv["data_progress"], "the data it needs for small bets"
+            about = "Bets only once its odds beat Kalshi's price and its would-be bets make money."
+            detail = (f"{card['graded']}/{g['graded']} settled" + ("" if card["beats_market_by"] is None else
+                      " · ahead of the market" if card["beats_market_by"] > 0 else " · behind the market"))
+        else:
+            bets = [b for b in led["closed"] if b["strategy"] == k and b["opened"] >= lv["since"]]
+            done = lv["level"] == "normal"
+            progress = 1.0 if done else round(min(1.0, len(bets) / g["bets"]), 2)
+            needs = "proven" if done else f"{g['bets']} small bets"
+            about = ("Promoted: " + lv["history"][-1]["why"] + ".") if lv["history"] else "Promoted."
+            detail = f"{len(bets)} settled since promotion · {sgn(sum(b['pnl'] for b in bets))}"
+        out.append({"key": k, "name": f"{name}: {LEVEL_TEXT[lv['level']]}", "level": lv["level"],
+                    "progress": progress, "about": about, "needs": needs, "detail": detail})
     tune = next_tune(now)
     hist = _json(betting.TUNING, {}).get("history") or []
     left = (tune - now).total_seconds() / 86400
@@ -120,6 +129,29 @@ def milestones(now: datetime, led: dict, st: dict) -> list:
                          + (_change_text(hist[-1]) if hist else ""),
                 "progress": round(min(1.0, max(0.0, 1 - left / 7)), 2), "needs": "a week",
                 "detail": tune.strftime("%a %b %-d") + (f" · in {max(1, round(left * 24))} h" if left < 1 else "")})
+    return out
+
+
+def pnl_lines(closed: list) -> dict:
+    """Per strategy: cumulative realised P&L at each closed bet, [[closed ts, running total]],
+    starting from 0 at the first bet's open time so every line begins at the same baseline."""
+    out = {}
+    for b in sorted(closed, key=lambda b: b.get("closed") or ""):
+        line = out.setdefault(b["strategy"], [[b.get("opened") or b["closed"], 0.0]])
+        line.append([b["closed"], round(line[-1][1] + b["pnl"], 2)])
+    return out
+
+
+def calibration(closed: list) -> list:
+    """Per strategy, settled bets only: how often it expected to win (fair value of the side it
+    bought, at entry) vs how often it did. Sold and voided bets have no win/loss, so they're left out."""
+    out = []
+    for k, (name, _) in STRATEGY_INFO.items():
+        g = [b for b in closed if b["strategy"] == k and b.get("how") in ("won", "lost")]
+        if g:
+            out.append({"key": k, "name": name, "n": len(g),
+                        "expected": round(sum(b["fair"] for b in g) / len(g) * 100, 1),
+                        "actual": round(sum(b["how"] == "won" for b in g) / len(g) * 100, 1)})
     return out
 
 
@@ -137,7 +169,10 @@ def betting_state(now: datetime) -> dict:
     closed = led["closed"]
     st = betting.stats(led)
     status = (latest.get("summary") or {}).get("strategies", {})
+    levels = gates.progress(betting.STRATEGIES, predictions.load_graded(os.path.join(DATA, "predictions_graded.jsonl")),
+                            now, os.path.join(DATA, "levels.json"))
     strategies = [{"key": k, "name": n, "about": d, **st[k], **{"data": status.get(k, {})},
+                   "level": levels[k]["level"], "predictions": levels[k]["card"],
                    "min_edge": betting.RULES["min_edge"][k], "trust": betting.RULES["trust_model"][k],
                    "cap_pct": betting.RULES["strategy_cap_pct"][k]} for k, (n, d) in STRATEGY_INFO.items()]
     wins = [b["pnl"] for b in closed if b["pnl"] > 0]
@@ -156,13 +191,15 @@ def betting_state(now: datetime) -> dict:
                     "won": sum(b["how"] == "won" for b in closed), "lost": sum(b["how"] == "lost" for b in closed),
                     "sold": sum(b["how"] == "sold" for b in closed)},
         "equity": [[e["ts"], e["account_value"]] for e in eq[-3000:]],
+        "pnl_lines": pnl_lines(closed),
+        "calibration": calibration(closed),
         "open": sorted(led["open"], key=lambda b: b["opened"], reverse=True),
         "closed": list(reversed(closed[-50:])),
         "strategies": strategies,
         "watching": latest.get("top_edges", [])[:12],
         "last": latest.get("summary"),
         "rules": {k: v for k, v in betting.RULES.items() if not isinstance(v, dict)},
-        "milestones": milestones(now, led, st),
+        "milestones": milestones(now, led, st, levels),
     }
 
 

@@ -15,7 +15,7 @@
   color-scheme: light;
   --bg: #f4f4f2; --surface: #fcfcfb; --surface-2: #f0efec; --border: #e4e3df;
   --text: #0b0b0b; --text-2: #52514e; --muted: #7a7974; --grid: #e9e8e4;
-  --series-1: #2a78d6; --ref: #8f8e86;
+  --series-1: #2a78d6; --ref: #8f8e86; --cat-1: #2a78d6; --cat-2: #eb6834; --cat-3: #1baf7a; --cat-4: #eda100;
   --good: #0ca30c; --good-ink: #087a08; --warn: #fab219; --critical: #d03b3b; --critical-ink: #b22f2f;
   --accent-soft: rgba(42,120,214,.10);
   --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #4a3aa7; --c8: #e34948;
@@ -26,7 +26,7 @@
     color-scheme: dark;
     --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #2e2e2b;
     --text: #ffffff; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
-    --series-1: #3987e5; --ref: #8f8e86;
+    --series-1: #3987e5; --ref: #8f8e86; --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
     --good-ink: #3fcf3f; --critical-ink: #ff7b7b; --accent-soft: rgba(57,135,229,.16);
     --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
     --shadow: 0 1px 2px rgba(0,0,0,.4);
@@ -36,7 +36,7 @@
   color-scheme: dark;
   --bg: #111110; --surface: #1a1a19; --surface-2: #232321; --border: #2e2e2b;
   --text: #ffffff; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
-  --series-1: #3987e5; --ref: #8f8e86;
+  --series-1: #3987e5; --ref: #8f8e86; --cat-1: #3987e5; --cat-2: #d95926; --cat-3: #199e70; --cat-4: #c98500;
   --good-ink: #3fcf3f; --critical-ink: #ff7b7b; --accent-soft: rgba(57,135,229,.16);
   --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
   --shadow: 0 1px 2px rgba(0,0,0,.4);
@@ -102,6 +102,11 @@ main { max-width: 1180px; margin: 0 auto; padding: 16px; }
 .banner { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-weight: 600; font-size: 13.5px; display: flex; gap: 8px; align-items: center;
   background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--critical-ink); }
 
+.sub-h { margin: 18px 0 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.cal { display: grid; grid-template-columns: 92px 1fr; gap: 6px 12px; align-items: center; margin-top: 14px; font-size: 12.5px; }
+.cal .bars { display: grid; gap: 3px; justify-items: start; }
+.cal .cbar { height: 7px; border-radius: 0 4px 4px 0; min-width: 2px; }
+.cal .lbl { grid-column: 2; text-align: left; color: var(--text-2); margin-top: -2px; margin-bottom: 6px; }
 .legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-2); flex-wrap: wrap; }
 .key { display: inline-flex; align-items: center; gap: 6px; }
 .key svg { display: block; }
@@ -389,6 +394,16 @@ button.bl:hover { background: var(--surface-2); }
         </div>
         <div class="verdict" id="verdict"></div>
         <details><summary>Show as table</summary><div class="tbl" id="chart-table"></div></details>
+      </div>
+
+      <div class="card" style="order:5">
+        <div class="card-head"><h2>By strategy</h2><div class="legend" id="st-legend"></div></div>
+        <div class="chart" id="st-chart"></div>
+        <p class="note">Profit from closed bets, added up over time. Each line starts at $0 when that strategy placed its first bet.</p>
+        <h3 class="sub-h">Did it win as often as it expected?</h3>
+        <div class="cal" id="cal"></div>
+        <p class="note">Grey = how often it expected to win, from its own odds when it bet. Colour = how often it won. Settled bets only (sold and voided ones left out). A model that knows something wins at least as often as it expects.</p>
+        <details><summary>Show as table</summary><div class="tbl" id="st-table"></div></details>
       </div>
 
       <div class="card" style="order:4">
@@ -750,7 +765,67 @@ function niceTicks(lo, hi, n) {
   return out;
 }
 
+const ST_COLORS = {weather: "--cat-1", sports: "--cat-2", econ: "--cat-3", longshot: "--cat-4"};  // fixed per strategy
+function renderStrats() {
+  const box = $("st-chart"), L = B.pnl_lines || {}, names = Object.fromEntries((B.strategies || []).map(s => [s.key, s.name]));
+  const keys = Object.keys(ST_COLORS).filter(k => (L[k] || []).length > 1);
+  $("st-legend").innerHTML = keys.map(k => `<span>${keySvg(ST_COLORS[k], false)} ${esc(names[k] || k)}</span>`).join("");
+  const C = B.calibration || [];
+  $("cal").innerHTML = C.map(c => `<div>${esc(c.name)}</div><div class="bars">
+      <div class="cbar" style="width:${c.expected}%;background:var(--ref)" title="expected ${c.expected}%"></div>
+      <div class="cbar" style="width:${c.actual}%;background:var(${ST_COLORS[c.key]})" title="won ${c.actual}%"></div></div>
+    <div class="lbl num">expected ${c.expected.toFixed(0)}% · won <b class="${c.actual >= c.expected ? "up" : "down"}">${c.actual.toFixed(0)}%</b> · ${c.n} bets</div>`).join("")
+    || `<div class="empty" style="grid-column:1/-1">No settled bets yet.</div>`;
+  const lvl = Object.fromEntries((B.strategies || []).map(s => [s.key, s.level]));
+  const LVL = {predict: "Predicting", small: "Small bets", normal: "Betting"};
+  $("st-table").innerHTML = `<table><tr><th>Strategy</th><th>Level</th><th class="r">Profit</th><th class="r">Expected win</th><th class="r">Won</th><th class="r">Settled</th></tr>` +
+    Object.keys(ST_COLORS).map(k => { const l = L[k] || [], c = C.find(x => x.key === k);
+      return `<tr><td>${esc(names[k] || k)}</td><td><span class="tag" style="margin-left:0">${esc(LVL[lvl[k]] || "—")}</span></td><td class="r num ${cls(l.length ? l.at(-1)[1] : 0)}">${l.length ? sgnUsd(l.at(-1)[1]) : "—"}</td>
+        <td class="r num">${c ? c.expected.toFixed(0) + "%" : "—"}</td><td class="r num">${c ? c.actual.toFixed(0) + "%" : "—"}</td><td class="r num">${c ? c.n : 0}</td></tr>`; }).join("") + `</table>`;
+  if (!keys.length) { box.innerHTML = `<div class="empty">No closed bets yet.</div>`; return; }
+  if (!box.clientWidth) return;
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 50, r: 96, t: 10, b: 24};
+  const series = keys.map(k => ({k, pts: L[k].map(([t, v]) => [+new Date(t), v])}));
+  const t0 = Math.min(...series.map(s => s.pts[0][0])), t1 = Math.max(Date.now(), ...series.map(s => s.pts.at(-1)[0]));
+  const all = series.flatMap(s => s.pts.map(p => p[1])).concat([0]);
+  let lo = Math.min(...all), hi = Math.max(...all); const pad = Math.max((hi - lo) * 0.1, 5); lo -= pad; hi += pad;
+  const X = t => m.l + (t - t0) / Math.max(1, t1 - t0) * (W - m.l - m.r), Y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  // steps: a running total only changes when a bet closes
+  const path = pts => pts.map((p, i) => i ? `H${X(p[0]).toFixed(1)}V${Y(p[1]).toFixed(1)}` : `M${X(p[0]).toFixed(1)},${Y(p[1]).toFixed(1)}`).join("") + `H${X(t1).toFixed(1)}`;
+  let grid = "";
+  for (const v of niceTicks(lo, hi, 5)) grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
+    `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US")}</text>`;
+  const nt = Math.max(1, Math.min(4, Math.floor((W - m.l - m.r) / 90)));
+  for (let k = 0; k <= nt; k++) { const t = t0 + k * (t1 - t0) / nt;
+    grid += `<text x="${X(t)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${new Date(t).toLocaleDateString("en-US", {month: "short", day: "numeric"})}</text>`; }
+  // direct labels at the right end, nudged apart so they never overlap
+  const ends = series.map(s => ({k: s.k, v: s.pts.at(-1)[1], y: Y(s.pts.at(-1)[1])})).sort((a, b) => a.y - b.y);
+  for (let i = 1; i < ends.length; i++) ends[i].y = Math.max(ends[i].y, ends[i - 1].y + 14);
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Profit from closed bets per strategy over time. Arrow keys read values.">
+    <g class="axis">${grid}<line x1="${m.l}" x2="${W - m.r}" y1="${Y(0)}" y2="${Y(0)}" stroke="var(--ref)" stroke-width="1"/></g>
+    ${series.map(s => `<path d="${path(s.pts)}" fill="none" stroke="var(${ST_COLORS[s.k]})" stroke-width="2" stroke-linejoin="round"/>`).join("")}
+    <g class="axis">${ends.map(e => `<text x="${W - m.r + 6}" y="${e.y + 4}">${esc((names[e.k] || e.k).split(" ")[0])} ${e.v < 0 ? "−" : "+"}$${Math.abs(e.v).toFixed(0)}</text>`).join("")}</g>
+    <line id="st-cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
+  </svg><div class="tip" id="st-tip"></div>`;
+  const svg = box.querySelector("svg"), tip = $("st-tip"), cross = box.querySelector("#st-cross");
+  const at = t => series.map(s => { let v = null; for (const p of s.pts) { if (p[0] <= t) v = p[1]; else break; } return {k: s.k, v}; });
+  let cur = null;
+  const show = t => { cur = Math.max(t0, Math.min(t1, t)); const x = X(cur);
+    cross.setAttribute("x1", x); cross.setAttribute("x2", x); cross.setAttribute("opacity", .5);
+    tip.innerHTML = `<div class="t">${new Date(cur).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric"})}</div>` +
+      at(cur).filter(r => r.v != null).map(r => `<div class="r">${keySvg(ST_COLORS[r.k], false)}<span>${esc(names[r.k] || r.k)}</span><b class="num ${cls(r.v)}">${sgnUsd(r.v)}</b></div>`).join("");
+    tip.style.display = "block"; const tw = tip.offsetWidth; tip.style.left = (x + 12 + tw > W ? Math.max(0, x - tw - 12) : x + 12) + "px"; };
+  const hide = () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); };
+  const ev = e => { const r = svg.getBoundingClientRect(); show(t0 + (e.clientX - r.left - m.l) / (W - m.l - m.r) * (t1 - t0)); };
+  svg.onpointermove = ev; svg.onpointerdown = ev; svg.onpointerleave = hide; svg.onblur = hide;
+  svg.onpointerup = e => { if (e.pointerType !== "mouse") setTimeout(hide, 1500); };
+  svg.onkeydown = e => { const step = (t1 - t0) / 40;
+    if (e.key === "ArrowLeft") { show((cur ?? t1) - step); e.preventDefault(); }
+    if (e.key === "ArrowRight") { show((cur ?? t0) + step); e.preventDefault(); } };
+}
+
 function renderChart() {
+  renderStrats();
   document.querySelectorAll("[data-r]").forEach(b => b.classList.toggle("on", b.dataset.r === range));
   const box = $("chart");
   if (!B || B.equity.length < 2) { box.innerHTML = `<div class="empty">Not enough history yet.</div>`; return; }

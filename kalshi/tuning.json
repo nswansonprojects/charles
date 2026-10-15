@@ -3,12 +3,13 @@
   "settings": {
     "trust_model": {"weather": 0.25, "sports": 1.0, "econ": 0.5, "longshot": 1.0},
     "min_edge": {"weather": 0.07, "sports": 0.04, "econ": 0.06, "longshot": 0.015},
-    "strategy_cap_pct": {"weather": 0.30, "sports": 0.30, "econ": 0.20, "longshot": 0.30},
+    "strategy_cap_pct": {"weather": 0.10, "sports": 0.30, "econ": 0.20, "longshot": 0.30},
     "kelly_fraction": 0.25,
     "max_bet_pct": 0.03
   },
-  "last_change": "2026-10-11: safety brake, trust_model.weather 0.5 -> 0.25 because the weather model's Brier (0.362) is far worse than the market's (0.139) over 13 graded bets and weather has lost $182.88 all-time",
+  "last_change": "2026-10-14: strategy_cap_pct.weather 0.30 -> 0.10 (owner's call: small enough to limit losses, big enough to keep grading the model). Raising it is the owner's call, not a weekly tune",
   "history": [
-    {"date": "2026-10-11", "setting": "trust_model.weather", "from": 0.5, "to": 0.25, "why": "safety brake: 13 graded bets, model Brier 0.362 vs market 0.139, all-time P&L -$182.88"}
+    {"date": "2026-10-11", "setting": "trust_model.weather", "from": 0.5, "to": 0.25, "why": "safety brake: 13 graded bets, model Brier 0.362 vs market 0.139, all-time P&L -$182.88"},
+    {"date": "2026-10-14", "setting": "strategy_cap_pct.weather", "from": 0.30, "to": 0.10, "why": "owner 2026-10-14: keep weather small (not paused, so the model keeps getting graded) until it at least matches the market; 39 graded bets, model Brier 0.36 vs market 0.16, won 33% when it expected 55%"}
   ]
 }

@@ -59,7 +59,13 @@ STATIONS = {
 WEATHER = {"sd": 1.6, "sd_per_extra_day": 0.4, "max_days_ahead": 3,
            # a low comes around dawn, hours after an evening scan: by then traders watch temperatures
            # actually falling and beat any forecast (2026-10-09: three such bets went badly wrong)
-           "min_hours_before_low_day": 12}
+           "min_hours_before_low_day": 12,
+           # highs too (2026-10-15): bets placed under 12h before the climate day began won 2 of 16
+           # (-$236); by then the market has the fresh short-range runs we don't
+           "min_hours_before_high_day": 12,
+           # center = this share NWS, the rest the mean of the deterministic models (forecasts.models());
+           # one NWS number missed a ~3F cold week (2026-10-14)
+           "nws_weight": 0.5}
 
 
 def weather_kind(e: dict) -> str | None:
@@ -129,9 +135,18 @@ def nws_center(periods: list, day, kind: str):
     return None
 
 
-def weather_picks(events: list, ensemble: dict, nws: dict, now: datetime) -> list[dict]:
-    """Center = NWS forecast (bias-corrected, what the market watches); spread = how far the
-    ~80 ensemble runs scatter around their own mean, plus a blur of sd degrees."""
+def weather_center(nws_temp: float, model_vals: list[float]) -> float:
+    """NWS blended with the mean of the deterministic models (NWS alone when none loaded)."""
+    if not model_vals:
+        return nws_temp
+    w = WEATHER["nws_weight"]
+    return round(w * nws_temp + (1 - w) * sum(model_vals) / len(model_vals), 2)
+
+
+def weather_picks(events: list, ensemble: dict, nws: dict, now: datetime, models: dict | None = None) -> list[dict]:
+    """Center = NWS forecast (what the market watches) blended with the deterministic models
+    (ECMWF, GFS, ICON, GEM, UKMO); spread = how far the ~80 ensemble runs scatter around their own
+    mean, plus a blur of sd degrees."""
     picks = []
     for e in events:
         kind = weather_kind(e)
@@ -147,12 +162,15 @@ def weather_picks(events: list, ensemble: dict, nws: dict, now: datetime) -> lis
         if not 1 <= ahead <= WEATHER["max_days_ahead"]:
             continue  # today's high is partly observed already: forecasts alone would be stale
         day_start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc) - timedelta(hours=offset)
-        if kind == "min" and day_start - now < timedelta(hours=WEATHER["min_hours_before_low_day"]):
+        need = WEATHER["min_hours_before_low_day" if kind == "min" else "min_hours_before_high_day"]
+        if day_start - now < timedelta(hours=need):
             continue
         raw = day_values(ensemble[stn], day, offset, kind)
         center = nws_center(nws[stn], day, kind)
         if len(raw) < 20 or center is None:
             continue
+        mv = day_values(models[stn], day, offset, kind) if models and stn in models else []
+        nws_temp, center = center, weather_center(center, mv)
         mean = sum(raw) / len(raw)
         vals = [center + v - mean for v in raw]
         sd = WEATHER["sd"] + WEATHER["sd_per_extra_day"] * (ahead - 1)
@@ -161,14 +179,17 @@ def weather_picks(events: list, ensemble: dict, nws: dict, now: datetime) -> lis
             if rng is None:
                 continue
             p = prob_in_range(vals, *rng, sd)
-            picks.append(_pick("weather", e, m, p, f"NWS forecast {center}°F, {len(raw)}-run spread ({stn})"))
+            src = f"NWS {nws_temp}°F" + (f" + {len(mv)} models {sum(mv) / len(mv):.1f}°F → {center:.1f}°F" if mv else "")
+            picks.append(_pick("weather", e, m, p, f"{src}, {len(raw)}-run spread ({stn})"))
     return picks
 
 
 # ---------------------------------------------------------------- sports
 LEAGUES = {"KXNFLGAME": "football/nfl", "KXNCAAFGAME": "football/college-football",
            "KXNHLGAME": "hockey/nhl", "KXNBAGAME": "basketball/nba", "KXMLBGAME": "baseball/mlb",
-           "KXWNBAGAME": "basketball/wnba"}
+           "KXWNBAGAME": "basketball/wnba",
+           # 2026-10-15: more coverage while every strategy starts at predict-only (gates.py)
+           "KXNCAAMBGAME": "basketball/mens-college-basketball", "KXNCAAWBGAME": "basketball/womens-college-basketball"}
 SPORTS = {"min_minutes_before_start": 10}
 
 
@@ -236,6 +257,8 @@ def sports_picks(events: list, games_by_league: dict, now: datetime) -> list[dic
         if not hit:
             continue
         g, teams = hit
+        if g.get("season_type") == 1:
+            continue  # preseason: rested starters, so betting lines say little (Oct 13 NBA bets lost $110)
         raw = {t: american_to_prob(team.get("ml")) for t, team in teams.items()}
         if any(v is None for v in raw.values()):
             continue

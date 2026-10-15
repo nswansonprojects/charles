@@ -58,10 +58,30 @@ def test_weather_skips_today_and_centers_on_nws():
     nws = {"CLINYC": [{"start": "2026-10-10T06:00:00-04:00", "day": True, "temp": 70}]}
     ev = {"event_ticker": "KXHIGHNY-26OCT10", "series_ticker": "KXHIGHNY", "title": "t",
           "markets": [wmkt("B", "between", 70, 71, "70° to 71°")]}
-    picks = S.weather_picks([ev], ens, nws, NOW)
+    early = NOW - timedelta(hours=12)                          # 16.5h before the Oct 10 climate day
+    picks = S.weather_picks([ev], ens, nws, early)
     assert len(picks) == 1 and picks[0]["fair_yes"] > 0.4      # centered on 70, not the raw 61
     late = NOW + timedelta(hours=10)                           # Oct 10 locally: same-day, skipped
     assert S.weather_picks([ev], ens, nws, late) == []
+    # 2026-10-15: highs also need 12h before the climate day (NOW is 4.5h before: 2 of 16 such bets won)
+    assert S.weather_picks([ev], ens, nws, NOW) == []
+
+
+def test_weather_center_blends_nws_with_the_models():
+    assert S.weather_center(70, []) == 70                      # no models loaded: NWS alone
+    assert S.weather_center(70, [64.0, 66.0]) == 67.5          # half NWS, half the models' mean
+    times = [(datetime(2026, 10, 10, tzinfo=timezone.utc) + timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M")
+             for h in range(72)]
+    ens = {"CLINYC": {"time": times, "members": [[60.0 + (i % 3)] * 72 for i in range(30)]}}
+    nws = {"CLINYC": [{"start": "2026-10-10T06:00:00-04:00", "day": True, "temp": 70}]}
+    models = {"CLINYC": {"time": times, "members": [[66.0] * 72, [66.0] * 72]}}
+    ev = {"event_ticker": "KXHIGHNY-26OCT10", "series_ticker": "KXHIGHNY", "title": "t",
+          "markets": [wmkt("B", "between", 68, 69, "68° to 69°")]}
+    early = NOW - timedelta(hours=12)
+    alone = S.weather_picks([ev], ens, nws, early)[0]
+    blended = S.weather_picks([ev], ens, nws, early, models)[0]
+    assert blended["fair_yes"] > alone["fair_yes"]             # center 68 instead of 70
+    assert "2 models" in blended["source"]
 
 
 # ---------------------------------------------------------------- sports
@@ -94,6 +114,8 @@ def test_sports_skips_started_ambiguous_or_wrong_day_games():
     assert S.sports_picks([SEV], {"football/nfl": [live]}, NOW) == []
     other_day = {**GAME, "id": "2", "start": "2026-10-26T00:20Z"}
     assert S.sports_picks([SEV], {"football/nfl": [other_day]}, NOW) == []
+    preseason = {**GAME, "season_type": 1}
+    assert S.sports_picks([SEV], {"football/nfl": [preseason]}, NOW) == []
     twin = {**GAME, "id": "3"}
     assert S.sports_picks([SEV], {"football/nfl": [GAME, twin]}, NOW) == []
     st = {"location": "Delaware State", "displayName": "Delaware State Hornets", "shortDisplayName": "Del State",
@@ -243,15 +265,70 @@ def test_shipped_tuning_file_is_valid_and_inside_limits():
 
 
 def test_no_bets_that_win_too_little_for_their_stake():
-    # owner's bar: a win pays at least half the stake, so nothing above ~65c
-    assert betting.pays_enough(0.30) and betting.pays_enough(0.60) and not betting.pays_enough(0.70)
+    # owner's bar (2026-10-15): a win pays at least the stake, so nothing above ~49c
+    assert betting.pays_enough(0.30) and betting.pays_enough(0.48) and not betting.pays_enough(0.55)
     assert not betting.pays_enough(0.91)
     sure = dict(PICK, fair_yes=0.01)  # model says NO is ~99% likely, but NO at 91c wins too little
     assert betting.size(sure, "no", book_for_no(0.91), budget=30, bank=1000) is None
     assert betting.quick_edge(sure, {"no_ask_dollars": "0.91", "yes_ask_dollars": "0.10"})[0] == "yes"  # NO never offered
-    assert betting.size(PICK, "no", book_for_no(0.60), budget=30, bank=1000)  # good edge, 0.67x payout: allowed
-    pricey = dict(PICK, fair_yes=0.15)  # NO worth 85c, offered at 70c: good edge, but a win pays only 0.43x
-    assert betting.size(pricey, "no", book_for_no(0.70), budget=30, bank=1000) is None
+    assert betting.size(PICK, "no", book_for_no(0.45), budget=30, bank=1000)  # good edge, ~1.2x payout: allowed
+    pricey = dict(PICK, fair_yes=0.15)  # NO worth 85c, offered at 60c: good edge, but a win pays only 0.67x
+    assert betting.size(pricey, "no", book_for_no(0.60), budget=30, bank=1000) is None
     cheap = dict(PICK, fair_yes=0.70)  # NO worth 30c, offered at 20c
     f = betting.size(cheap, "no", book_for_no(0.20), budget=30, bank=1000)
     assert f and f["contracts"] - f["cost"] >= betting.RULES["min_win_ratio"] * f["cost"]
+
+
+# ---------------------------------------------------------------- correlated exposure (2026-10-14)
+def test_exposure_key_groups_one_cpi_release():
+    k = lambda ev, s="econ": betting.exposure_key({"strategy": s, "event": ev})
+    assert k("KXCPI-26OCT") == k("KXCPICORE-26OCT") == k("KXCPIYOY-26OCT") == "CPI-26OCT"
+    assert k("KXCPI-26OCT") != k("KXCPI-26NOV")
+    assert k("KXNBAGAME-26OCT13GSWLAL", "sports") == "KXNBAGAME-26OCT13GSWLAL"
+
+
+def test_book_walk_stops_near_the_best_offer():
+    rich = dict(PICK, fair_yes=0.0)                     # NO worth $1: every level has edge
+    book = {"yes": [(0.78, 10), (0.55, 500)], "no": []}  # NO offers: 10 at 22c, then 500 at 45c
+    f = betting.size(rich, "no", book, budget=100, bank=10000)
+    assert f["contracts"] == 5 and f["avg_price"] == 0.22  # half the 22c offer (fill_share), none at 45c
+
+
+def _run_with(tmp_path, monkeypatch, picks, markets, ledger=None, level="normal"):
+    import json
+    import gates
+    for k, f in (("TUNING", "tuning.json"), ("LEDGER", "b.json"), ("EQUITY", "e.jsonl"), ("LATEST", "l.json")):
+        monkeypatch.setattr(betting, k, str(tmp_path / f))
+    if ledger:
+        (tmp_path / "b.json").write_text(json.dumps(ledger))
+    if level:  # sizing tests: strategies already promoted (the gates have their own tests)
+        gates.save({s: {"level": level, "since": "2026-10-01T00:00:00+00:00", "history": []}
+                    for s in betting.STRATEGIES})
+    monkeypatch.setattr(betting, "gather", lambda ev, now: (picks, {}))
+    book = lambda t: {"yes": [(round(1 - float(markets[t]["no_ask_dollars"]), 2), 500)],
+                      "no": [(round(1 - float(markets[t]["yes_ask_dollars"]), 2), 500)]}
+    betting.run([], markets, NOW, get_book=book, get_market=lambda t: {}, get_markets=lambda ts: [])
+    return betting.load()
+
+
+def _mkt(ya, na):
+    return {"yes_bid_dollars": str(round(1 - na, 2)), "yes_ask_dollars": str(ya),
+            "no_bid_dollars": str(round(1 - ya, 2)), "no_ask_dollars": str(na), "close_time": ""}
+
+
+def test_one_bet_per_game(tmp_path, monkeypatch):
+    # Kalshi lists both teams: NO on GSW and YES on LAL are the same bet
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30),
+             dict(PICK, ticker=f"{ev}-LAL", event=ev, fair_yes=0.70)]
+    led = _run_with(tmp_path, monkeypatch, picks, {f"{ev}-GSW": _mkt(0.47, 0.55), f"{ev}-LAL": _mkt(0.47, 0.55)})
+    assert len(led["open"]) == 1
+
+
+def test_one_cpi_release_shares_one_cap(tmp_path, monkeypatch):
+    picks = [dict(PICK, strategy="econ", ticker=f"{ev}-T0.4", event=ev, fair_yes=0.95)
+             for ev in ("KXCPI-26SEP", "KXCPICORE-26SEP", "KXCPIYOY-26SEP", "KXCPICOREYOY-26SEP")]
+    markets = {p["ticker"]: _mkt(0.40, 0.62) for p in picks}
+    led = _run_with(tmp_path, monkeypatch, picks, markets)
+    assert led["open"]
+    assert sum(b["cost"] for b in led["open"]) <= betting.START_CASH * betting.RULES["max_event_pct"] + 0.01

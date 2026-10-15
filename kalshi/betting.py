@@ -1,8 +1,10 @@
 """Betting book: directional PAPER bets where a strategy's probability (strategies.py) beats the
 Kalshi price by more than fees. Separate $1,000 ledger from the arbitrage scanner.
 
-Each scan: settle finished bets, sell bets the market has caught up with, then buy the best new
-edges at real order-book prices, sized by a fraction of the Kelly stake. Never sends real orders.
+Each scan: settle finished bets, grade settled predictions, sell bets the market has caught up
+with, log every strategy's predictions (predictions.py), re-check each strategy's level (gates.py),
+then buy the best new edges at real order-book prices for strategies that have earned money, sized by
+a fraction of the Kelly stake (a few dollars at the "small" level). Never sends real orders.
 """
 import copy
 import json
@@ -13,7 +15,9 @@ from datetime import datetime, timezone
 
 import evaluate
 import forecasts
+import gates
 import kalshi_api
+import predictions
 import strategies
 
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
@@ -27,20 +31,32 @@ START_CASH = 1000.0
 RULES = {
     "kelly_fraction": 0.25,       # bet a quarter of the Kelly stake: models are rough
     "max_bet_pct": 0.03,          # of book equity per bet
-    "max_event_pct": 0.06,        # of book equity per event (one game, one city-day...)
+    "max_event_pct": 0.06,        # of book equity per event (one game, one city-day, one CPI release)
+    # Strategies allowed only one bet per event. A game's two markets ("A wins" / "B wins") are one
+    # outcome: NO on A and YES on B is the same bet twice (2026-10-13: two NBA games lost $110 that way).
+    "one_bet_per_event": ("sports",),
+    # Walk the order book at most this far above the best offer: in thin books the deeper offers are
+    # often stale (2026-10-14: an Oct CPI bet averaged 45c with the best offer at 22c).
+    "max_walk": 0.05,
+    # Paper fills take only this share of each displayed offer: a real order competes with other
+    # buyers and resting offers get pulled, so assuming the whole book overstates what we'd get.
+    "fill_share": 0.5,
     "strategy_cap_pct": {"weather": 0.30, "sports": 0.30, "econ": 0.20, "longshot": 0.30},
     "min_edge": {"weather": 0.07, "sports": 0.04, "econ": 0.06, "longshot": 0.015},  # $/contract after fees
     "price_range": (0.05, 0.97),  # don't buy below/above these
     # Owner's rule (not tuned): a win must pay at least this multiple of the stake after fees.
     # 2026-10-12 first 2.0 (buys <=~33c), then 0.5 the same day: risk $20 to win $10+, buys <=~65c.
     # Settled bets bought at 50-67c had done best (3 of 4 won); those under 34c went 0 for 4.
-    "min_win_ratio": 0.5,
+    # 2026-10-15 owner raised it to 1.0: a win must at least match the stake, so buys <=~49c.
+    "min_win_ratio": 1.0,
     "min_expected_profit": 0.10,  # $ per bet
     "cash_reserve_pct": 0.10,
     "max_books_per_strategy": 15, # order books fetched per scan, best edges first
     "max_new_per_scan": 12,
     "max_new_per_strategy": 3,    # per scan, so one strategy's edges can't fill the book at once
-    "exit_margin": 0.02,          # sell when the bid beats our fair value by this much after fees
+    # Sell when the bid beats our fair value by this much after fees. 0.02 -> 0.01 on 2026-10-15: one of
+    # 83 bets had ever been sold; at fair value holding adds risk, not expected profit.
+    "exit_margin": 0.01,
     # How much to trust each model over the market's own price: fair = w x model + (1-w) x market mid.
     # Weather and inflation disagree with liquid markets by a lot, and the market may know things the
     # model doesn't. Raise w only when the scorecard shows the model beating the market (Brier).
@@ -126,6 +142,16 @@ def _f(x) -> float:
         return 0.0
 
 
+def exposure_key(pick: dict) -> str:
+    """What one outcome decides. Every CPI series (headline, core, monthly, yearly) settles on the same
+    BLS release, so one month's CPI markets share one key and one max_event_pct cap (2026-10-14: six
+    September bets on the same side lost $146 together). Anything else: its Kalshi event."""
+    ev = pick.get("event", "")
+    if pick.get("strategy") == "econ" and ev.split("-")[0] in strategies.ECON and "-" in ev:
+        return "CPI-" + ev.rsplit("-", 1)[1]
+    return ev
+
+
 def blend(picks: list, by_ticker: dict) -> list:
     """Keep each model's own number as model_yes; fair_yes becomes the trusted blend with the market."""
     out = []
@@ -166,11 +192,12 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
     if not levels:
         return None
     top = levels[0][0]
+    levels = [(p, q) for p, q in levels if p <= top + RULES["max_walk"] + 1e-9]
     kelly = (fair - top) / (1 - top)
     stake = min(kelly * RULES["kelly_fraction"] * bank, budget)
     n, cost = 0, 0.0
     for p, q in levels:
-        take = int(min(q, (stake - cost) / p))
+        take = int(min(q * RULES["fill_share"], (stake - cost) / p))
         if take <= 0:
             break
         n += take
@@ -192,9 +219,9 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
             "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(exp, 2)}
 
 
-def place(led: dict, pick: dict, fill: dict, m: dict, now: datetime) -> dict:
+def place(led: dict, pick: dict, fill: dict, m: dict, now: datetime, level: str = "normal") -> dict:
     yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
-    rec = {**{k: pick[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source")},
+    rec = {**{k: pick[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source")}, "level": level,
            **fill, "fair_yes": pick["fair_yes"], "model_yes": pick.get("model_yes", pick["fair_yes"]), "market_yes": round((yb + ya) / 2, 4),
            "close_time": m.get("close_time", ""), "opened": now.isoformat(timespec="seconds"),
            "id": f"{now:%Y%m%d%H%M%S}-{len(led['open']) + len(led['closed'])}"}
@@ -227,9 +254,21 @@ def settle(led: dict, get_market, now: datetime) -> list[dict]:
     return done
 
 
+def split(led: dict, bet: dict, k: int) -> dict:
+    """Carve k contracts off an open bet into their own open bet (cost and fee shared pro rata)."""
+    n, share = bet["contracts"], k / bet["contracts"]
+    part = {**bet, "contracts": k, "cost": round(bet["cost"] * share, 2), "fee": round(bet["fee"] * share, 2),
+            "expected_profit": round(bet["expected_profit"] * share, 2), "id": f"{bet['id']}-p{n - k}"}
+    bet.update(contracts=n - k, cost=round(bet["cost"] - part["cost"], 2), fee=round(bet["fee"] - part["fee"], 2),
+               expected_profit=round(bet["expected_profit"] - part["expected_profit"], 2))
+    led["open"].append(part)
+    return part
+
+
 def exits(led: dict, fair_now: dict, by_ticker: dict, now: datetime) -> list[dict]:
     """Sell a bet when the best bid, after the fee, beats today's fair value by exit_margin:
-    the price has caught up with (or gone past) our model, so holding adds nothing.
+    the price has caught up with (or gone past) our model, so holding adds nothing. If the best
+    bid can't take the whole bet (fill_share of its size), sell the part it can and keep the rest.
     Longshot bets hold to settlement: their fair value comes from the price itself."""
     sold = []
     for bet in list(led["open"]):
@@ -239,11 +278,13 @@ def exits(led: dict, fair_now: dict, by_ticker: dict, now: datetime) -> list[dic
             continue
         fair = fy if bet["side"] == "yes" else 1 - fy
         bid, depth = _f(m.get(f"{bet['side']}_bid_dollars")), _f(m.get(f"{bet['side']}_bid_size_fp"))
-        n = bet["contracts"]
-        if bid <= 0 or depth < n:
+        k = min(bet["contracts"], int(depth * RULES["fill_share"]))
+        if bid <= 0 or k < 1:
             continue
-        net = n * bid - fee(n, bid)
-        if net / n >= fair + RULES["exit_margin"]:
+        net = k * bid - fee(k, bid)
+        if net / k >= fair + RULES["exit_margin"]:
+            if k < bet["contracts"]:
+                bet = split(led, bet, k)
             bet["exit_bid"], bet["fair_at_exit"] = bid, round(fair, 4)
             _close(led, bet, net, "sold", now)
             sold.append(bet)
@@ -288,10 +329,20 @@ def stats(led: dict) -> dict:
     return out
 
 
+def _optional(fetch):
+    """Extra data a strategy can do without: None (logged) if it fails to load."""
+    try:
+        return fetch()
+    except Exception as e:
+        log.warning(f"betting optional data: {e}")
+        return None
+
+
 def gather(events: list, now: datetime) -> tuple[list, dict]:
     """Picks from every strategy whose data loaded, plus per-strategy status."""
     picks, status = [], {}
-    sources = (("weather", lambda: strategies.weather_picks(events, forecasts.weather(), forecasts.nws(), now)),
+    sources = (("weather", lambda: strategies.weather_picks(events, forecasts.weather(), forecasts.nws(), now,
+                                                            _optional(forecasts.models))),
                ("sports", lambda: strategies.sports_picks(events, forecasts.sports(), now)),
                ("econ", lambda: strategies.econ_picks(events, forecasts.nowcasts())),
                ("longshot", lambda: strategies.longshot_picks(events, now)))
@@ -306,12 +357,33 @@ def gather(events: list, now: datetime) -> tuple[list, dict]:
     return picks, status
 
 
-def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=None, get_market=None) -> dict:
+def signals_of(scored: list, by_ticker: dict) -> dict:
+    """{ticker: shadow bet} for every pick the real rules would bet on now (edge >= min_edge at the best
+    offer, price allowed, pays enough). Cost per contract includes the fee as on a 100-contract order."""
+    out = {}
+    for p in scored:
+        if p["quick_edge"] < RULES["min_edge"][p["strategy"]]:
+            continue
+        ask = _f(by_ticker[p["ticker"]].get(f"{p['side']}_ask_dollars"))
+        fair = p["fair_yes"] if p["side"] == "yes" else 1 - p["fair_yes"]
+        out[p["ticker"]] = {"side": p["side"], "ask": ask, "cost": round(ask + fee(100, ask) / 100, 4),
+                            "edge": p["quick_edge"], "fair": round(fair, 4)}
+    return out
+
+
+def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=None, get_market=None,
+        get_markets=None) -> dict:
     now = now or datetime.now(timezone.utc)
     apply_tuning()
     get_book = get_book or kalshi_api.orderbook
     get_market = get_market or kalshi_api.market
+    get_markets = get_markets or kalshi_api.markets
     led = load()
+    preds = predictions.load()
+    try:
+        predictions.grade(preds, by_ticker, get_markets, now)
+    except Exception as e:
+        log.warning(f"predictions grade: {e}")
 
     settled = []
     try:
@@ -330,16 +402,26 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
         if q:
             scored.append({**p, "side": q[0], "quick_edge": q[1]})
     scored.sort(key=lambda p: p["quick_edge"], reverse=True)
-    cands = []
-    for s in STRATEGIES:
-        cands += [p for p in scored if p["strategy"] == s
-                  and p["quick_edge"] >= RULES["min_edge"][s]][:RULES["max_books_per_strategy"]]
+    predictions.record(preds, picks, signals_of(scored, by_ticker), {p["ticker"]: exposure_key(p) for p in picks},
+                       by_ticker, now)
+    predictions.save(preds)
 
     bank = equity(led)
+    levels, moves = gates.update(STRATEGIES, led, predictions.load_graded(), RULES["strategy_cap_pct"], bank, now)
+    for mv in moves:
+        log.info(f"LEVEL {mv['strategy']} -> {mv['to']}: {mv['why']}")
+    cands = []
+    for s in STRATEGIES:
+        if levels[s] == "predict":
+            continue  # predictions only: it hasn't earned money yet
+        cands += [p for p in scored if p["strategy"] == s
+                  and p["quick_edge"] >= RULES["min_edge"][s]][:RULES["max_books_per_strategy"]]
     held = {b["ticker"] for b in led["open"]}
-    by_event, by_strat = {}, {}
+    by_event, by_strat, bets_in = {}, {}, {}
     for b in led["open"]:
-        by_event[b["event"]] = by_event.get(b["event"], 0) + b["cost"]
+        k = exposure_key(b)
+        by_event[k] = by_event.get(k, 0) + b["cost"]
+        bets_in[k] = bets_in.get(k, 0) + 1
         by_strat[b["strategy"]] = by_strat.get(b["strategy"], 0) + b["cost"]
     placed, new_by = [], {}
     for p in cands:
@@ -347,10 +429,16 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
             break
         if p["ticker"] in held or new_by.get(p["strategy"], 0) >= RULES["max_new_per_strategy"]:
             continue
+        key = exposure_key(p)
+        if p["strategy"] in RULES["one_bet_per_event"] and bets_in.get(key):
+            continue
+        lvl = levels[p["strategy"]]
         budget = min(bank * RULES["max_bet_pct"],
-                     bank * RULES["max_event_pct"] - by_event.get(p["event"], 0),
-                     bank * RULES["strategy_cap_pct"][p["strategy"]] - by_strat.get(p["strategy"], 0),
+                     bank * RULES["max_event_pct"] - by_event.get(key, 0),
+                     gates.cap_dollars(lvl, RULES["strategy_cap_pct"][p["strategy"]], bank) - by_strat.get(p["strategy"], 0),
                      led["cash"] - bank * RULES["cash_reserve_pct"])
+        if lvl == "small":
+            budget = min(budget, gates.GATES["small_max_bet"])
         if budget < 1:
             continue
         try:
@@ -361,11 +449,12 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
         fill = size(p, p["side"], book, budget, bank)
         if not fill:
             continue
-        rec = place(led, p, fill, by_ticker[p["ticker"]], now)
+        rec = place(led, p, fill, by_ticker[p["ticker"]], now, lvl)
         placed.append(rec)
         held.add(p["ticker"])
         new_by[p["strategy"]] = new_by.get(p["strategy"], 0) + 1
-        by_event[p["event"]] = by_event.get(p["event"], 0) + rec["cost"]
+        by_event[key] = by_event.get(key, 0) + rec["cost"]
+        bets_in[key] = bets_in.get(key, 0) + 1
         by_strat[p["strategy"]] = by_strat.get(p["strategy"], 0) + rec["cost"]
         log.info(f"BET {rec['strategy']} {rec['side'].upper()} {rec['ticker']} x{rec['contracts']} @ {rec['avg_price']} "
                  f"(fair {rec['fair']}, edge {rec['edge']}) cost ${rec['cost']} — {rec['source']}")
@@ -381,7 +470,8 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
     for s in status:
         status[s]["edges"] = sum(1 for p in scored if p["strategy"] == s and p["quick_edge"] >= RULES["min_edge"][s])
     summary = {"ts": account["ts"], "picks": len(picks), "candidates": len(cands), "placed": len(placed),
-               "sold": len(sold), "settled": len(settled), "strategies": status,
+               "sold": len(sold), "settled": len(settled), "strategies": status, "levels": levels, "level_moves": moves,
+               "predictions_open": len(preds["open"]),
                "account_value": account["account_value"], "cash": led["cash"], "open_bets": len(led["open"])}
     top = [{k: p[k] for k in ("strategy", "ticker", "title", "sub", "side", "fair_yes", "model_yes", "quick_edge", "source")}
            | {"ask": _f(by_ticker[p["ticker"]].get(f"{p['side']}_ask_dollars"))}
