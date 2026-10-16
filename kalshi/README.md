@@ -57,7 +57,7 @@ Run a scan every 15 minutes, e.g. with cron:
 
 Dashboard (read-only, port 8503): `.venv/bin/python webdash.py`. Charles's dashboard passes it
 through at `/kalshi/` and shows the Kalshi tab once it answers (set `KALSHI_URL` if it runs elsewhere).
-The Self-Tuning tab stays empty here: it shows reports from a private daily review that isn't part
+The Self-Tune tab only shows its progress bars here: it shows reports from a private daily review that isn't part
 of this repo.
 
 All state lives in `data/` (created on first run): `bets.json` (betting book), `ledger.json`

@@ -213,7 +213,14 @@ nav button.on { color: var(--series-1); }
 }
 /* Kalshi extras */
 .appswitch[hidden] { display: none; }
-nav#tabs { grid-template-columns: repeat(4, 1fr); }
+nav#tabs { grid-template-columns: repeat(3, 1fr); }
+#activity { scroll-margin-top: 76px; }
+button.more { display: block; width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.tune-head { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
+.tune-head .bi { width: 40px; height: 40px; border-radius: 12px; flex: none; }
+.tune-head .bi svg { width: 21px; height: 21px; }
+.tune-title { font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
 #v-hold .two { align-items: start; }
 .sym { font-size: 15px; }
 .side { font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 5px; letter-spacing: .02em; vertical-align: 1px; }
@@ -412,6 +419,11 @@ button.bl:hover { background: var(--surface-2); }
       </div>
      </div>
     </div>
+    <div class="card" id="activity" style="margin-top:16px">
+      <div class="card-head"><h2>Recent activity</h2><span class="aside" id="act-count"></span></div>
+      <div id="trades"></div>
+      <button class="more" id="act-more" hidden></button>
+    </div>
   </section>
 
   <!-- HOLDINGS -->
@@ -433,30 +445,17 @@ button.bl:hover { background: var(--surface-2); }
     </div>
   </section>
 
-  <!-- SELF-TUNING: what Claude's daily review is waiting on, from its reports and plan -->
-  <section class="view" id="v-claude">
+  <!-- SELF-TUNE: one verdict, a bar per strategy, the report folded (owner 2026-10-16: less information) -->
+  <section class="view" id="v-tune">
     <div class="grid two">
       <div class="card">
-        <div class="card-head"><h2>Waiting on data</h2></div>
-        <div id="cl-miles"></div>
+        <div class="tune-head"><span class="bi" id="tune-ico"></span><div><div class="tune-title" id="tune-title"></div><div class="small muted" id="tune-sub"></div></div></div>
+        <div id="cl-miles" style="margin-top:6px"></div>
       </div>
-      <div class="card" id="cl-ideas-card">
-        <div class="card-head"><h2>Changes being tested</h2><span class="aside">each changes only if the data backs it</span></div>
-        <div id="cl-ideas"></div>
-      </div>
-      <div class="card" style="grid-column: 1 / -1" id="cl-notes-card">
-        <details id="cl-report-box"><summary style="margin-top:0">Claude's latest report <span class="muted" id="cl-when"></span></summary>
+      <div class="card" id="cl-notes-card">
+        <details><summary style="margin-top:0">Claude's latest report <span class="muted" id="cl-when"></span></summary>
           <div class="md" id="cl-report" style="margin-top:12px"></div></details>
-        <details id="cl-plan-box"><summary>Claude's full plan</summary><div class="md" id="cl-plan" style="margin-top:12px"></div></details>
       </div>
-    </div>
-  </section>
-
-  <!-- ACTIVITY -->
-  <section class="view" id="v-act">
-    <div class="card">
-      <div class="card-head"><h2>Recent bets</h2></div>
-      <div id="trades"></div>
     </div>
   </section>
 </main>
@@ -477,8 +476,7 @@ button.bl:hover { background: var(--surface-2); }
 const TABS = [
   ["home", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
   ["hold", "Holdings", '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
-  ["claude", "Self-Tuning", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
-  ["act", "Activity", '<path d="M3 12h4l3-8 4 16 3-8h4"/>'],
+  ["tune", "Self-Tune", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
 ];
 const RANGES = [["1D", 1], ["1W", 7], ["1M", 30], ["All", 1e5]];
 const STRAT = {weather: "Weather", sports: "Sports", econ: "Inflation", longshot: "Longshot"};
@@ -487,7 +485,7 @@ const SCOLOR = {econ: "--c1", sports: "--c2", weather: "--c3", longshot: "--c7"}
 const SWORDS = {weather: /weather/i, sports: /sports|draftkings/i, econ: /inflation|cpi/i, longshot: /longshot/i};
 const HOW = {won: "WON", lost: "LOST", sold: "SOLD", void: "VOID"};
 // own keys: under /kalshi/ this page shares Charles's origin and so its localStorage
-let S = null, B = null, tab = "home", range = "All", posFilter = "all";
+let S = null, B = null, tab = "home", range = "All", posFilter = "all", actAll = false;
 try { tab = localStorage.getItem("kn-tab") || tab; range = localStorage.getItem("kn-range") || range; } catch (e) {}
 
 const $ = id => document.getElementById(id);
@@ -510,6 +508,7 @@ const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const IC = {
   up: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>', down: '<path d="M4 10l6 6 4-4 6 6M14 18h6v-6"/>',
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', alert: '<path d="M12 4l9 16H3zM12 10v4M12 17v.5"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/>',
   check: '<path d="M5 12l5 5 9-10"/>', spark: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>', dot: '<circle cx="12" cy="12" r="3"/>',
 };
 const svgI = (d, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
@@ -627,11 +626,11 @@ function kalshiBrief() {
   if (settled.length) {
     const n = k => settled.filter(b => b.how === k).length, net = settled.reduce((t, b) => t + (b.pnl || 0), 0);
     const parts = [n("won") && `${n("won")} won`, n("lost") && `${n("lost")} lost`, n("sold") && `${n("sold")} sold early`, n("void") && `${n("void")} refunded`].filter(Boolean);
-    lines.push({icon: net >= 0 ? "check" : "down", tone: net >= 0 ? "up" : "down", go: "act",
+    lines.push({icon: net >= 0 ? "check" : "down", tone: net >= 0 ? "up" : "down", go: toFeed,
       html: `${plural(settled.length, "bet")} finished ${when}: ${parts.join(", ")}. Net <b class="num ${cls(net)}">${sgnUsd(net)}</b>.`});
   }
   const placed = B.open.concat(B.closed).filter(b => new Date(b.opened) > since);
-  if (placed.length) lines.push({icon: "spark", tone: "info", go: "act",
+  if (placed.length) lines.push({icon: "spark", tone: "info", go: toFeed,
     html: `The bot placed ${plural(placed.length, "new bet")} ${when}, ${usd(placed.reduce((t, b) => t + b.cost, 0))} in all.`});
   const soon = B.open.filter(b => new Date(b.close_time) - Date.now() < 12 * 36e5), over = soon.filter(b => new Date(b.close_time) < Date.now());
   if (soon.length) lines.push({icon: "clock", tone: "info", go: "hold",
@@ -639,7 +638,7 @@ function kalshiBrief() {
   else if (!B.open.length) lines.push({icon: "dot", html: "No open bets. The bot looks for new ones every 15 minutes."});
   const R = S.review || {};
   if (R.report && R.report.date === new Date().toLocaleDateString("en-CA"))
-    lines.push({icon: "check", tone: "info", go: "claude", html: "Claude's review for today is in."});
+    lines.push({icon: "check", tone: "info", go: "tune", html: "Claude's review for today is in."});
   renderBrief(`${new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric"})}${sc.last ? " · last scan " + ago(sc.last.ts) : ""}`, lines.slice(0, 5));
 }
 
@@ -709,8 +708,10 @@ function buildTabs() {
   $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Book</span><span class="key">${keySvg("--ref", true)}$1,000 start</span>`;
   addPageTitles();
   $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
+  $("act-more").onclick = () => { actAll = !actAll; render(); if (!actAll) toFeed(); };
   setTab(tab);
 }
+const toFeed = () => { setTab("home"); $("activity").scrollIntoView({block: "start"}); };
 function keySvg(color, dashed) {
   return `<svg width="18" height="6"><line x1="1" x2="17" y1="3" y2="3" stroke="var(${color})" stroke-width="2" stroke-linecap="round"${dashed ? ' stroke-dasharray="4 3"' : ""}/></svg>`;
 }
@@ -981,32 +982,22 @@ function render() {
   renderChart();
   renderHoldings();
 
-  // Self-Tuning
+  // Self-Tune: one verdict, a short bar per strategy, the next tune; the report stays folded
   const R = S.review || {};
-  $("cl-when").textContent = R.report ? new Date(R.report.date + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"}) : "";
+  $("cl-when").textContent = R.report ? "· " + new Date(R.report.date + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"}) : "";
   $("cl-report").innerHTML = R.report ? md(R.report.text) : `<div class="empty">The first report comes with the next weekday review (9:15 AM ET).</div>`;
-  $("cl-plan").innerHTML = R.plan ? md(R.plan) : "";
-  $("cl-ideas-card").hidden = !R.plan;
-  $("cl-report-box").hidden = !R.report;
-  $("cl-plan-box").hidden = !R.plan;
-  $("cl-notes-card").hidden = !R.report && !R.plan;
-  const miles = B.milestones || [];
-  const bar = m => `<div class="prog"><div class="meter"><i style="width:${m.progress * 100}%"></i></div><span>${Math.round(m.progress * 100)}% of ${esc(m.needs)}</span></div>`;
+  const miles = B.milestones || [], strats = miles.filter(m => m.level);
+  const live = strats.filter(m => m.level !== "predict");
+  const LV = {predict: "Predicting", small: "Small bets", normal: "Full bets"};
+  const v = !strats.length ? ["clock", "info", "Getting ready", ""]
+    : live.length ? ["spark", "up", `${live.length} of ${strats.length} strategies are betting`, "The others only predict until their odds beat Kalshi's prices."]
+    : ["shield", "info", "No money at risk right now", "Every strategy only predicts until its odds beat Kalshi's prices and its would-be bets make money."];
+  $("tune-ico").className = "bi " + v[1]; $("tune-ico").innerHTML = svgI(IC[v[0]] || IC.dot);
+  $("tune-title").textContent = v[2]; $("tune-sub").textContent = v[3];
   $("cl-miles").innerHTML = miles.map(m => `<div class="mile">
-      <div class="mile-top"><b>${esc(m.name)}</b><span class="small muted">${esc(m.detail)}</span></div>
-      <div class="exp-about" style="margin-bottom:0">${esc(m.about)}</div>${bar(m)}
+      <div class="mile-top"><b>${esc(m.level ? m.name.split(":")[0] : m.name)}</b><span class="small muted">${m.level ? esc(LV[m.level] || m.level) + " · " : ""}${esc(m.detail)}</span></div>
+      <div class="prog"><div class="meter"><i style="width:${m.progress * 100}%"></i></div><span>${m.level ? Math.round(m.progress * 100) + "%" : esc(m.needs)}</span></div>
     </div>`).join("") || `<div class="empty">Nothing waiting on data.</div>`;
-  // the plan's "Watching" ideas: title, first sentence as the why, and the bar of the strategy it is about
-  const byKey = Object.fromEntries(miles.map(m => [m.key, m]));
-  $("cl-ideas").innerHTML = planIdeas(R.plan || "").map(i => {
-    const k = Object.keys(SWORDS).find(s => SWORDS[s].test(i.title)) || Object.keys(SWORDS).find(s => SWORDS[s].test(i.text));
-    const plain = i.text.replace(/\*\*|`/g, "");
-    const why = (plain.match(/^.+?[.!?](?=\s|$)/) || [plain])[0];
-    return `<div class="mile">
-      <div class="mile-top"><b>${esc(i.title)}</b></div>
-      <div class="exp-about" style="margin-bottom:0">${esc(why)}</div>
-      ${byKey[k] ? bar(byKey[k]) : ""}
-    </div>`; }).join("") || `<div class="empty">Nothing being tested right now.</div>`;
 
   // Activity: every bet placed, and every result, newest first
   const ev = [];
@@ -1016,7 +1007,8 @@ function render() {
   }
   ev.sort((x, y) => (x.ts < y.ts ? 1 : -1));
   let html = "", lastDay = "";
-  for (const {ts, kind, b} of ev.slice(0, 80)) {
+  const SHOWN = 6;
+  for (const {ts, kind, b} of ev.slice(0, actAll ? 80 : SHOWN)) {
     const d = new Date(ts), dd = d.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
     if (dd !== lastDay) { html += `<div class="day">${dd}</div>`; lastDay = dd; }
     const p = kind === "BET" ? b.fair : null;
@@ -1026,6 +1018,9 @@ function render() {
       <div class="right num small ${cls(kind === "BET" ? null : b.pnl)}">${kind === "BET" ? "" : sgnUsd(b.pnl)}</div></div>`;
   }
   $("trades").innerHTML = html || `<div class="empty">No bets yet.</div>`;
+  $("act-more").hidden = ev.length <= SHOWN;
+  $("act-more").textContent = actAll ? "Show less" : "Show more";
+  $("act-count").textContent = B.closed.length ? `${B.closed.length} settled` : "";
 
   kalshiBrief();
   markSeen(a.account_value);

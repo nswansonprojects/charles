@@ -17,7 +17,6 @@ if ROOT not in sys.path:
 
 import config            # noqa: E402
 import equity_tracker    # noqa: E402
-import market_filter     # noqa: E402
 import risk_manager      # noqa: E402
 
 _PROTECTED = (os.path.join(ROOT, "data") + os.sep, os.path.join(ROOT, "logs") + os.sep,
@@ -59,10 +58,7 @@ class FakeAlerts(types.ModuleType):
         return lambda *a, **k: self.calls.append((name, a, k))
 
 
-_CONFIG_KEYS = ("MIN_CONFIDENCE", "MIN_CONFIDENCE_FLOOR", "MIN_POSITION_SIZE_PCT",
-                "MAX_POSITION_SIZE_PCT", "MAX_OPEN_POSITIONS", "STOP_LOSS_PCT",
-                "TAKE_PROFIT_PCT", "TRAILING_STOP_ATR_MULT", "TRADE_COOLDOWN_HOURS",
-                "MAX_DAILY_LOSS", "EARNINGS_BLACKOUT_DAYS", "LLM_SELL_MIN_CONFIDENCE")
+_CONFIG_KEYS = ("MAX_DAILY_LOSS", "VIRTUAL_CASH")
 
 
 class BotTestCase(unittest.TestCase):
@@ -81,9 +77,7 @@ class BotTestCase(unittest.TestCase):
         patch(os, "replace", _guarded_replace)
         # state files → temp
         patch(risk_manager, "DATA_DIR", self.tmp)
-        patch(risk_manager, "TRAILING_FILE", os.path.join(self.tmp, "trailing_stops.json"))
         patch(risk_manager, "DAILY_LOSS_FILE", os.path.join(self.tmp, "daily_loss.json"))
-        patch(market_filter, "COOLDOWN_FILE", os.path.join(self.tmp, "cooldowns.json"))
         patch(equity_tracker, "EQUITY_FILE", os.path.join(self.tmp, "equity_curve.json"))
         patch(equity_tracker, "PEAK_FILE", os.path.join(self.tmp, "peak_equity.json"))
         # no Telegram
@@ -92,18 +86,8 @@ class BotTestCase(unittest.TestCase):
         sys.modules["alerts"] = self.alerts
         # known config values
         self._config = {k: getattr(config, k) for k in _CONFIG_KEYS if hasattr(config, k)}
-        config.MIN_CONFIDENCE = 0.60
-        config.MIN_CONFIDENCE_FLOOR = 0.60
-        config.MIN_POSITION_SIZE_PCT = 0.10
-        config.MAX_POSITION_SIZE_PCT = 0.15
-        config.MAX_OPEN_POSITIONS = 4
-        config.STOP_LOSS_PCT = 0.05
-        config.TRAILING_STOP_ATR_MULT = 2.0
-        config.PROFIT_LOCK_TRIGGER = 0.04
-        config.PROFIT_LOCK_KEEP = 0.5
-        config.TRADE_COOLDOWN_HOURS = 4
         config.MAX_DAILY_LOSS = 20.0
-        config.EARNINGS_BLACKOUT_DAYS = 3
+        config.VIRTUAL_CASH = 1000.0
 
     def tearDown(self):
         for obj, name, value in reversed(self._saved):

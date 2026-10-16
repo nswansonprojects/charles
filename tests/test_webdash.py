@@ -1,4 +1,4 @@
-"""webdash: equity thinning, market hours, SPY-since-date and the experiments table."""
+"""webdash: equity thinning, market hours, SPY-since-date, holdings by role, milestones, the backtest view."""
 import os
 from datetime import datetime, timezone
 
@@ -14,6 +14,25 @@ class WebDash(BotTestCase):
         curve = [{"ts": "2026-10-01T14:00:01", "value": 1}, {"ts": "2026-10-01T14:30:00", "value": 2},
                  {"ts": "2026-10-01T15:00:00", "value": 3}]
         self.assertEqual(wd.thin_hourly(curve), [["2026-10-01T14:30:00", 2], ["2026-10-01T15:00:00", 3]])
+
+    def test_live_point_ends_chart_at_header_value(self):
+        now = datetime(2026, 10, 14, 15, 0, tzinfo=timezone.utc)
+        pts = [["2026-10-14T14:32:18+00:00", 1073.04]]
+        self.assertEqual(wd.with_live_point(pts, 1073.2, now), pts + [[now.isoformat(), 1073.2]])
+        self.assertEqual(wd.with_live_point(pts, None, now), pts)          # Alpaca unreachable
+        self.assertEqual(wd.with_live_point([], 1000, now), [[now.isoformat(), 1000.0]])
+
+    def test_daily_history_starts_at_first_funded_day_and_fills_the_gap(self):
+        ts = [datetime(2026, 5, d, tzinfo=timezone.utc).timestamp() for d in (27, 28, 29)]
+        daily = wd.daily_history(ts, [0.0, 1000.0, 1011.07])
+        self.assertEqual(daily, [["2026-05-28T00:00:00+00:00", 1000.0], ["2026-05-29T00:00:00+00:00", 1011.07]])
+        curve = [["2026-05-29T00:00:00+00:00", 1011.0], ["2026-06-03T18:56:00+00:00", 1042.61]]
+        self.assertEqual(wd.with_history(curve, daily), [daily[0]] + curve)   # only days before the curve
+        self.assertEqual(wd.with_history([], daily), daily)
+
+    def test_hourly_spy_gets_its_days_dividend_factor(self):
+        h = [["2026-06-17T19:00+00:00", 600.0], ["2026-06-18T19:00+00:00", 600.0]]
+        self.assertEqual(wd.dividend_adjust(h, {"2026-06-17": 0.995}), [["2026-06-17T19:00+00:00", 597.0], h[1]])
 
     def test_market_status(self):
         at = lambda h, m, day=7: wd.market_status(datetime(2026, 10, day, h, m, tzinfo=timezone.utc))
@@ -69,66 +88,6 @@ class WebDash(BotTestCase):
         self.assertEqual(wd.spy_return_since(SPY, "2026-09-01"), 2.0)            # before data: first close
         self.assertIsNone(wd.spy_return_since([], "2026-10-02"))
 
-    def test_experiments_sorted_with_baseline_gap_and_progress(self):
-        now = datetime(2026, 10, 7, tzinfo=timezone.utc)
-        summary = {"baseline": {"since": "2026-10-02", "return_pct": 1.0, "closed": 15},
-                   "swing": {"since": "2026-10-02", "return_pct": 3.0, "closed": 45},
-                   "trend_following": {"since": "2026-10-05", "return_pct": 0.5, "closed": 0}}
-        rows = wd.experiments(summary, SPY, now)
-        self.assertEqual([r["name"] for r in rows], ["swing", "baseline", "trend_following"])
-        self.assertEqual(rows[0]["vs_baseline"], 2.0)
-        self.assertEqual(rows[0]["progress"], 1.0)                      # capped
-        self.assertEqual(rows[1]["progress"], 0.5)                      # 15 of 30 trades
-        self.assertIsNone(rows[1]["vs_baseline"])
-        self.assertEqual(rows[2]["kind"], "daily")
-        self.assertEqual(rows[2]["progress"], round(2 / 91, 2))         # days of the 3 months
-
-    def test_ai_check_pairs_horizons(self):
-        sc = {"groups": {"AI BUY": {"1d": {"n": 3, "mean_pct": 1.0, "up_pct": 60}},
-                         "all candidates (baseline)": {"1d": {"n": 9, "mean_pct": 2.0, "up_pct": 70},
-                                                       "3d": {"n": 4, "mean_pct": 1.0, "up_pct": 50}}}}
-        self.assertEqual(wd.ai_check(sc), [{"horizon": "1d", "ai_mean": 1.0, "ai_n": 3, "ai_up": 60,
-                                            "all_mean": 2.0, "all_n": 9, "all_up": 70}])
-
-
-class OrbSwitchEndpoint(BotTestCase):
-    """POST /api/orb is the dashboard's one write: it flips data/control/orb_switch.json, nothing else."""
-
-    def setUp(self):
-        super().setUp()
-        import os
-        import threading
-        from http.server import ThreadingHTTPServer
-        import orb
-        self.orb = orb
-        self.patch(orb, "SWITCH_FILE", os.path.join(self.tmp, "control", "orb_switch.json"))
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), wd.Handler)
-        threading.Thread(target=self.server.serve_forever, daemon=True).start()
-        self.addCleanup(self.server.server_close)
-        self.addCleanup(self.server.shutdown)
-
-    def post(self, path, body, ctype="application/json"):
-        import http.client
-        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=5)
-        conn.request("POST", path, body=body, headers={"Content-Type": ctype})
-        r = conn.getresponse()
-        r.read()
-        conn.close()
-        return r.status
-
-    def test_switches_off_and_on(self):
-        self.assertEqual(self.post("/api/orb", b'{"on": false}'), 200)
-        self.assertFalse(self.orb.switched_on())
-        self.assertEqual(self.post("/api/orb", b'{"on": true}'), 200)
-        self.assertTrue(self.orb.switched_on())
-
-    def test_rejects_anything_else(self):
-        self.assertEqual(self.post("/api/orb", b'{"on": "no"}'), 400)
-        self.assertEqual(self.post("/api/orb", b'on=false', "application/x-www-form-urlencoded"), 400)
-        self.assertEqual(self.post("/api/orb", b'{}'), 400)
-        self.assertEqual(self.post("/api/state", b'{"on": false}'), 404)
-        self.assertTrue(self.orb.switched_on())
-
 
 class ClaudeTab(BotTestCase):
     def test_latest_journal_picks_newest_dated_report(self):
@@ -140,16 +99,63 @@ class ClaudeTab(BotTestCase):
         self.assertEqual(wd.latest_journal(folder), {"date": "2026-10-12", "text": "new", "count": 2})
         self.assertIsNone(wd.latest_journal(os.path.join(self.tmp, "none")))
 
+
+class PlanViews(BotTestCase):
+    PLAN = {"settings": {"CORE": "SPY", "SAFE": "SGOV"}, "targets": {"SPY": 0.8, "NVDA": 0.05, "SGOV": 0.15},
+            "picks": ["NVDA"], "ranked": [{"symbol": "NVDA", "momentum": 80.0, "rank": 1}],
+            "started": "2026-10-19", "last_rebalance": "2026-10-19", "next_rebalance": "2026-11-02"}
+
+    def test_holdings_get_roles_in_plan_order(self):
+        pos = [{"symbol": "XOM", "market_value": 100.0}, {"symbol": "SGOV", "market_value": 150.0},
+               {"symbol": "NVDA", "market_value": 50.0}, {"symbol": "SPY", "market_value": 700.0}]
+        h = wd.holdings(pos, self.PLAN, 1000.0)
+        self.assertEqual([(x["symbol"], x["role"]) for x in h],
+                         [("SPY", "core"), ("NVDA", "pick"), ("SGOV", "safety"), ("XOM", "leaving")])
+        self.assertEqual((h[0]["target_pct"], h[0]["actual_pct"]), (80.0, 70.0))
+        self.assertEqual((h[1]["momentum"], h[1]["rank"]), (80.0, 1))
+        self.assertEqual(h[3]["target_pct"], 0.0)
+
+    def test_holdings_before_the_first_check(self):
+        h = wd.holdings([{"symbol": "XOM", "market_value": 100.0}], {}, 1000.0)
+        self.assertEqual((h[0]["role"], h[0]["target_pct"]), ("leaving", None))
+
     def test_milestones(self):
-        now = datetime(2026, 10, 17, tzinfo=timezone.utc)
-        card = {"groups": {"model B · all candidates (baseline)": {"5d": {"n": 25}}}}
-        summary = {"baseline": {"closed": 40, "return_pct": 0, "realized_pnl": 0, "max_drawdown_pct": 0},
-                   "swing": {"closed": 31, "return_pct": 1, "realized_pnl": 1, "max_drawdown_pct": 0},
-                   "midday_entries": {"closed": 3, "return_pct": 1, "realized_pnl": 1, "max_drawdown_pct": 0}}
-        m = {x["name"]: x for x in wd.milestones(now, card, {"labelled_weeks": 3, "needs_weeks": 12,
-                                                              "progress": 0.25}, summary)}
-        self.assertAlmostEqual(m["First promotion review"]["progress"], 0.5)      # Oct 1 → Nov 2, day 16
-        self.assertIn("16 days to go · 1 of 2 books have enough data", m["First promotion review"]["detail"])
-        self.assertEqual((m["Second AI model"]["progress"], m["Second AI model"]["detail"]), (0.25, "25 graded"))
-        self.assertEqual(m["Learning model"]["detail"], "3 of 12 weeks")
-        self.assertEqual(wd.milestones(now, {}, {}, {})[1]["progress"], 0.0)       # nothing yet
+        now = datetime(2026, 10, 26, 15, tzinfo=timezone.utc)
+        m = wd.milestones(self.PLAN, now)
+        self.assertEqual([x["name"] for x in m], ["Next re-pick", "Next rule check", "Six-month check vs SPY"])
+        self.assertEqual(m[1]["needs"], "Nov 1")              # first Sunday of November
+        self.assertEqual(m[0]["detail"], "in 7 days")
+        self.assertEqual(m[0]["progress"], 0.5)
+        self.assertEqual(m[2]["needs"], "Apr 19, 2027")
+        self.assertEqual(wd.milestones({}, now)[0]["name"], "First check")
+
+    def test_backtest_view_keeps_the_shown_runs(self):
+        bt = {"start": "2007-07-02", "end": "2026-10-15", "runs": {
+            "charles": {"about": "a", "curve": [["2007-07-02", 1000]], "stats": {"cagr_pct": 15.5, "max_drawdown_pct": -29.1, "yearly": {}}},
+            "charles_no_switch": {"about": "b", "curve": [], "stats": {}}}}
+        v = wd.backtest_view(bt)
+        self.assertEqual(list(v["runs"]), ["charles"])
+        self.assertEqual(v["runs"]["charles"]["cagr_pct"], 15.5)
+        self.assertIsNone(wd.backtest_view({}))
+
+    def test_the_real_backtest_file_has_what_the_page_draws(self):
+        import json
+        with open(wd.BACKTEST) as f:
+            v = wd.backtest_view(json.load(f))
+        self.assertEqual(set(v["runs"]), {"charles", "charles_sectors", "spy"})
+        for r in v["runs"].values():
+            self.assertGreater(len(r["curve"]), 500)
+            self.assertLess(r["max_drawdown_pct"], 0)
+
+    def test_next_evaluation_is_the_first_sunday(self):
+        at = lambda y, mo, d: wd.next_evaluation(datetime(y, mo, d, 15, tzinfo=timezone.utc)).date().isoformat()
+        self.assertEqual(at(2026, 10, 16), "2026-11-01")
+        self.assertEqual(at(2026, 11, 1), "2026-11-01")
+        self.assertEqual(at(2026, 11, 2), "2026-12-06")
+
+    def test_evaluation_view(self):
+        ev = {"generated": "2026-11-01T08:00", "variants": [{"passes": False}, {"passes": True}],
+              "candidate": {"setting": "PICKS", "from": 4, "to": 5}, "live": {"days": 13}}
+        v = wd.evaluation_view(ev)
+        self.assertEqual((v["tested"], v["passing"], v["candidate"]["to"]), (2, 1, 5))
+        self.assertIsNone(wd.evaluation_view(None))

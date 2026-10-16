@@ -1,14 +1,12 @@
 """
-webdash.py — Charles mobile dashboard (port 8502), the lightweight successor to dashboard.py.
+webdash.py — Charles's mobile dashboard (port 8502): one page (web/index.html) + one JSON endpoint.
 
-One page (web/index.html) plus one JSON endpoint (/api/state). Read-only: it reads the
-bot's data/ files, the Alpaca paper account and SPY closes, and never trades. The one write is
-the ORB on/off button (POST /api/orb → data/control/orb_switch.json; anyone who can open the dashboard can use it).
-Python stdlib server, no Streamlit, so it uses a few MB of memory instead of ~1 GB.
-Runs as its own service (charles-web) so it keeps working while the bot restarts.
+Read-only: it reads the bot's data/ files, the Alpaca paper account and SPY closes, and never
+trades. Python stdlib server, a few MB of memory. Runs as its own service (charles-web) so it keeps
+working while the bot restarts. The Kalshi bot's page is passed through under /kalshi/.
 
-Answers, in this order: is the bot healthy, how is it doing vs SPY (return AND worst
-drop, the roadmap goal), what does it hold, how are the experiments doing, what happened.
+Answers, in this order: how is my money doing (vs SPY), what is Charles doing and why (the plan),
+what does it hold, what did it do, and how Claude is tuning the rules.
 """
 import json
 import logging
@@ -19,15 +17,16 @@ from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
 
+import allocator
 import config
 
 log = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
-DATA = os.path.join(ROOT, "data")
+DATA = os.environ.get("WEBDASH_DATA") or os.path.join(ROOT, "data")     # the preview reads a copy
 PAGE = os.path.join(ROOT, "web", "index.html")
+BACKTEST = os.path.join(ROOT, "docs", "backtest.json")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
-# "Add to Home Screen": the manifest and the terrier icons, so the dashboard opens like an app
 STATIC = {"/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
 MANIFEST = json.dumps({
     "name": "Charles", "short_name": "Charles", "start_url": "/", "scope": "/", "display": "standalone",
@@ -36,12 +35,10 @@ MANIFEST = json.dumps({
               {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}],
 }).encode()
 ET = ZoneInfo("America/New_York")
-EVIDENCE_TRADES = 30          # roadmap task 8: closed trades a book needs before promotion
-REVIEW_FROM = "2026-11-02"    # roadmap task 8: first promotion review
-DATA_FROM = "2026-10-01"      # measurement started (shadow books, scorecard)
 JOURNAL = os.path.join(ROOT, "ops", "journal")         # Claude's daily reports (check-up)
-PLAN = os.path.join(ROOT, "ops", "claude-plan.md")     # Claude's own project plan
-MODEL_B_GRADED = 100          # second-model decisions graded at 5 days before comparing
+CLAUDE_PLAN = os.path.join(ROOT, "ops", "claude-plan.md")
+REVIEW_DAYS = 182                                       # the first honest look at the new plan vs SPY
+BACKTEST_SHOWN = ("charles", "charles_sectors", "spy")
 
 
 # ── Pure helpers (tested in tests/test_webdash.py) ────────────────────────────
@@ -57,6 +54,30 @@ def thin_hourly(curve: list) -> list:
             out.append([p["ts"], p["value"]])
             last_hour = hour
     return out
+
+
+def with_history(points: list, daily: list) -> list:
+    """Prepend Alpaca's daily closes from before the equity curve began (it started Jun 3, 2026 with
+    the account already at $1,042), so the chart starts at the real $1,000 start."""
+    first = points[0][0] if points else "9999"
+    return [p for p in daily if p[0] < first] + points
+
+
+def daily_history(timestamps, equities) -> list:
+    """Alpaca 1D portfolio history → [[iso UTC, equity]], from the first funded day. Each daily
+    timestamp is 00:00 UTC after the session (8 PM ET), so it never sits before the close it reports."""
+    out = []
+    for t, e in zip(timestamps, equities):
+        if e or out:
+            out.append([datetime.fromtimestamp(t, timezone.utc).isoformat(), round(float(e or 0), 2)])
+    return out
+
+
+def with_live_point(points: list, value, now: datetime) -> list:
+    """Append the live account value at `now`, so the chart ends where the header does."""
+    if value is None or (points and points[-1][0] >= now.isoformat()):
+        return points
+    return points + [[now.isoformat(), round(float(value), 2)]]
 
 
 def market_status(now: datetime) -> str:
@@ -83,72 +104,95 @@ def spy_return_since(spy: list, day: str):
     return round((spy[-1][1] / start - 1) * 100, 2) if start else None
 
 
-def experiments(summary: dict, spy: list, now: datetime) -> list:
-    """Shadow books as rows, best return first, each with baseline and SPY over its own life."""
-    import shadow_daily
-    base = summary.get("baseline", {})
-    rows = []
-    for name, s in summary.items():
-        daily = name in shadow_daily.STRATEGIES
-        since = (s.get("since") or "")[:10]
-        if daily:      # judged on 3 months of data (roadmap task 8)
-            started = datetime.fromisoformat(since).replace(tzinfo=timezone.utc) if since else now
-            progress = min(1.0, (now - started).days / 91)
-            needs = "3 months of data"
-        else:
-            progress = min(1.0, s.get("closed", 0) / EVIDENCE_TRADES)
-            needs = f"{EVIDENCE_TRADES} closed trades"
-        rows.append({
-            "name": name, "about": s.get("about", ""), "kind": "daily" if daily else "intraday",
-            "since": since, "return_pct": s.get("return_pct"), "max_drawdown_pct": s.get("max_drawdown_pct"),
-            "closed": s.get("closed", 0), "open": s.get("open", 0), "win_pct": s.get("win_pct"),
-            "vs_baseline": (round(s["return_pct"] - base["return_pct"], 2)
-                            if base and name != "baseline" and s.get("return_pct") is not None else None),
-            "spy_pct": spy_return_since(spy, since) if since else None,
-            "progress": round(progress, 2), "needs": needs,
-        })
-    rows.sort(key=lambda r: r["return_pct"] if r["return_pct"] is not None else -1e9, reverse=True)
-    return rows
-
-
-def ai_check(scorecard: dict) -> list:
-    """AI BUY picks vs every candidate the bot looked at, per horizon (from decision_scorecard.json)."""
-    groups = scorecard.get("groups", {})
-    ai, allc = groups.get("AI BUY", {}), groups.get("all candidates (baseline)", {})
+def holdings(positions: list, plan: dict, total: float) -> list:
+    """Account positions with their role in the plan (core / pick / safety / leaving), their target
+    and actual share of the account, and the pick's momentum rank. Biggest first."""
+    s = plan.get("settings") or {}
+    core, safe, agg = s.get("CORE", "SPY"), s.get("SAFE", "SGOV"), s.get("AGG_CORE", "SSO")
+    targets, picks = plan.get("targets") or {}, plan.get("picks") or []
+    ranked = {r["symbol"]: r for r in plan.get("ranked") or []}
     out = []
-    for h in ("1d", "3d", "5d"):
-        if h in ai and h in allc:
-            out.append({"horizon": h, "ai_mean": ai[h]["mean_pct"], "ai_n": ai[h]["n"],
-                        "ai_up": ai[h]["up_pct"], "all_mean": allc[h]["mean_pct"],
-                        "all_n": allc[h]["n"], "all_up": allc[h]["up_pct"]})
+    for p in positions:
+        sym = p["symbol"]
+        in_plan = sym in targets or not targets
+        role = ("core" if sym in (core, agg) and in_plan else "safety" if sym == safe else
+                "pick" if sym in picks else "leaving")
+        r = ranked.get(sym, {})
+        out.append({**p, "role": role, "target_pct": round(targets.get(sym, 0) * 100, 1) if plan else None,
+                    "actual_pct": round(p["market_value"] / total * 100, 1) if total else None,
+                    "momentum": r.get("momentum"), "rank": r.get("rank")})
+    order = {"core": 0, "pick": 1, "safety": 2, "leaving": 3}
+    out.sort(key=lambda h: (order[h["role"]], -h["market_value"]))
     return out
 
 
-def milestones(now: datetime, scorecard: dict, learning: dict, summary: dict) -> list:
-    """What is still collecting data before it can be judged: [{name, about, progress, needs, detail}]."""
-    import promotion
-    day = now.date()
-    start, review = datetime.fromisoformat(DATA_FROM).date(), datetime.fromisoformat(REVIEW_FROM).date()
-    span = max(1, (review - start).days)
-    books = [v for n, v in promotion.review(summary, [], [], now)["books"].items() if n != "baseline"] \
-        if summary else []
-    enough = sum(v["checks"][0]["passed"] for v in books)          # first check = amount of evidence
-    left = (review - day).days
-    out = [{"name": "First promotion review", "about": "Shadow books that beat the live rules can go live, one at a time.",
-            "progress": round(min(1.0, max(0, (day - start).days) / span), 2),
-            "needs": "Nov 2", "detail": (f"{left} days to go" if left > 0 else "open")
-                                        + f" · {enough} of {len(books)} books have enough data"}]
-    model_b = scorecard.get("groups", {}).get("model B · all candidates (baseline)", {}).get("5d", {}).get("n", 0)
-    out.append({"name": "Second AI model", "about": "A bigger model answers the same questions; it replaces the "
-                "live AI only if its picks do better.", "progress": round(min(1.0, model_b / MODEL_B_GRADED), 2),
-                "needs": f"{MODEL_B_GRADED} graded picks", "detail": f"{model_b} graded"})
-    lw, nw = learning.get("labelled_weeks", 0), learning.get("needs_weeks", 12)
-    res = learning.get("result") or {}
-    out.append({"name": "Learning model", "about": "Charles learns from its own past decisions which setups "
-                "actually went up.", "progress": learning.get("progress", 0.0), "needs": f"{nw} weeks of decisions",
-                "detail": ("beats the AI and 'always up'" if res.get("beats_both") else
-                           "trained, not better yet" if res else f"{lw} of {nw} weeks")})
+def next_evaluation(now: datetime) -> datetime:
+    """The rule check runs on the first Sunday of each month (charles-evaluate.timer, 3 AM ET)."""
+    d = now.astimezone(ET).date()
+    for months in (0, 1):
+        y, m = d.year + (d.month + months - 1) // 12, (d.month + months - 1) % 12 + 1
+        first = datetime(y, m, 1).date()
+        sunday = first + timedelta(days=(6 - first.weekday()) % 7)
+        if sunday >= d:
+            return datetime(sunday.year, sunday.month, sunday.day, tzinfo=ET)
+    return datetime(d.year, d.month, d.day, tzinfo=ET)
+
+
+def evaluation_view(ev: dict | None) -> dict | None:
+    """data/evaluation.json trimmed to the Self-Tune tab's one verdict."""
+    if not ev:
+        return None
+    rows = ev.get("variants") or []
+    return {"generated": ev.get("generated"), "tested": len(rows), "passing": sum(r.get("passes", False) for r in rows),
+            "candidate": ev.get("candidate"), "live": ev.get("live") or {}}
+
+
+def milestones(plan: dict, now: datetime, ev: dict | None = None) -> list:
+    """Progress bars: the next monthly re-pick, the next rule check, and the six-month check vs SPY."""
+    started = plan.get("started")
+    if not started:
+        return [{"name": "First check", "about": "Charles sets up the plan at the first 10:00 AM ET check after the switch.",
+                 "progress": 0.0, "needs": "the first check", "detail": "not yet"}]
+    today = now.astimezone(ET).date()
+    start = datetime.fromisoformat(started).date()
+    out = []
+    nxt = plan.get("next_rebalance")
+    if nxt:
+        n = datetime.fromisoformat(nxt).date()
+        last = datetime.fromisoformat(plan.get("last_rebalance") or started).date()
+        span = max(1, (n - last).days)
+        left = max(0, (n - today).days)
+        out.append({"name": "Next re-pick", "about": "Once a month Charles re-ranks the stocks and checks the safety switch.",
+                    "progress": round(min(1.0, (today - last).days / span), 2), "needs": f"{n:%b} {n.day}",
+                    "detail": "today" if left == 0 else f"in {left} day{'s' if left != 1 else ''}"})
+    nxt_ev = next_evaluation(now).date()
+    last_ev = datetime.fromisoformat(ev["generated"]).date() if ev and ev.get("generated") else start
+    span = max(1, (nxt_ev - last_ev).days)
+    left = (nxt_ev - today).days
+    out.append({"name": "Next rule check", "about": "Claude tests small changes to the plan's numbers on 19 years of history.",
+                "progress": round(min(1.0, max(0, (today - last_ev).days) / span), 2), "needs": f"{nxt_ev:%b} {nxt_ev.day}",
+                "detail": "today" if left <= 0 else f"in {left} day{'s' if left != 1 else ''}"})
+    review = start + timedelta(days=REVIEW_DAYS)
+    left = (review - today).days
+    out.append({"name": "Six-month check vs SPY", "about": "The first fair look at whether the new plan earns its keep.",
+                "progress": round(min(1.0, max(0, (today - start).days) / REVIEW_DAYS), 2),
+                "needs": f"{review:%b} {review.day}, {review.year}", "detail": f"{left} days to go" if left > 0 else "due"})
     return out
+
+
+def backtest_view(bt: dict) -> dict | None:
+    """The backtest file trimmed to what the Plan tab draws."""
+    if not bt or "runs" not in bt:
+        return None
+    runs = {}
+    for name in BACKTEST_SHOWN:
+        r = bt["runs"].get(name)
+        if r:
+            st = r.get("stats", {})
+            runs[name] = {"about": r.get("about"), "curve": r.get("curve", []),
+                          **{k: st.get(k) for k in ("cagr_pct", "max_drawdown_pct", "final", "worst_year", "best_year")},
+                          "yearly": st.get("yearly", {})}
+    return {"start": bt.get("start"), "end": bt.get("end"), "runs": runs}
 
 
 def latest_journal(folder: str = JOURNAL) -> dict | None:
@@ -163,12 +207,45 @@ def latest_journal(folder: str = JOURNAL) -> dict | None:
         return {"date": names[-1][:10], "text": f.read()[:20000], "count": len(names)}
 
 
-def _text(path):
-    try:
-        with open(path) as f:
-            return f.read()[:20000]
-    except FileNotFoundError:
-        return None
+def json_safe(x):
+    """NaN/inf → None anywhere in the state: browsers reject NaN in JSON (the whole page goes offline)."""
+    if isinstance(x, float):
+        return x if x == x and x not in (float("inf"), float("-inf")) else None
+    if isinstance(x, dict):
+        return {k: json_safe(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [json_safe(v) for v in x]
+    return x
+
+
+def clean_closes(pairs) -> list:
+    """[(date, close)] → [[day, close]] without missing (NaN) closes, which are not valid JSON."""
+    return [[str(d.date()), round(float(v), 2)] for d, v in pairs if v == v and v is not None]
+
+
+def dividend_adjust(hourly: list, factors: dict) -> list:
+    """Scale hourly closes by their day's dividend factor (adjusted / raw daily close), so the chart's
+    SPY includes dividends like the daily closes and the headline do."""
+    out = []
+    for t, v in hourly:
+        day = str(datetime.fromisoformat(t).astimezone(ET).date())
+        out.append([t, round(v * factors.get(day, 1.0), 2)])
+    return out
+
+
+def hourly_closes(rows, now: datetime | None = None) -> list:
+    """[(bar start, close)] hourly SPY bars → [[iso UTC time the bar ENDED, close]], dropping NaNs
+    and the bar still forming, so the chart never uses a close that hadn't happened yet."""
+    now = now or datetime.now(timezone.utc)
+    out = []
+    for start, v in rows:
+        if v != v or v is None:
+            continue
+        start = start.astimezone(ET)
+        end = min(start + timedelta(hours=1), start.replace(hour=16, minute=0, second=0, microsecond=0))
+        if end <= now:
+            out.append([end.astimezone(timezone.utc).isoformat(timespec="minutes"), round(float(v), 2)])
+    return out
 
 
 # ── Data sources (cached; any failure becomes a missing section, never a crash) ──
@@ -192,44 +269,32 @@ def _cached(key, ttl, fn):
     return val
 
 
-def _read(name, default=None):
+def _read(name, default=None, folder=None):
     try:
-        with open(os.path.join(DATA, name)) as f:
+        with open(os.path.join(folder or DATA, name)) as f:
             return json.load(f)
     except Exception:
         return default
 
 
+def _text(path):
+    try:
+        with open(path) as f:
+            return f.read()[:20000]
+    except FileNotFoundError:
+        return None
+
+
 def _account():
     import alpaca_executor
-    acct = alpaca_executor.get_account_summary()
-    return acct or None
+    return alpaca_executor.get_account_summary() or None
 
 
-def exits_summary(history: list) -> dict:
-    """How much of their best gain closed trades kept (from position_tracker's history)."""
-    rows = [h for h in history if h.get("gave_back") is not None]
-    return {"rows": [{k: h.get(k) for k in ("symbol", "closed", "peak_pnl", "peak_pct", "exit_pnl", "gave_back",
-                                             "exit_source")} for h in rows[-40:]][::-1],
-            "n": len(rows), "peak_total": round(sum(h["peak_pnl"] for h in rows), 2),
-            "exit_total": round(sum(h["exit_pnl"] for h in rows), 2),
-            "gave_back_total": round(sum(max(0, h["gave_back"]) for h in rows), 2)}
-
-
-def json_safe(x):
-    """NaN/inf → None anywhere in the state: browsers reject NaN in JSON (the whole page goes offline)."""
-    if isinstance(x, float):
-        return x if x == x and x not in (float("inf"), float("-inf")) else None
-    if isinstance(x, dict):
-        return {k: json_safe(v) for k, v in x.items()}
-    if isinstance(x, (list, tuple)):
-        return [json_safe(v) for v in x]
-    return x
-
-
-def clean_closes(pairs) -> list:
-    """[(date, close)] → [[day, close]] without missing (NaN) closes, which are not valid JSON."""
-    return [[str(d.date()), round(float(v), 2)] for d, v in pairs if v == v and v is not None]
+def _history():
+    import alpaca_executor
+    from alpaca.trading.requests import GetPortfolioHistoryRequest
+    h = alpaca_executor._client().get_portfolio_history(GetPortfolioHistoryRequest(period="1A", timeframe="1D"))
+    return daily_history(h.timestamp, h.equity)
 
 
 def _spy():
@@ -237,25 +302,23 @@ def _spy():
     return clean_closes(yf.Ticker("SPY").history(start="2026-05-01")["Close"].items())
 
 
-def hourly_closes(rows, now: datetime | None = None) -> list:
-    """[(bar start, close)] hourly SPY bars → [[iso UTC time the bar ENDED, close]] (bars end on the
-    hour or at the 4 PM close), dropping NaNs and the bar still forming. The chart prices SPY as of
-    each Charles point from these, so it never uses a close that hadn't happened yet."""
-    now = now or datetime.now(timezone.utc)
-    out = []
-    for start, v in rows:
-        if v != v or v is None:
-            continue
-        start = start.astimezone(ET)
-        end = min(start + timedelta(hours=1), start.replace(hour=16, minute=0, second=0, microsecond=0))
-        if end <= now:
-            out.append([end.astimezone(timezone.utc).isoformat(timespec="minutes"), round(float(v), 2)])
-    return out
-
-
 def _spy_hourly():
     import yfinance as yf
-    return hourly_closes(yf.Ticker("SPY").history(start="2026-05-01", interval="60m")["Close"].items())
+    t = yf.Ticker("SPY")
+    d = t.history(start="2026-05-01", auto_adjust=False)
+    factors = {str(i.date()): float(a / c) for i, a, c in zip(d.index, d["Adj Close"], d["Close"]) if c == c and a == a}
+    return dividend_adjust(hourly_closes(t.history(start="2026-05-01", interval="60m")["Close"].items()), factors)
+
+
+def _rules() -> dict:
+    """The plan's numbers now (strategy.json over the defaults) and the note on the last change."""
+    import strategy_settings
+    try:
+        with open(strategy_settings.PATH) as f:
+            note = json.load(f).get("last_change")
+    except Exception:
+        note = None
+    return {"settings": {**allocator.DEFAULTS, **strategy_settings.load()}, "last_change": note}
 
 
 def _bot_running() -> bool:
@@ -265,78 +328,45 @@ def _bot_running() -> bool:
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             return b"main.py" in f.read()
     except Exception:
-        return False
-
-
-def _options():
-    import options_bot
-    return options_bot.summary()
-
-
-def _orb():
-    import orb
-    return orb.summary()
-
-
-def _shadow_summary():
-    import shadow
-    return shadow.summary()
+        return os.environ.get("WEBDASH_PREVIEW") == "1"
 
 
 def build_state() -> dict:
     now = datetime.now(timezone.utc)
     acct = _cached("account", 20, _account) or {}
     spy = _cached("spy", 3600, _spy) or []
-    spy_hourly = _cached("spy_hourly", 900, _spy_hourly) or []
-    stops = _read("trailing_stops.json", {})
     daily = _read("daily_loss.json", {})
-    perf = _read("performance.json", {})
     trades = _read("trades.json", [])
-    latest = _read("latest.json", {})
-    watch = _read("watchlist.json", {})
-
-    import position_tracker
-    paths = position_tracker.current()
-    positions = []
-    for p in acct.get("positions", []):
-        st = stops.get(p["symbol"], {})
-        stop = st.get("stop")
-        path = paths.get(p["symbol"], {})
-        positions.append({**p, "stop": stop, "peak_pnl": path.get("peak_pnl"), "peak_pct": path.get("peak_pct"),
-                          "peak_ts": path.get("peak_ts"), "trough_pnl": path.get("trough_pnl"),
-                          "stop_dist_pct": round((p["current_price"] / stop - 1) * 100, 1) if stop else None})
-    positions.sort(key=lambda p: p["market_value"], reverse=True)
-
+    plan = _read("plan.json", {})
     today = str(now.astimezone(ET).date())
+    history = _cached("history", 21600, _history) or []
+    start_day = str((datetime.fromisoformat(history[0][0]).astimezone(ET) + timedelta(days=1)).date()) \
+        if history else None
+    total = acct.get("total_value") or 0
     return {
         "generated_at": now.isoformat(),
+        "preview": os.environ.get("WEBDASH_PREVIEW") == "1",
         "bot_running": _bot_running(),
         "market": market_status(now),
-        "last_cycle": latest.get("collected_at"),
         "account": {k: acct.get(k) for k in ("total_value", "cash", "invested", "total_return",
-                                              "total_return_pct", "open_positions")} if acct else None,
+                                              "total_return_pct", "open_positions", "day_change")} if acct else None,
         "start_cash": config.VIRTUAL_CASH,
-        "today": {"pnl": daily.get("loss", 0) if daily.get("date") == today else 0.0,
-                  "halted": bool(daily.get("halted")) and daily.get("date") == today,
-                  "limit": config.MAX_DAILY_LOSS},
-        "stats": {k: perf.get(k) for k in ("win_rate", "total_closed", "total_pnl", "avg_win", "avg_loss")},
-        "equity": _cached("equity", 60, lambda: thin_hourly(_read("equity_curve.json", []))) or [],
+        "today": {"halted": bool(daily.get("halted")) and daily.get("date") == today, "limit": config.MAX_DAILY_LOSS},
+        "equity": with_live_point(with_history(_cached("equity", 60, lambda: thin_hourly(_read("equity_curve.json", []))) or [],
+                                               history), acct.get("total_value"), now),
+        "since_start": {"day": start_day, "spy_pct": spy_return_since(spy, start_day) if start_day else None},
         "spy": spy,
-        "spy_hourly": spy_hourly,
-        "positions": positions,
-        "experiments": experiments(_cached("shadow", 60, _shadow_summary) or {}, spy, now),
-        "review_from": REVIEW_FROM,
-        "ai_check": ai_check(_read("decision_scorecard.json", {})),
+        "spy_hourly": _cached("spy_hourly", 900, _spy_hourly) or [],
+        "plan": plan or None,
+        "positions": holdings(acct.get("positions", []), plan, total),
+        "names": allocator.NAMES,
         "trades": [{k: t.get(k) for k in ("timestamp", "symbol", "action", "value", "pnl", "pnl_pct",
-                                          "reasoning", "source")} for t in trades[-40:]][::-1],
-        "watchlist": watch.get("stocks", []),
-        "options": _cached("options", 30, _options) or {},
-        "orb": _cached("orb", 20, _orb) or {},
-        "exits": exits_summary(position_tracker.history()),
-        "claude": {"report": latest_journal(), "plan": _text(PLAN),
-                   "milestones": milestones(now, _read("decision_scorecard.json", {}),
-                                            _read("learning_model.json", {}),
-                                            _cached("shadow", 60, _shadow_summary) or {})},
+                                          "reasoning", "source")} for t in trades[-60:]][::-1],
+        "backtest": _cached("backtest", 3600, lambda: backtest_view(_read(BACKTEST))),
+        "milestones": milestones(plan, now, _read("evaluation.json")),
+        "evaluation": evaluation_view(_read("evaluation.json")),
+        "rules": _rules(),
+        "claude": {"report": latest_journal(), "plan": _text(CLAUDE_PLAN)},
     }
 
 
@@ -391,25 +421,6 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, body, "application/json")
         else:
             self._send(404, b"not found", "text/plain")
-
-    def do_POST(self):
-        if self.path.split("?")[0] != "/api/orb":
-            return self._send(404, b"not found", "text/plain")
-        try:
-            n = int(self.headers.get("Content-Length") or 0)
-            if not self.headers.get("Content-Type", "").startswith("application/json") or not 0 < n <= 200:
-                raise ValueError("expected a small JSON body")
-            on = json.loads(self.rfile.read(n))["on"]
-            if not isinstance(on, bool):
-                raise ValueError("'on' must be true or false")
-        except (ValueError, KeyError, TypeError) as e:
-            return self._send(400, json.dumps({"error": str(e)}).encode(), "application/json")
-        import orb
-        rec = orb.set_switch(on, "dashboard")
-        with _lock:
-            _cache.pop("orb", None)
-            _cache.pop("state", None)
-        self._send(200, json.dumps(rec).encode(), "application/json")
 
     def log_message(self, *args):       # keep the journal quiet
         pass

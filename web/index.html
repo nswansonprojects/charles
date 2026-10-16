@@ -22,7 +22,7 @@
   --series-1: #2a78d6; --ref: #8f8e86;
   --good: #0ca30c; --good-ink: #087a08; --warn: #fab219; --critical: #d03b3b; --critical-ink: #b22f2f;
   --accent-soft: rgba(42,120,214,.10);
-  --c1: #2a78d6; --c2: #eb6834; --c3: #1baf7a; --c4: #eda100; --c5: #e87ba4; --c6: #008300; --c7: #4a3aa7; --c8: #e34948;
+  --core: #2a78d6; --pick: #4a3aa7; --safe: #eda100; --leaving: #eb6834; --cash: #d9d8d3;
   --shadow: 0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
 }
 @media (prefers-color-scheme: dark) {
@@ -32,7 +32,7 @@
     --text: #ffffff; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
     --series-1: #3987e5; --ref: #8f8e86;
     --good-ink: #3fcf3f; --critical-ink: #ff7b7b; --accent-soft: rgba(57,135,229,.16);
-    --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
+    --core: #3987e5; --pick: #9085e9; --safe: #c98500; --leaving: #d95926; --cash: #3a3a37;
     --shadow: 0 1px 2px rgba(0,0,0,.4);
   }
 }
@@ -42,7 +42,7 @@
   --text: #ffffff; --text-2: #c3c2b7; --muted: #8f8e86; --grid: #2a2a27;
   --series-1: #3987e5; --ref: #8f8e86;
   --good-ink: #3fcf3f; --critical-ink: #ff7b7b; --accent-soft: rgba(57,135,229,.16);
-  --c1: #3987e5; --c2: #d95926; --c3: #199e70; --c4: #c98500; --c5: #d55181; --c6: #008300; --c7: #9085e9; --c8: #e66767;
+  --core: #3987e5; --pick: #9085e9; --safe: #c98500; --leaving: #d95926; --cash: #3a3a37;
   --shadow: 0 1px 2px rgba(0,0,0,.4);
 }
 * { box-sizing: border-box; }
@@ -54,178 +54,58 @@ body {
 }
 .num { font-variant-numeric: tabular-nums; }
 .up { color: var(--good-ink); } .down { color: var(--critical-ink); } .muted { color: var(--muted); } .flat { color: var(--text-2); }
+.small { font-size: 12.5px; }
+.right { text-align: right; }
 
-.appswitch { display: inline-flex; background: var(--surface-2, rgba(127,127,127,.12)); border-radius: 10px; padding: 3px; gap: 2px; }
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
+.bar { max-width: 1180px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 8px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; margin-right: auto; }
+.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--series-1); display: grid; place-items: center; flex: none; }
 .appswitch[hidden] { display: none; }
+.appswitch { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
 .appswitch a { font-size: 13px; font-weight: 600; text-decoration: none; color: var(--text-2); padding: 5px 12px; border-radius: 8px; }
 .appswitch a.on { background: var(--surface); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
-header {
-  position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--bg) 85%, transparent);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
-  padding-top: env(safe-area-inset-top);
-}
-.bar { max-width: 1180px; margin: 0 auto; padding: 12px 16px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 17px; letter-spacing: -.01em; margin-right: auto; }
-.logo { width: 28px; height: 28px; border-radius: 8px; background: var(--series-1); display: grid; place-items: center; }
 .chip { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; padding: 4px 10px;
   border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); white-space: nowrap; }
-.chip.paper { background: var(--accent-soft); border-color: transparent; color: var(--series-1); }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.chip.practice { background: var(--accent-soft); border-color: transparent; color: var(--series-1); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
 .dot.good { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 22%, transparent); }
 .dot.bad { background: var(--critical); }
 .dot.warn { background: var(--warn); }
 button.icon { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); width: 32px; height: 32px;
-  border-radius: 8px; cursor: pointer; display: grid; place-items: center; }
+  border-radius: 8px; cursor: pointer; display: grid; place-items: center; flex: none; }
 .tabs { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; }
 .tabs button { border: 0; background: transparent; color: var(--text-2); font: inherit; font-size: 12.5px; font-weight: 600;
   padding: 5px 11px; border-radius: 8px; cursor: pointer; }
 .tabs button.on { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
 #tabs-top { display: none; }
-button.switch { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; font-weight: 600; padding: 4px 10px;
-  border-radius: 999px; border: 1px solid var(--border); background: var(--surface); color: var(--text-2); cursor: pointer; min-height: 32px; }
-button.switch[aria-checked="true"] { color: var(--good-ink); }
-button.switch:disabled { opacity: .6; cursor: progress; }
+.preview-note { max-width: 1180px; margin: 12px auto 0; padding: 0 16px; }
+.preview-note div { background: color-mix(in srgb, var(--warn) 18%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  border-radius: 12px; padding: 10px 14px; font-size: 13.5px; }
 
+/* layout + cards */
 main { max-width: 1180px; margin: 0 auto; padding: 16px; }
-.view { display: none; } .view.on { display: block; }
+.view { display: none; } .view.on { display: block; animation: view-in .28s cubic-bezier(.2,.8,.2,1); }
+@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .grid { display: grid; gap: 16px; }
-.home > .col { display: contents; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 18px; box-shadow: var(--shadow); min-width: 0; }
 .card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; }
 .card-head h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--text-2); }
 .card-head .aside { margin-left: auto; font-size: 12px; color: var(--muted); }
+.page-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin: 2px 2px 4px; }
+.page-sub { color: var(--muted); font-size: 14px; margin: 0 2px 14px; }
 .label { font-size: 12.5px; color: var(--muted); }
-.hero-val { font-size: clamp(36px, 9vw, 52px); font-weight: 700; letter-spacing: -.03em; line-height: 1.05; margin: 6px 0 8px; }
-.delta { display: flex; gap: 6px 14px; flex-wrap: wrap; font-weight: 600; font-size: 14px; }
-.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
-.kpi { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; min-width: 0; }
-.kpi .v { font-size: 18px; font-weight: 650; letter-spacing: -.01em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.meter { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; margin-top: 8px; }
-.meter > i { display: block; height: 100%; border-radius: 3px; background: var(--series-1); }
-.limit { margin-top: 16px; }
-.limit .row { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
-.banner { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-weight: 600; font-size: 13.5px; display: flex; gap: 8px; align-items: center;
-  background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--critical-ink); }
-
-.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-2); flex-wrap: wrap; }
-.key { display: inline-flex; align-items: center; gap: 6px; }
-.key svg { display: block; }
-.chart { position: relative; height: 240px; margin-top: 8px; }
-.chart > svg { width: 100%; height: 100%; display: block; touch-action: pan-y; }
-.chart > svg:focus { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 8px; }
-.axis text { fill: var(--muted); font-size: 11px; }
-.tip { position: absolute; top: 6px; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.12); min-width: 200px; white-space: nowrap; display: none; z-index: 2; }
-.tip .t { color: var(--muted); margin-bottom: 4px; }
-.tip .r { display: flex; align-items: center; gap: 8px; }
-.tip .r b { margin-left: auto; font-weight: 650; }
-.versus { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
-.vs { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
-.vs .row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 4px; }
-.verdict { margin-top: 12px; font-size: 13.5px; display: flex; gap: 8px; align-items: flex-start; }
-.verdict .ico { font-weight: 700; }
-details summary { cursor: pointer; font-size: 12.5px; color: var(--text-2); margin-top: 10px; }
-
-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11.5px; padding: 0 8px 8px; border-bottom: 1px solid var(--border); white-space: nowrap; }
-td { padding: 8px; border-bottom: 1px solid var(--border); }
-td.r, th.r { text-align: right; }
-.tbl { overflow-x: auto; max-height: 320px; }
-
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chips .chip { font-size: 13px; }
-.alloc { display: flex; gap: 2px; height: 12px; border-radius: 6px; overflow: hidden; margin: 4px 0 12px; }
-.alloc i { display: block; height: 100%; }
-.alloc i:first-child { border-radius: 4px 0 0 4px; } .alloc i:last-child { border-radius: 0 4px 4px 0; }
-.alloc-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--text-2); }
-.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
-
-.rows { display: grid; }
-.row-i { display: grid; grid-template-columns: 1fr auto; gap: 3px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
-.row-i:last-child { border-bottom: 0; }
-.sym { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
-.small { font-size: 12.5px; }
-.right { text-align: right; }
-.stopbar { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-top: 4px; }
-.stopbar .meter { flex: 1; margin: 0; height: 5px; }
-
-.exp { padding: 14px 0; border-bottom: 1px solid var(--border); }
-.exp:last-child { border-bottom: 0; }
-.exp-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.exp-name { font-weight: 650; text-transform: capitalize; }
-.tag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); margin-left: 6px; vertical-align: 1px; }
-.exp-about { font-size: 12.5px; color: var(--muted); margin: 2px 0 10px; }
-.exp-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; font-size: 13px; }
-.exp-stats .label { font-size: 11.5px; }
-.prog { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
-.prog .meter { flex: 1; margin: 0; height: 5px; }
-.ai-h { display: grid; grid-template-columns: 34px 1fr; gap: 6px 10px; align-items: center; margin-top: 14px; font-size: 13px; }
-.hb { display: flex; align-items: center; gap: 8px; }
-.hbar { height: 8px; border-radius: 0 4px 4px 0; background: var(--series-1); min-width: 2px; }
-.hbar.all { background: var(--ref); }
-.hbar.neg { background: var(--critical); }
 .note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
-
-.day { font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 2px; }
-.day:first-child { margin-top: 0; }
-.act { display: grid; grid-template-columns: 56px 1fr auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--border); }
-.badge { font-size: 11px; font-weight: 700; text-align: center; padding: 3px 0; border-radius: 6px; }
-.badge.BUY { background: var(--accent-soft); color: var(--series-1); }
-.badge.SELL { background: color-mix(in srgb, var(--c2) 14%, transparent); color: var(--c2); }
-.why { font-size: 12.5px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; }
-.md { font-size: 14px; line-height: 1.55; }
-.md h3 { font-size: 14px; font-weight: 650; margin: 16px 0 6px; }
-.md h3:first-child { margin-top: 0; }
-.md h4 { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 4px; }
-.md p { margin: 6px 0; }
-.md ul { margin: 4px 0; padding-left: 18px; }
-.md li { margin: 3px 0; }
-.md code { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
-.mile { padding: 12px 0; border-bottom: 1px solid var(--border); }
-.mile:last-child { border-bottom: 0; }
-.mile-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
-.mile-top b { font-weight: 650; }
 .empty { color: var(--muted); font-size: 13.5px; padding: 18px 0; text-align: center; }
+details summary { cursor: pointer; font-size: 13px; color: var(--text-2); font-weight: 600; }
+details[open] summary { margin-bottom: 8px; }
 
-nav#tabs {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 6; display: grid; grid-template-columns: repeat(5, 1fr);
-  background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
-  border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
-}
-nav button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600;
-  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; cursor: pointer; }
-nav button svg { width: 22px; height: 22px; }
-nav button.on { color: var(--series-1); }
-
-@media (min-width: 860px) {
-  body { padding-bottom: 32px; }
-  nav#tabs { display: none; }
-  #tabs-top { display: inline-flex; }
-  .home { grid-template-columns: 1fr 1.5fr; align-items: start; }
-  .home > .col { display: flex; flex-direction: column; gap: 16px; }
-  .two { grid-template-columns: 1fr 1fr; }
-  .chart { height: 280px; }
-}
-@media (max-width: 400px) {
-  .kpi .v { font-size: 15.5px; }
-  .exp-stats { grid-template-columns: repeat(2, 1fr); }
-  .bar .chip.paper { display: none; }
-}
-
-/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
-.view.on { animation: view-in .28s cubic-bezier(.2,.8,.2,1); }
-@keyframes view-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-.page-title { font-size: 28px; font-weight: 700; letter-spacing: -.025em; margin: 2px 2px 14px; }
-.loading .hero-val, .loading .kpi .v { color: transparent; border-radius: 8px; width: fit-content; min-width: 60%;
-  background: linear-gradient(90deg, var(--surface-2) 30%, var(--border) 50%, var(--surface-2) 70%) 0 0 / 300% 100%;
-  animation: shimmer 1.2s linear infinite; }
-.loading .kpi .v { min-width: 70%; }
-@keyframes shimmer { to { background-position: -150% 0; } }
-
-.brief-card { margin-bottom: 16px; }
+/* briefing */
 .brief { display: flex; gap: 12px; align-items: center; }
-.brief .logo { width: 44px; height: 44px; border-radius: 12px; flex: none; }
-.brief .logo svg { width: 40px; height: 40px; }
+.brief .logo { width: 48px; height: 48px; border-radius: 14px; }
+.brief .logo svg { width: 44px; height: 44px; }
 .brief h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
 .brief-list { display: grid; gap: 2px; margin-top: 12px; }
 .bl { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; text-align: left; width: 100%;
@@ -240,13 +120,151 @@ button.bl:hover { background: var(--surface-2); }
 .bi.info { background: var(--accent-soft); color: var(--series-1); }
 .chev { color: var(--muted); width: 16px; height: 16px; }
 
-/* rows that open the detail sheet */
-.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px;
-  transition: background .15s, transform .1s; }
+/* portfolio */
+.hero-val { font-size: clamp(38px, 10vw, 54px); font-weight: 700; letter-spacing: -.03em; line-height: 1.05; margin: 4px 0 8px; }
+.delta { display: flex; gap: 6px 12px; flex-wrap: wrap; font-weight: 600; font-size: 14px; align-items: baseline; }
+.vs-spy { flex-basis: 100%; font-size: 13px; font-weight: 500; }
+.kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }
+.kpi { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+.kpi .v { font-size: 18px; font-weight: 650; letter-spacing: -.01em; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.banner { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-weight: 600; font-size: 13.5px;
+  background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--critical-ink); }
+.loading .hero-val, .loading .kpi .v { color: transparent; border-radius: 8px; width: fit-content; min-width: 60%;
+  background: linear-gradient(90deg, var(--surface-2) 30%, var(--border) 50%, var(--surface-2) 70%) 0 0 / 300% 100%; animation: shimmer 1.2s linear infinite; }
+.loading .kpi .v { min-width: 70%; }
+@keyframes shimmer { to { background-position: -150% 0; } }
+
+/* chart */
+.legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--text-2); flex-wrap: wrap; }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.key svg { display: block; }
+.chart { position: relative; height: 230px; margin-top: 8px; }
+.chart > svg { width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.chart > svg:focus { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 8px; }
+.axis text { fill: var(--muted); font-size: 11px; }
+.mark text { fill: var(--text-2); font-size: 11px; font-weight: 600; }
+.tip { position: absolute; top: 6px; pointer-events: none; background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 24px rgba(0,0,0,.12); min-width: 190px; white-space: nowrap; display: none; z-index: 2; }
+.tip .t { color: var(--muted); margin-bottom: 4px; }
+.tip .r { display: flex; align-items: center; gap: 8px; }
+.tip .r b { margin-left: auto; font-weight: 650; }
+.versus { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+.vs { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.vs .row { display: flex; justify-content: space-between; font-size: 14px; margin-top: 4px; }
+
+/* the safety switch gauge */
+.mode-pill { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+.mode-pill .bi { width: 34px; height: 34px; border-radius: 10px; }
+.mode-pill .bi svg { width: 19px; height: 19px; }
+.gauge { position: relative; height: 34px; margin: 18px 4px 4px; }
+.gauge .track { position: absolute; left: 0; right: 0; top: 13px; height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--safe) 55%, transparent), var(--surface-2) 50%, color-mix(in srgb, var(--good) 45%, transparent)); }
+.gauge .zero { position: absolute; left: 50%; top: 6px; width: 2px; height: 22px; background: var(--text-2); border-radius: 1px; }
+.gauge .needle { position: absolute; top: 7px; width: 20px; height: 20px; margin-left: -10px; border-radius: 50%;
+  background: var(--surface); border: 3px solid var(--series-1); box-shadow: 0 1px 4px rgba(0,0,0,.2); transition: left .6s cubic-bezier(.2,.8,.2,1); }
+.gauge-keys { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--muted); }
+.gauge-keys b { color: var(--text-2); font-weight: 600; }
+.mode-text { font-size: 14px; margin: 12px 0 0; }
+.calm { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; margin-top: 14px; }
+.calm[hidden] { display: none; }
+.calm .meter { position: relative; height: 6px; overflow: visible; }
+.calm .meter b { position: absolute; top: -4px; width: 2px; height: 14px; background: var(--text-2); border-radius: 1px; }
+
+/* allocation */
+.alloc-row { display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: center; margin: 8px 0; }
+.alloc { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; background: var(--surface-2); }
+.alloc i { display: block; height: 100%; }
+.alloc-keys { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--text-2); margin-top: 10px; }
+.sw { width: 10px; height: 10px; border-radius: 3px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+/* rows */
+.group { font-size: 12px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin: 18px 0 2px;
+  display: flex; align-items: center; gap: 8px; }
+.group:first-child { margin-top: 0; }
+.group .aside { margin-left: auto; text-transform: none; letter-spacing: 0; font-weight: 500; }
+.row-i { display: grid; grid-template-columns: 1fr auto; gap: 2px 12px; padding: 12px 0; border-bottom: 1px solid var(--border); align-items: baseline; }
+.row-i:last-child { border-bottom: 0; }
+.sym { font-weight: 700; font-size: 16px; letter-spacing: -.01em; }
+.tag { font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+.tag.pick { background: color-mix(in srgb, var(--pick) 15%, transparent); color: var(--pick); }
+.tag.veto { background: color-mix(in srgb, var(--critical) 12%, transparent); color: var(--critical-ink); }
+.tag.old { background: color-mix(in srgb, var(--leaving) 14%, transparent); color: var(--leaving); }
+.tap { cursor: pointer; -webkit-tap-highlight-color: transparent; border-radius: 10px; margin: 0 -8px; padding-left: 8px; padding-right: 8px; transition: background .15s, transform .1s; }
 .tap:hover { background: var(--surface-2); }
 .tap:active { transform: scale(.99); }
 .tap:focus-visible { outline: 2px solid var(--series-1); outline-offset: -2px; }
 
+/* plan steps */
+.steps { display: grid; gap: 12px; }
+.step { display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: start; }
+.step .n { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-weight: 700; color: #fff; }
+.step h3 { margin: 2px 0 2px; font-size: 15.5px; }
+.step p { margin: 0; color: var(--text-2); font-size: 14px; }
+.step .now { margin-top: 6px; font-size: 13px; font-weight: 600; }
+
+/* ranking */
+.rank { display: grid; grid-template-columns: 26px minmax(0, 1fr) minmax(70px, 34%) 58px; gap: 4px 10px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.rank:last-child { border-bottom: 0; }
+.rank .k { color: var(--muted); font-weight: 600; font-size: 12.5px; text-align: right; }
+.rank .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rank .why { grid-column: 2 / -1; font-size: 12.5px; color: var(--muted); }
+.hb { display: flex; align-items: center; }
+.hbar { height: 8px; border-radius: 0 4px 4px 0; background: var(--pick); min-width: 2px; }
+.hbar.off { background: var(--ref); opacity: .55; }
+
+/* backtest */
+.bt-stats { display: grid; grid-template-columns: 1fr auto auto; gap: 8px 14px; font-size: 14px; margin-top: 14px; align-items: baseline; }
+.bt-stats .h { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.caveat { margin-top: 14px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13px; color: var(--text-2); }
+
+/* activity */
+.day { font-size: 12px; font-weight: 600; color: var(--muted); margin: 16px 0 2px; }
+.day:first-child { margin-top: 0; }
+.act { display: grid; grid-template-columns: 50px 1fr auto; gap: 10px; align-items: start; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.badge { font-size: 11px; font-weight: 700; text-align: center; padding: 3px 0; border-radius: 6px; }
+.badge.BUY { background: var(--accent-soft); color: var(--series-1); }
+.badge.SELL { background: color-mix(in srgb, var(--leaving) 14%, transparent); color: var(--leaving); }
+.why2 { font-size: 13px; color: var(--muted); margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+/* self-tune */
+.tune-head { display: flex; gap: 12px; align-items: center; margin-bottom: 4px; }
+.tune-head .bi { width: 40px; height: 40px; border-radius: 12px; flex: none; }
+.tune-head .bi svg { width: 21px; height: 21px; }
+.tune-title { font-size: 17px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
+.rule { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14.5px; }
+.rule:last-child { border-bottom: 0; }
+.rule b { font-weight: 650; text-align: right; }
+#activity { scroll-margin-top: 76px; }
+button.more { display: block; width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
+  background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+/* Claude */
+.md { font-size: 14px; line-height: 1.55; }
+.md h3 { font-size: 14px; font-weight: 650; margin: 16px 0 6px; }
+.md h3:first-child { margin-top: 0; }
+.md h4 { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 4px; }
+.md p { margin: 6px 0; }
+.md ul { margin: 4px 0; padding-left: 18px; }
+.md li { margin: 3px 0; }
+.md code { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+.mile { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.mile:last-child { border-bottom: 0; }
+.mile-top { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.mile-about { font-size: 12.5px; color: var(--muted); margin: 2px 0 0; }
+.meter { height: 6px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+.meter > i { display: block; height: 100%; border-radius: 3px; background: var(--series-1); }
+.prog { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.prog .meter { flex: 1; height: 5px; }
+
+/* bottom nav (phones) */
+nav#tabs { position: fixed; bottom: 0; left: 0; right: 0; z-index: 6; display: grid; grid-template-columns: repeat(4, 1fr);
+  background: color-mix(in srgb, var(--surface) 90%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+nav#tabs button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 11px; font-weight: 600;
+  display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 4px 0; cursor: pointer; min-height: 44px; }
+nav#tabs button svg { width: 22px; height: 22px; }
+nav#tabs button.on { color: var(--series-1); }
+
+/* detail sheet */
 .scrim { position: fixed; inset: 0; z-index: 20; background: rgba(0,0,0,.38); opacity: 0; transition: opacity .25s; }
 .scrim.on { opacity: 1; }
 .sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 21; background: var(--surface); color: var(--text);
@@ -266,23 +284,37 @@ button.bl:hover { background: var(--surface-2); }
 .facts b { display: block; font-size: 15px; margin-top: 1px; overflow-wrap: anywhere; }
 .sh-h { font-size: 12.5px; font-weight: 650; color: var(--text-2); margin: 18px 0 4px; }
 .sh-p { font-size: 14.5px; line-height: 1.55; margin: 0; }
+
 @media (min-width: 860px) {
+  body { padding-bottom: 32px; }
+  nav#tabs { display: none; }
+  #tabs-top { display: inline-flex; }
+  .page-title { display: none; } .page-sub { margin-top: 0; }
+  .two { grid-template-columns: 1fr 1fr; align-items: start; }
+  .home { grid-template-columns: 1fr 1.45fr; align-items: start; }
+  .home > .col { display: flex; flex-direction: column; gap: 16px; }
+  .chart { height: 270px; }
+  .span { grid-column: 1 / -1; }
   .sheet { left: 50%; right: auto; bottom: auto; top: 50%; width: 460px; max-height: 84vh; border-radius: 20px;
     padding-bottom: 24px; opacity: 0; transform: translate(-50%, -46%); transition: transform .25s, opacity .2s; }
   .sheet.on { opacity: 1; transform: translate(-50%, -50%); }
   .grab { visibility: hidden; height: 0; margin-bottom: 8px; }
-  .page-title { display: none; }
 }
+@media (max-width: 859px) { .home > .col { display: contents; } }
 @media (max-width: 640px) {
-  .bar { flex-wrap: nowrap; gap: 6px; }
+  .bar { gap: 6px; }
   .brand { font-size: 16px; }
-  .bar .chip.paper, #st-mkt { display: none; }
+  .chip.practice { display: none; }
   #st-bot { padding: 0; width: 32px; height: 32px; justify-content: center; }
   #st-bot > span:last-child { display: none; }
 }
+@media (max-width: 380px) {
+  .kpi .v { font-size: 15.5px; }
+  .appswitch a { padding: 5px 9px; }
+}
 @media (prefers-reduced-motion: reduce) {
   .view.on, .loading .hero-val, .loading .kpi .v { animation: none; }
-  .sheet, .scrim, .tap { transition: none; }
+  .sheet, .scrim, .tap, .gauge .needle { transition: none; }
 }
 </style>
 </head>
@@ -297,19 +329,19 @@ button.bl:hover { background: var(--surface-2); }
     </div>
     <nav class="appswitch" id="appswitch" aria-label="Dashboards" hidden><a class="on" href="/" aria-current="page">Stocks</a><a href="/kalshi/">Kalshi</a></nav>
     <div class="tabs" id="tabs-top"></div>
-    <span class="chip paper">Paper account</span>
+    <span class="chip practice" title="Paper account: practice money, no real dollars">Practice money</span>
     <span class="chip" id="st-bot"><span class="dot"></span><span>…</span></span>
-    <span class="chip" id="st-mkt"><span class="dot"></span><span>…</span></span>
     <button class="icon" id="theme" aria-label="Switch light or dark theme" title="Switch light/dark">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 9.5A5.5 5.5 0 1 1 6.5 2.5a4.5 4.5 0 0 0 7 7z"/></svg>
     </button>
   </div>
 </header>
+<div class="preview-note" id="preview-note" hidden><div><b>Preview of the new Charles.</b> The numbers are your real paper account; the plan shows what Charles would do at its next check. Nothing here has traded yet.</div></div>
 
 <main>
   <!-- HOME -->
   <section class="view on" id="v-home">
-    <div class="card brief-card">
+    <div class="card" style="margin-bottom:16px">
       <div class="brief"><span class="logo" id="brief-logo" aria-hidden="true"></span>
         <div><h1 id="greet">Hello.</h1><div class="small muted" id="brief-sub"></div></div></div>
       <div class="brief-list" id="brief-list"></div>
@@ -317,45 +349,33 @@ button.bl:hover { background: var(--surface-2); }
     <div class="grid home">
      <div class="col">
       <div class="card">
-        <div class="card-head"><h2>Portfolio</h2><span class="aside" id="updated"></span></div>
+        <div class="card-head"><h2>Your portfolio</h2><span class="aside" id="updated"></span></div>
         <div class="hero-val num" id="value">—</div>
         <div class="delta num" id="ret"></div>
         <div class="kpis">
           <div class="kpi"><div class="label">Today</div><div class="v num" id="today">—</div></div>
+          <div class="kpi"><div class="label">Invested</div><div class="v num" id="invested">—</div></div>
           <div class="kpi"><div class="label">Cash</div><div class="v num" id="cash">—</div></div>
-          <div class="kpi"><div class="label">Holdings</div><div class="v num" id="npos">—</div></div>
-        </div>
-        <div class="limit">
-          <div class="row"><span>Daily loss limit</span><span class="num" id="loss-label"></span></div>
-          <div class="meter"><i id="loss-meter" style="width:0"></i></div>
         </div>
         <div id="halt"></div>
       </div>
-
-      <div class="card" style="order:3">
-        <div class="card-head"><h2>Track record</h2><span class="aside" id="nclosed"></span></div>
-        <div class="kpis" style="margin-top:0">
-          <div class="kpi"><div class="label">Win rate</div><div class="v num" id="winrate">—</div></div>
-          <div class="kpi"><div class="label">Avg win</div><div class="v num up" id="avgwin">—</div></div>
-          <div class="kpi"><div class="label">Avg loss</div><div class="v num down" id="avgloss">—</div></div>
-        </div>
-        <div class="limit" id="giveback-wrap" style="display:none">
-          <div class="row"><span>Kept of best gains</span><span class="num" id="giveback-label"></span></div>
-          <div class="meter"><i id="giveback-meter" style="width:0"></i></div>
-          <div class="note" id="giveback-note" style="margin-top:8px"></div>
-        </div>
+      <div class="card tap-card" id="mode-card">
+        <div class="card-head"><h2>Market mode</h2><span class="aside" id="mode-asof"></span></div>
+        <div class="mode-pill" id="mode-pill"></div>
+        <div class="gauge" id="gauge" role="img"><div class="track"></div><div class="zero"></div><div class="needle" id="needle" style="left:50%"></div></div>
+        <div class="gauge-keys"><span>T-bills below</span><b>SPY's 200-day average</b><span>invest above</span></div>
+        <div class="calm" id="calm"><span class="label">Market swings</span><div class="meter"><i id="calm-bar"></i><b id="calm-mark"></b></div><span class="num small" id="calm-val"></span></div>
+        <p class="mode-text" id="mode-text"></p>
       </div>
      </div>
-
      <div class="col">
-      <div class="card" style="order:2">
+      <div class="card">
         <div class="card-head">
-          <h2>Charles vs SPY</h2>
-          <div class="legend" id="legend"></div>
+          <h2>Charles vs the market</h2>
           <div class="tabs" id="range" role="group" aria-label="Time range" style="margin-left:auto"></div>
         </div>
+        <div class="legend" id="legend"></div>
         <div class="chart" id="chart"></div>
-        <p class="note" id="chart-note"></p>
         <div class="versus">
           <div class="vs"><div class="label">Return</div>
             <div class="row"><span>Charles</span><b class="num" id="r-bot">—</b></div>
@@ -364,95 +384,84 @@ button.bl:hover { background: var(--surface-2); }
             <div class="row"><span>Charles</span><b class="num" id="d-bot">—</b></div>
             <div class="row"><span class="muted">SPY</span><span class="num" id="d-spy">—</span></div></div>
         </div>
-        <div class="verdict" id="verdict"></div>
-        <details><summary>Show as table</summary><div class="tbl" id="chart-table"></div></details>
-      </div>
-
-      <div class="card" style="order:4">
-        <div class="card-head"><h2>Watching today</h2></div>
-        <div class="chips" id="watch"></div>
+        <details style="margin-top:12px"><summary>What the chart shows</summary><p class="note" id="chart-note" style="margin-top:0"></p></details>
       </div>
      </div>
+    </div>
+    <div class="card" id="activity" style="margin-top:16px">
+      <div class="card-head"><h2>Recent activity</h2><span class="aside" id="act-count"></span></div>
+      <div id="planned-wrap" hidden><div class="group" style="margin-top:0">Planned at the next check <span class="aside">preview</span></div><div id="planned"></div>
+        <div class="group">Done so far</div></div>
+      <div id="trades"></div>
+      <button class="more" id="act-more" hidden></button>
     </div>
   </section>
 
   <!-- HOLDINGS -->
   <section class="view" id="v-hold">
+    <h1 class="page-title">Holdings</h1>
+    <p class="page-sub">What Charles owns for you, and what each piece is for.</p>
     <div class="grid two">
       <div class="card">
-        <div class="card-head"><h2>Where the money is</h2></div>
-        <div class="alloc" id="alloc" role="img" aria-label="Allocation"></div>
+        <div class="card-head"><h2>Where your money is</h2></div>
+        <div class="alloc-row"><span class="label">Now</span><div class="alloc" id="alloc-now" role="img"></div></div>
+        <div class="alloc-row"><span class="label">Plan</span><div class="alloc" id="alloc-plan" role="img"></div></div>
         <div class="alloc-keys" id="alloc-keys"></div>
+        <p class="note" id="alloc-note"></p>
       </div>
       <div class="card">
-        <div class="card-head"><h2>Open positions</h2><span class="aside" id="pos-count"></span></div>
-        <div class="rows" id="positions"></div>
-        <p class="note">Stop = the trailing stop that sells automatically if the price falls to it. The bar shows how much room is left.</p>
-      </div>
-      <div class="card" style="grid-column: 1 / -1">
-        <div class="card-head"><h2>Options spreads</h2><span class="aside" id="opt-sum"></span></div>
-        <div class="rows" id="options"></div>
-        <p class="note" id="opt-note"></p>
-      </div>
-      <div class="card" style="grid-column: 1 / -1" id="orb-card" hidden>
-        <div class="card-head"><h2>Opening range breakout</h2><span class="aside" id="orb-sum"></span>
-          <button class="switch" id="orb-switch" role="switch" aria-checked="false" hidden><span class="dot"></span><span></span></button></div>
-        <div class="rows" id="orb"></div>
-        <p class="note">A separate intraday sleeve (strategy "orb"): it buys when a 1-minute bar closes above the first 5 minutes' high, puts a stop at the range low and a target at 1.5× the risk, and is always flat by 3:55 PM ET. Charles's AI never trades a symbol ORB holds, and ORB never trades one Charles holds. The regime shown is the one Charles's Telegram alerts use.</p>
+        <div class="card-head"><h2>Holdings</h2><span class="aside" id="pos-count"></span></div>
+        <div id="positions"></div>
       </div>
     </div>
   </section>
 
-  <!-- EXPERIMENTS -->
-  <section class="view" id="v-exp">
+  <!-- PLAN -->
+  <section class="view" id="v-plan">
+    <h1 class="page-title">The plan</h1>
+    <p class="page-sub">How Charles invests, in a few simple rules. It checks once a day and re-picks once a month.</p>
     <div class="grid two">
       <div class="card">
-        <div class="card-head"><h2>Shadow books</h2><span class="aside">$1,000 each, paper only</span></div>
-        <div id="exps"></div>
-        <p class="note" id="exp-note"></p>
+        <div class="card-head"><h2>How Charles invests</h2></div>
+        <div class="steps" id="steps"></div>
       </div>
       <div class="card">
-        <div class="card-head"><h2>Is the AI picking well?</h2></div>
-        <div class="label">Average move after the decision: the AI's BUY picks vs every stock the bot looked at.</div>
-        <div class="legend" style="margin-top:10px">
-          <span class="key"><span class="sw" style="background:var(--series-1)"></span>AI BUY picks</span>
-          <span class="key"><span class="sw" style="background:var(--ref)"></span>All candidates</span>
-        </div>
-        <div id="ai"></div>
-        <p class="note" id="ai-note"></p>
+        <div class="card-head"><h2>This month's stock ranking</h2><span class="aside" id="rank-asof"></span></div>
+        <div class="label">Past-year gain, skipping the latest month. The top 4 that are also above their 200-day average get picked.</div>
+        <div id="ranking" style="margin-top:8px"></div>
+      </div>
+      <div class="card span">
+        <div class="card-head"><h2>How this plan would have done since 2007</h2><span class="aside">simulated, $1,000 start</span></div>
+        <div class="legend" id="bt-legend"></div>
+        <div class="chart" id="bt-chart"></div>
+        <div class="bt-stats num" id="bt-stats"></div>
+        <div class="caveat" id="bt-caveat"></div>
       </div>
     </div>
   </section>
 
-  <!-- SELF-TUNING: what Claude's check-up is waiting on, from its reports and project plan -->
-  <section class="view" id="v-claude">
+  <!-- SELF-TUNE: Claude keeps an eye on the numbers, not on stock picking -->
+  <section class="view" id="v-tune">
+    <h1 class="page-title">Self-Tune</h1>
+    <p class="page-sub">Claude watches how the plan does and adjusts its numbers when the evidence is clear.</p>
     <div class="grid two">
       <div class="card">
-        <div class="card-head"><h2>Waiting on data</h2></div>
-        <div id="cl-miles"></div>
+        <div class="tune-head"><span class="bi" id="tune-ico"></span><div><div class="tune-title" id="tune-title"></div><div class="small muted" id="tune-sub"></div></div></div>
+        <div id="miles" style="margin-top:6px"></div>
       </div>
-      <div class="card" id="cl-ideas-card">
-        <div class="card-head"><h2>Changes being tested</h2><span class="aside">each goes live only if the data backs it</span></div>
-        <div id="cl-ideas"></div>
+      <div class="card">
+        <div class="card-head"><h2>The rules right now</h2></div>
+        <div id="rules"></div>
+        <p class="note" id="rules-note"></p>
       </div>
-      <div class="card" style="grid-column: 1 / -1" id="cl-notes-card">
-        <details id="cl-report-box"><summary style="margin-top:0">Claude's latest report <span class="muted" id="cl-when"></span></summary>
-          <div class="md" id="cl-report" style="margin-top:12px"></div></details>
-        <details id="cl-plan-box"><summary>Claude's full plan</summary><div class="md" id="cl-plan" style="margin-top:12px"></div></details>
+      <div class="card span" id="cl-card">
+        <details><summary>Claude's latest report <span class="muted" id="cl-when" style="font-weight:500"></span></summary><div class="md" id="cl-report" style="margin-top:10px"></div></details>
       </div>
-    </div>
-  </section>
-
-  <!-- ACTIVITY -->
-  <section class="view" id="v-act">
-    <div class="card">
-      <div class="card-head"><h2>Recent trades</h2></div>
-      <div id="trades"></div>
     </div>
   </section>
 </main>
 
-<nav id="tabs"></nav>
+<nav id="tabs" aria-label="Sections"></nav>
 <div class="scrim" id="scrim" hidden></div>
 <div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
   <div class="grab" id="grab"></div>
@@ -465,14 +474,14 @@ button.bl:hover { background: var(--surface-2); }
 "use strict";
 const TABS = [
   ["home", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'],
-  ["hold", "Holdings", '<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>'],
-  ["exp", "Experiments", '<path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3"/>'],
-  ["claude", "Self-Tuning", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
-  ["act", "Activity", '<path d="M3 12h4l3-8 4 16 3-8h4"/>'],
+  ["hold", "Holdings", '<path d="M21 12a9 9 0 1 1-9-9v9z"/><path d="M15 3.5A9 9 0 0 1 20.5 9H15z"/>'],
+  ["plan", "Plan", '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
+  ["tune", "Self-Tune", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
 ];
 const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["All", 1e5]];
-const SLOTS = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6", "--c7", "--c8"];
-let S = null, tab = "home", range = "1M";
+const ROLE = {core: ["Whole market", "--core"], pick: ["Momentum picks", "--pick"], safety: ["T-bills (safety)", "--safe"],
+              leaving: ["Being sold", "--leaving"], cash: ["Cash", "--cash"]};
+let S = null, tab = "home", range = "1M", actAll = false;
 try { tab = localStorage.getItem("tab") || tab; range = localStorage.getItem("range") || range; } catch (e) {}
 
 const $ = id => document.getElementById(id);
@@ -484,50 +493,40 @@ const cls = v => v == null ? "" : v > 0.004 ? "up" : v < -0.004 ? "down" : "flat
 const arrow = v => v == null ? "" : v > 0.004 ? "▲ " : v < -0.004 ? "▼ " : "";
 const ago = iso => { if (!iso) return "—"; const s = (Date.now() - new Date(iso)) / 1000;
   return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
-const pretty = n => n.replace(/_/g, " ");
+const dayFmt = (iso, o = {weekday: "short", month: "short", day: "numeric"}) => new Date(iso.length === 10 ? iso + "T12:00:00" : iso).toLocaleDateString("en-US", o);
+const nameOf = sym => (S && S.names && S.names[sym]) || "";
 const NS = "http://www.w3.org/2000/svg";
-const SEEN_KEY = "charles-seen";
-
-/* ---- app layer (same block in Charles's and the Kalshi page): briefing, detail sheet, motion ---- */
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const IC = {
   up: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>', down: '<path d="M4 10l6 6 4-4 6 6M14 18h6v-6"/>',
   clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', alert: '<path d="M12 4l9 16H3zM12 10v4M12 17v.5"/>',
   check: '<path d="M5 12l5 5 9-10"/>', spark: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>', dot: '<circle cx="12" cy="12" r="3"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/>',
+  rocket: '<path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M9 15l-2.5-2.5C8 8 12 3 20 4c1 8-4 12-8.5 13.5z"/><circle cx="14.5" cy="9.5" r="1.5"/>', cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
 };
 const svgI = (d, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 const CHEV = svgI('<path d="M9 6l6 6-6 6"/>', "chev");
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 
-/* "since you last looked": the last value seen, kept per browser; refreshed after 10+ minutes away */
-let prevSeen = null;
+/* "since you last looked": the last value seen, kept per browser */
+const SEEN_KEY = "charles-seen";
 const readSeen = () => { try { return JSON.parse(localStorage.getItem(SEEN_KEY) || "null"); } catch (e) { return null; } };
-prevSeen = readSeen();
+let prevSeen = readSeen();
 function markSeen(value) { try { localStorage.setItem(SEEN_KEY, JSON.stringify({ts: new Date().toISOString(), value})); } catch (e) {} }
-document.addEventListener("visibilitychange", () => {
-  const s = !document.hidden && readSeen();
-  if (s && Date.now() - new Date(s.ts) > 6e5) prevSeen = s;
-});
+document.addEventListener("visibilitychange", () => { const s = !document.hidden && readSeen(); if (s && Date.now() - new Date(s.ts) > 6e5) prevSeen = s; });
 const away = () => prevSeen && Date.now() - new Date(prevSeen.ts) > 6e5 ? prevSeen : null;
-function greeting() {
-  const h = new Date().getHours();
-  return h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening.";
-}
-/* lines: [{icon, tone, html, go: tab | fn}] */
-function renderBrief(sub, lines) {
+function greeting() { const h = new Date().getHours(); return h < 5 ? "Up late?" : h < 12 ? "Good morning." : h < 17 ? "Good afternoon." : "Good evening."; }
+
+function renderBrief(lines) {
   $("greet").textContent = greeting();
-  $("brief-sub").textContent = sub;
+  $("brief-sub").textContent = new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric"});
   const list = $("brief-list");
   list.innerHTML = lines.map((l, i) => {
     const inner = `<span class="bi ${l.tone || ""}">${svgI(IC[l.icon] || IC.dot)}</span><span>${l.html}</span>${l.go ? CHEV : "<span></span>"}`;
     return l.go ? `<button class="bl" data-i="${i}">${inner}</button>` : `<div class="bl">${inner}</div>`;
   }).join("");
-  list.querySelectorAll("button.bl").forEach(b => b.onclick = () => {
-    const go = lines[+b.dataset.i].go;
-    typeof go === "function" ? go(b) : setTab(go);
-  });
+  list.querySelectorAll("button.bl").forEach(b => b.onclick = () => { const go = lines[+b.dataset.i].go; typeof go === "function" ? go(b) : setTab(go); });
 }
-
-/* count the hero number up on first paint */
 function countUp(el, to, fmt) {
   if (REDUCED || el.dataset.counted) { el.textContent = fmt(to); return; }
   el.dataset.counted = 1;
@@ -543,9 +542,7 @@ function openSheet(html, from) {
   sheetFrom = from || document.activeElement;
   $("sheet-body").innerHTML = html;
   const sh = $("sheet"), sc = $("scrim");
-  sh.hidden = sc.hidden = false;
-  sh.style.transform = "";
-  sh.scrollTop = 0;
+  sh.hidden = sc.hidden = false; sh.style.transform = ""; sh.scrollTop = 0;
   document.body.style.overflow = "hidden";
   requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
 }
@@ -557,101 +554,114 @@ function closeSheet() {
   setTimeout(() => { sh.hidden = sc.hidden = true; }, REDUCED ? 0 : 320);
   if (sheetFrom && sheetFrom.focus) sheetFrom.focus();
 }
-const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c]) =>
-  `<div><span class="l">${l}</span><b class="num ${c || ""}">${v}</b></div>`).join("")}</div>`;
+const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c]) => `<div><span class="l">${l}</span><b class="num ${c || ""}">${v}</b></div>`).join("")}</div>`;
 (function () {
-  $("scrim").onclick = closeSheet;
-  $("sh-close").onclick = closeSheet;
+  $("scrim").onclick = closeSheet; $("sh-close").onclick = closeSheet;
   document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
-  // drag the handle down to dismiss
-  const g = $("grab"), sh = $("sheet");
-  let y0 = null, dy = 0;
+  const g = $("grab"), sh = $("sheet"); let y0 = null, dy = 0;
   g.onpointerdown = e => { y0 = e.clientY; dy = 0; g.setPointerCapture(e.pointerId); sh.style.transition = "none"; };
   g.onpointermove = e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); sh.style.transform = `translateY(${dy}px)`; };
-  g.onpointerup = g.onpointercancel = () => { if (y0 == null) return; y0 = null; sh.style.transition = "";
-    if (dy > 90) closeSheet(); else sh.style.transform = ""; };
-  // any [data-open] row opens its sheet (click, Enter or Space)
+  g.onpointerup = g.onpointercancel = () => { if (y0 == null) return; y0 = null; sh.style.transition = ""; if (dy > 90) closeSheet(); else sh.style.transform = ""; };
   const open = el => { const fn = SHEETS[el.dataset.open]; const html = fn && fn(el.dataset.k); if (html) openSheet(html, el); };
   document.addEventListener("click", e => { const el = e.target.closest("[data-open]"); if (el && !e.target.closest("a,button:not([data-open])")) open(el); });
   document.addEventListener("keydown", e => { const el = e.target.closest && e.target.closest("[data-open]");
     if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(el); } });
 })();
 const tapAttrs = (kind, key) => `data-open="${kind}" data-k="${esc(key)}" tabindex="0" role="button"`;
-function addPageTitles() {
-  TABS.forEach(([k, l]) => { const v = $("v-" + k); if (k !== "home" && v && !v.querySelector(".page-title"))
-    v.insertAdjacentHTML("afterbegin", `<h1 class="page-title">${l}</h1>`); });
+
+/* plain words for the plan */
+const P = () => S.plan || {};
+const SET = () => P().settings || {CORE: "SPY", SAFE: "SGOV", CORE_PCT: .8, PICKS: 4, PICK_PCT: .05, TREND_DAYS: 200};
+const isOld = t => t.source && t.source !== "rebalance";
+function modeInfo() {
+  const p = P(), t = p.trend;
+  if (!p.mode) return {icon: "clock", tone: "info", title: "Getting ready", text: "Charles sets up the plan at its first check (10:00 AM ET on a weekday)."};
+  const g = t ? t.gap_pct : null;
+  const v = p.vol, lim = SET().AGG_VOL_MAX || .2;
+  if (p.mode === "aggressive") return {icon: "rocket", tone: "up", title: "Aggressive mode",
+    text: `The market is rising calmly (swings ${v != null ? (v * 100).toFixed(0) + "%" : "low"} a year), so the core sits in a 2× S&P 500 fund. Charles drops back to plain SPY on any day the swings pass ${Math.round((SET().AGG_VOL_EXIT || .25) * 100)}% or SPY falls below its 200-day average.`};
+  if (p.mode === "safety") return {icon: "shield", tone: "warn", title: "Safety mode",
+    text: `SPY ended the month below its 200-day average, so the money waits in T-bills. ${g != null ? `SPY is ${Math.abs(g).toFixed(1)}% ${g >= 0 ? "above" : "below"} that line now. ` : ""}Charles looks again on ${dayFmt(p.next_rebalance)}.`};
+  if (g != null && g >= 0 && SET().AGGRESSIVE && v != null) return {icon: "up", tone: "up", title: "Invest mode",
+    text: `SPY is ${g.toFixed(1)}% above its 200-day average. ${v < lim ? "The market is calm enough for aggressive mode; Charles can switch it on at the next monthly check." : `Swings are ${(v * 100).toFixed(0)}% a year, above the ${Math.round(lim * 100)}% limit for aggressive mode, so the core stays plain SPY.`}`};
+  return {icon: "up", tone: "up", title: "Invest mode",
+    text: g == null ? "The market is above its long-term trend." :
+      g >= 0 ? `SPY is ${g.toFixed(1)}% above its 200-day average. If a month ends below it, Charles moves everything to T-bills until it recovers.`
+             : `SPY has dipped ${Math.abs(g).toFixed(1)}% below its 200-day average. Charles only acts on it if the month ends there (next check ${dayFmt(p.next_rebalance)}).`};
 }
 
-/* Charles's briefing: what changed since the last look, in a few plain lines */
-const SOURCE = {"risk_management": "the trailing stop or risk rules", "time_exit": "the time limit on holding a stock", "rules": "the rule-based picker"};
-const srcText = s => !s ? "" : s.startsWith("llm:") ? "the AI picker (" + s.slice(4) + ")" : SOURCE[s] || s.replace(/_/g, " ");
+const toFeed = () => $("activity").scrollIntoView({behavior: REDUCED ? "auto" : "smooth", block: "start"});
 function charlesBrief() {
-  const a = S.account, lines = [], seen = away();
-  if (!S.bot_running) lines.push({icon: "alert", tone: "down", html: "<b>Charles is stopped.</b> No trades until it's started again."});
-  if (S.today.halted) lines.push({icon: "alert", tone: "down", html: "Trading is paused for today: the daily loss limit was hit."});
+  const a = S.account, lines = [], seen = away(), p = P();
+  if (!S.bot_running) lines.push({icon: "alert", tone: "down", html: "<b>Charles is stopped.</b> Nothing happens until it's started again."});
+  if (S.today.halted) lines.push({icon: "alert", tone: "down", html: "Buys are paused for today: the account hit the daily loss limit."});
   if (a && seen && seen.value != null) {
     const d = a.total_value - seen.value;
     lines.push(Math.abs(d) < 0.01 ? {icon: "check", tone: "info", html: `Nothing has moved since you last looked (${ago(seen.ts)}).`}
       : {icon: d > 0 ? "up" : "down", tone: d > 0 ? "up" : "down",
-         html: `Since you last looked (${ago(seen.ts)}), the portfolio ${d > 0 ? "rose" : "fell"} <b class="num">${usd(Math.abs(d))}</b> to <b class="num">${usd(a.total_value)}</b>.`});
+         html: `Since you last looked (${ago(seen.ts)}), your portfolio ${d > 0 ? "rose" : "fell"} <b class="num ${cls(d)}">${usd(Math.abs(d))}</b>.`});
   } else if (a) {
     const r = a.total_return;
     lines.push({icon: r >= 0 ? "up" : "down", tone: r >= 0 ? "up" : "down",
-      html: `The portfolio is ${r >= 0 ? "up" : "down"} <b class="num">${usd(Math.abs(r))}</b> (${pct(a.total_return_pct)}) since the ${usd(S.start_cash, 0)} start${S.today.pnl ? `, <span class="${cls(S.today.pnl)}">${sgnUsd(S.today.pnl)}</span> today` : ""}.`});
+      html: `You're ${r >= 0 ? "up" : "down"} <b class="num ${cls(r)}">${usd(Math.abs(r))}</b> since the ${usd(S.start_cash, 0)} start${a.day_change ? `, <span class="${cls(a.day_change)}">${sgnUsd(a.day_change)}</span> today` : ""}.`});
   }
+  const m = modeInfo();
+  lines.push({icon: m.icon, tone: m.tone, go: "plan", html: `<b>${m.title}.</b> ${p.mode === "invest" ? `${Math.round(SET().CORE_PCT * 100)}% in the whole market, plus ${p.picks.length} strong stock${p.picks.length === 1 ? "" : "s"}.` : p.mode === "aggressive" ? `Calm, rising market: the core uses a 2× S&P fund, plus ${p.picks.length} strong stock${p.picks.length === 1 ? "" : "s"}.` : p.mode ? "Waiting safely in T-bills." : "The plan starts at the next check."}`});
   const since = seen ? new Date(seen.ts) : new Date(Date.now() - 864e5);
   const recent = S.trades.filter(t => new Date(t.timestamp) > since);
   if (recent.length) {
-    const said = recent.slice(0, 3).map(t => `${(t.action || "").startsWith("BUY") ? "bought" : "sold"} <b>${esc(t.symbol)}</b>${t.pnl != null ? ` (<span class="${cls(t.pnl)}">${sgnUsd(t.pnl)}</span>)` : ""}`);
-    lines.push({icon: "spark", tone: "info", go: "act",
-      html: `${seen ? "Since then" : "In the last day"}, Charles ${said.join(", ")}${recent.length > 3 ? ` and made ${recent.length - 3} more trade${recent.length > 4 ? "s" : ""}` : ""}.`});
+    const said = recent.slice(0, 3).map(t => `${(t.action || "").startsWith("BUY") ? "bought" : "sold"} <b>${esc(t.symbol)}</b>`);
+    lines.push({icon: "spark", tone: "info", go: toFeed, html: `${seen ? "Since then" : "In the last day"}, Charles ${said.join(", ")}${recent.length > 3 ? ` and made ${recent.length - 3} more trade${recent.length > 4 ? "s" : ""}` : ""}.`});
   }
-  const P = S.positions;
-  const near = P.filter(p => p.stop && p.stop_dist_pct < 2).sort((x, y) => x.stop_dist_pct - y.stop_dist_pct)[0];
-  if (near) lines.push({icon: "alert", tone: "warn", go: b => openSheet(SHEETS.pos(near.symbol), b),
-    html: `<b>${esc(near.symbol)}</b> is only ${near.stop_dist_pct}% above its stop. Charles sells if it drops to ${usd(near.stop)}.`});
-  else if (P.length) {
-    const s = [...P].sort((x, y) => y.unrealized_pct - x.unrealized_pct), best = s[0], worst = s.at(-1);
-    lines.push({icon: best.unrealized_pct >= 0 ? "up" : "down", tone: best.unrealized_pct >= 0 ? "up" : "down", go: "hold",
-      html: `${P.length} holding${P.length > 1 ? "s" : ""}: <b>${esc(best.symbol)}</b> leads at <span class="${cls(best.unrealized_pct)}">${pct(best.unrealized_pct, 1)}</span>${P.length > 1 ? `, <b>${esc(worst.symbol)}</b> trails at <span class="${cls(worst.unrealized_pct)}">${pct(worst.unrealized_pct, 1)}</span>` : ""}.`});
-  } else lines.push({icon: "dot", go: "hold", html: "No holdings right now. Everything is in cash."});
-  const M = {open: "The market is open. Charles is looking for trades.", pre: "Pre-market. Charles starts trading at 9:30 AM ET.",
-             after: "After hours. Charles is done trading for today.", closed: "The market is closed. Charles picks up again at the next open, 9:30 AM ET."};
-  if (S.bot_running && M[S.market]) lines.push({icon: "clock", tone: "info", html: M[S.market]});
+  if (S.preview && (p.last_orders || []).length) { const o = p.last_orders, sells = o.filter(x => x.side === "sell").length, buys = o.length - sells;
+    lines.push({icon: "spark", tone: "info", go: toFeed, html: `At its first check Charles would make <b>${sells} sale${sells === 1 ? "" : "s"}</b> and <b>${buys} buy${buys === 1 ? "" : "s"}</b> to set up the plan.`}); }
+  if (p.next_rebalance) lines.push({icon: "cal", tone: "info", go: "plan", html: `Next monthly re-pick: <b>${dayFmt(p.next_rebalance, {weekday: "long", month: "short", day: "numeric"})}</b>, 10:00 AM ET.`});
   const C = S.claude || {};
-  if (C.report && C.report.date === new Date().toLocaleDateString("en-CA"))
-    lines.push({icon: "check", tone: "info", go: "claude", html: "Claude's check-up report for today is in."});
-  renderBrief(new Date().toLocaleDateString("en-US", {weekday: "long", month: "long", day: "numeric"}), lines.slice(0, 5));
+  if (C.report && C.report.date === new Date().toLocaleDateString("en-CA")) lines.push({icon: "check", tone: "info", go: "tune", html: "Claude's check-up for today is in."});
+  renderBrief(lines.slice(0, 5));
 }
 
 /* what a tapped row opens */
 const SHEETS = {
   pos(sym) {
-    const p = S.positions.find(x => x.symbol === sym);
-    if (!p) return "";
+    const h = S.positions.find(x => x.symbol === sym);
+    if (!h) return "";
     const buy = S.trades.find(t => t.symbol === sym && (t.action || "").startsWith("BUY"));
-    return `<div class="sh-title" id="sh-title">${esc(p.symbol)}</div>
-      <div class="sh-sub num">${+p.shares.toFixed(4)} shares · bought at ${usd(p.avg_price)}</div>
-      <div class="sh-hero num">${usd(p.market_value)}</div>
-      <div class="sh-line num ${cls(p.unrealized_pnl)}">${arrow(p.unrealized_pnl)}${sgnUsd(p.unrealized_pnl)} (${pct(p.unrealized_pct, 1)}) so far</div>
-      ${facts([["Bought at", usd(p.avg_price) + " a share"], ["Price now", usd(p.current_price) + " a share"],
-        p.peak_pnl != null && ["Best so far", `${sgnUsd(p.peak_pnl)} (${pct(p.peak_pct, 1)})`, cls(p.peak_pnl)],
-        p.trough_pnl != null && ["Worst so far", sgnUsd(p.trough_pnl), cls(p.trough_pnl)],
-        p.stop && ["Stop", usd(p.stop)], p.stop && ["Room to stop", p.stop_dist_pct + "%", p.stop_dist_pct < 2 ? "down" : ""]])}
-      ${p.stop ? `<p class="sh-p">If ${esc(p.symbol)} falls to ${usd(p.stop)}, Charles sells it automatically. The stop moves up as the price rises, so part of any gain is kept.</p>` : ""}
-      ${buy ? `<div class="sh-h">Why Charles bought it · ${new Date(buy.timestamp).toLocaleDateString("en-US", {month: "short", day: "numeric"})}</div><p class="sh-p">${esc(buy.reasoning)}</p>` : ""}`;
+    const role = ROLE[h.role][0];
+    const why = {core: h.symbol === SET().AGG_CORE ? "Aggressive mode's core: a fund that moves twice as much as the S&P 500 each day, up and down. Charles holds it only while the market is calm and rising, and swaps back to plain SPY on any choppy day." : "This is the core of the plan: an index fund that owns the 500 biggest US companies. It's never traded except to keep it near its target share.",
+      pick: `One of this month's ${SET().PICKS} momentum picks${h.rank ? `: ranked ${h.rank} of ${P().universe_n || 100} by its past-year gain` : ""}. Charles keeps it until the next monthly re-pick, then keeps it only if it still ranks near the top and stays above its 200-day average.`,
+      safety: "T-bills are short US government loans: steady, about 4% a year. Charles parks money here in safety mode, or when no stock qualifies for a pick slot.",
+      leaving: "Bought by Charles's old trading rules. It isn't part of the new plan, so Charles sells it at its next check."}[h.role];
+    return `<div class="sh-title" id="sh-title">${esc(h.symbol)} <span class="tag ${h.role === "pick" ? "pick" : h.role === "leaving" ? "old" : ""}">${role}</span></div>
+      <div class="sh-sub">${esc(nameOf(h.symbol))}</div>
+      <div class="sh-hero num">${usd(h.market_value)}</div>
+      <div class="sh-line num ${cls(h.unrealized_pnl)}">${arrow(h.unrealized_pnl)}${sgnUsd(h.unrealized_pnl)} (${pct(h.unrealized_pct, 1)}) since bought</div>
+      ${facts([["Share of account", (h.actual_pct ?? 0).toFixed(1) + "%"], ["Plan's share", h.target_pct != null ? h.target_pct.toFixed(0) + "%" : "—"],
+        ["Bought at", usd(h.avg_price)], ["Price now", usd(h.current_price)],
+        h.momentum != null && ["Past-year gain", pct(h.momentum, 0), cls(h.momentum)], h.day_change != null && ["Today", sgnUsd(h.day_change), cls(h.day_change)]])}
+      <div class="sh-h">Why Charles holds it</div><p class="sh-p">${why}</p>
+      ${buy && buy.source === "rebalance" ? `<div class="sh-h">At the last buy · ${dayFmt(buy.timestamp)}</div><p class="sh-p">${esc(buy.reasoning)}</p>` : ""}`;
   },
   trade(i) {
     const t = S.trades[+i];
     if (!t) return "";
-    const buy = (t.action || "").startsWith("BUY"), held = buy && S.positions.find(p => p.symbol === t.symbol);
-    return `<div class="sh-title" id="sh-title">${buy ? "Bought" : "Sold"} ${esc(t.symbol)}</div>
-      <div class="sh-sub">${new Date(t.timestamp).toLocaleString("en-US", {weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
+    const buy = (t.action || "").startsWith("BUY");
+    return `<div class="sh-title" id="sh-title">${buy ? "Bought" : "Sold"} ${esc(t.symbol)}${isOld(t) ? ` <span class="tag old">old rules</span>` : ""}</div>
+      <div class="sh-sub">${esc(nameOf(t.symbol))}${nameOf(t.symbol) ? " · " : ""}${new Date(t.timestamp).toLocaleString("en-US", {weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
       <div class="sh-hero num">${usd(t.value)}</div>
-      ${t.pnl != null ? `<div class="sh-line num ${cls(t.pnl)}">${arrow(t.pnl)}${sgnUsd(t.pnl)}${t.pnl_pct != null ? ` (${pct(t.pnl_pct, 1)})` : ""} on this trade</div>` : ""}
-      ${held ? `<div class="sh-line num muted">Still held · now ${usd(held.market_value)} <span class="${cls(held.unrealized_pnl)}">${sgnUsd(held.unrealized_pnl)}</span></div>` : ""}
-      <div class="sh-h">${buy ? "Why Charles bought" : "Why Charles sold"}</div><p class="sh-p">${esc(t.reasoning || "No reason was recorded.")}</p>
-      ${t.source ? `<p class="note">Decided by ${esc(srcText(t.source))}.</p>` : ""}`;
+      ${t.pnl != null ? `<div class="sh-line num ${cls(t.pnl)}">${arrow(t.pnl)}${sgnUsd(t.pnl)}${t.pnl_pct != null ? ` (${pct(t.pnl_pct, 1)})` : ""} on this sale</div>` : ""}
+      <div class="sh-h">Why</div><p class="sh-p">${esc(t.reasoning || "No reason was recorded.")}</p>
+      ${isOld(t) ? `<p class="note">This trade was made by Charles's old rules (an AI picking stocks every 30 minutes), before the new plan.</p>` : ""}`;
+  },
+  mode() {
+    const m = modeInfo(), t = P().trend || {};
+    return `<div class="sh-title" id="sh-title">The safety switch</div>
+      <div class="sh-sub">${m.title}</div>
+      ${facts([["SPY now (last close)", usd(t.price)], ["200-day average", usd(t.average)], ["Gap", pct(t.gap_pct, 1), cls(t.gap_pct)], ["Checked", P().next_rebalance ? "monthly, next " + dayFmt(P().next_rebalance) : "monthly"]])}
+      <div class="sh-h">How it works</div>
+      <p class="sh-p">The 200-day average is SPY's typical price over the last ~10 months. Long falls in the market, like 2008 or 2022, start with the price dropping below it and staying there. So on the first trading day of each month Charles looks: if SPY ended the month below the line, everything moves to T-bills; once a month ends back above it, Charles invests again.</p>
+      <div class="sh-h">The trade-off</div>
+      <p class="sh-p">It's insurance. In the 2007–2026 simulation it roughly halved the worst drop, but it also sat out some rallies, so in strong years it can trail the market. Claude re-tests it every month and can turn it off (or back on) when the evidence says so; see Self-Tune.</p>`;
   },
 };
 
@@ -661,12 +671,11 @@ const SHEETS = {
   try { t = localStorage.getItem("charles-theme"); } catch (e) {}
   if (t) document.documentElement.dataset.theme = t;
   $("theme").onclick = () => {
-    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark"
-      : matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
     const next = dark ? "light" : "dark";
     document.documentElement.dataset.theme = next;
     try { localStorage.setItem("charles-theme", next); } catch (e) {}
-    if (S) renderChart();
+    if (S) { renderChart(); renderBacktest(); }
   };
 })();
 
@@ -676,11 +685,13 @@ function buildTabs() {
   $("tabs-top").innerHTML = TABS.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join("");
   document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => setTab(b.dataset.t));
   $("range").innerHTML = RANGES.map(([k]) => `<button data-r="${k}">${k}</button>`).join("");
-  document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r;
-    try { localStorage.setItem("range", range); } catch (e) {} renderChart(); });
-  $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Charles</span><span class="key">${keySvg("--ref", true)}SPY, same money</span>`;
-  addPageTitles();
+  document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r; try { localStorage.setItem("range", range); } catch (e) {} renderChart(); });
+  $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Charles</span><span class="key">${keySvg("--ref", true)}SPY, same start</span>`;
   $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
+  $("mode-card").onclick = e => openSheet(SHEETS.mode(), e.currentTarget);
+  $("mode-card").setAttribute("role", "button"); $("mode-card").tabIndex = 0;
+  $("mode-card").onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openSheet(SHEETS.mode(), e.currentTarget); } };
+  $("act-more").onclick = () => { actAll = !actAll; render(); if (!actAll) toFeed(); };
   setTab(tab);
 }
 function keySvg(color, dashed) {
@@ -692,21 +703,20 @@ function setTab(t) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
   document.querySelectorAll("[data-t]").forEach(b => b.classList.toggle("on", b.dataset.t === tab));
   window.scrollTo(0, 0);
-  if (tab === "home" && S) renderChart();
+  if (S && tab === "home") renderChart();
+  if (S && tab === "plan") renderBacktest();
 }
 
-/* minimal Markdown for Claude's notes: #/##/### headings, - bullets, **bold**, `code`, paragraphs (escaped first) */
+/* minimal Markdown for Claude's notes: headings, - bullets, **bold**, `code`, paragraphs (escaped first) */
 function md(text) {
   const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
   let html = "", list = false, para = [];
   const flush = () => { if (para.length) { html += `<p>${inline(para.join(" "))}</p>`; para = []; } };
   const close = () => { if (list) { html += "</ul>"; list = false; } };
   for (const raw of String(text).split("\n")) {
-    const line = raw.trimEnd();
-    let m;
+    const line = raw.trimEnd(); let m;
     if (!line.trim()) { flush(); close(); }
-    else if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flush(); close();
-      if (m[1].length > 1) html += `<${m[1].length <= 2 ? "h3" : "h4"}>${inline(m[2])}</${m[1].length <= 2 ? "h3" : "h4"}>`; }
+    else if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flush(); close(); if (m[1].length > 1) html += `<${m[1].length <= 2 ? "h3" : "h4"}>${inline(m[2])}</${m[1].length <= 2 ? "h3" : "h4"}>`; }
     else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { flush(); if (!list) { html += "<ul>"; list = true; } html += `<li>${inline(m[1])}</li>`; }
     else if (list && /^\s+/.test(line)) { html = html.replace(/<\/li>$/, " " + inline(line.trim()) + "</li>"); }
     else { close(); para.push(line.trim()); }
@@ -715,32 +725,13 @@ function md(text) {
   return html;
 }
 
-/* "- **Title.** text" bullets under the plan's "## Watching" heading */
-function planIdeas(plan) {
-  const out = []; let on = false;
-  for (const line of plan.split("\n")) {
-    if (/^##\s/.test(line)) { on = /^##\s+watching/i.test(line); continue; }
-    const m = on && line.match(/^\s*-\s+\*\*(.+?)\*\*\s*(.*)$/);
-    if (m) out.push({title: m[1].replace(/[.:]$/, ""), text: m[2]});
-    else if (on && out.length && /^\s+\S/.test(line)) out[out.length - 1].text += " " + line.trim();
-  }
-  return out;
-}
-
-function maxDrop(vals) { let peak = -Infinity, worst = 0;
-  for (const v of vals) { peak = Math.max(peak, v); worst = Math.min(worst, v / peak - 1); } return worst * 100; }
+function maxDrop(vals) { let peak = -Infinity, worst = 0; for (const v of vals) { peak = Math.max(peak, v); worst = Math.min(worst, v / peak - 1); } return worst * 100; }
 
 // Market-time helpers (ET). Holidays aren't known here, so they count as trading days.
-const etFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hourCycle: "h23",
-  year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"});
+const etFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"});
 function etParts(ms) { const o = {}; for (const x of etFmt.formatToParts(ms)) o[x.type] = +x.value; return o; }
-// ms (UTC) of hh:mm ET on ET calendar day y-m-d
-function etAt(y, m, d, hh, mm) {
-  const guess = Date.UTC(y, m - 1, d, hh, mm), p = etParts(guess);
-  return guess - (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - guess);
-}
+function etAt(y, m, d, hh, mm) { const guess = Date.UTC(y, m - 1, d, hh, mm), p = etParts(guess); return guess - (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - guess); }
 const isWeekday = (y, m, d) => { const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); return w > 0 && w < 6; };
-// Milliseconds of regular session (9:30–4:00 ET, weekdays) between a and b.
 function marketMs(a, b) {
   let total = 0, p = etParts(a), day = Date.UTC(p.year, p.month - 1, p.day);
   for (;;) {
@@ -752,7 +743,6 @@ function marketMs(a, b) {
   }
   return total;
 }
-// 4 PM ET on the last weekday before the ET day that is `days` days ago: every range starts from a close.
 function rangeStart(days) {
   const p = etParts(Date.now() - days * 864e5);
   let day = Date.UTC(p.year, p.month - 1, p.day);
@@ -760,25 +750,20 @@ function rangeStart(days) {
   const q = new Date(day);
   return etAt(q.getUTCFullYear(), q.getUTCMonth() + 1, q.getUTCDate(), 16, 0);
 }
-
 function series() {
   const days = RANGES.find(r => r[0] === range)[1];
   const cut = days >= 1e5 ? "" : new Date(rangeStart(days)).toISOString();
-  let pts = S.equity.filter(p => p[0] >= cut);
-  if (pts.length < 2) pts = S.equity.slice(-2);
-  // SPY as it stood at each Charles point: the last hourly close that had already happened.
-  // (Daily closes made SPY jump a whole day's move at 9:30 AM and misaligned every range's start.)
+  let from = S.equity.findIndex(p => p[0] >= cut);
+  if (from < 0 || S.equity.length - from < 2) from = Math.max(0, S.equity.length - 2);
+  const pts = S.equity.slice(from);
   const hourly = (S.spy_hourly || []).map(([t, v]) => [+new Date(t), v]);
-  const daily = S.spy.map(([d, v]) => [+new Date(d + "T20:00:00Z"), v]);  // fallback: ~4 PM ET closes
+  const daily = S.spy.map(([d, v]) => [+new Date(d + "T20:00:00Z"), v]);
   const ref = hourly.length ? hourly : daily;
   const spyAt = t => { let c = null; for (const [ts, v] of ref) { if (ts <= t) c = v; else break; } return c; };
-  const base = spyAt(+new Date(pts[0][0]));
-  const spyVals = base ? pts.map(p => pts[0][1] * (spyAt(+new Date(p[0])) ?? base) / base) : null;
-  // x positions in market time: trading hours keep their width, nights/weekends shrink to a sliver,
-  // weekdays the bot missed still take a full day's room.
+  const first = S.equity[0], base = spyAt(+new Date(first[0]));
+  const spyVals = base ? pts.map(p => first[1] * (spyAt(+new Date(p[0])) ?? base) / base) : null;
   const xs = [0];
-  for (let i = 1; i < pts.length; i++)
-    xs.push(xs[i - 1] + Math.max(marketMs(+new Date(pts[i - 1][0]), +new Date(pts[i][0])), 15 * 6e4));
+  for (let i = 1; i < pts.length; i++) xs.push(xs[i - 1] + Math.max(marketMs(+new Date(pts[i - 1][0]), +new Date(pts[i][0])), 15 * 6e4));
   return {pts, spyVals, xs};
 }
 function niceTicks(lo, hi, n) {
@@ -789,21 +774,20 @@ function niceTicks(lo, hi, n) {
   return out;
 }
 
+/* the main chart: Charles vs SPY in market time, with the day the new plan started marked */
 function renderChart() {
   document.querySelectorAll("[data-r]").forEach(b => b.classList.toggle("on", b.dataset.r === range));
   const box = $("chart");
   if (!S || S.equity.length < 2) { box.innerHTML = `<div class="empty">Not enough history yet.</div>`; return; }
-  if (!box.clientWidth) return;              // hidden tab: drawn when shown
+  if (!box.clientWidth) return;
   const {pts, spyVals, xs} = series(), vals = pts.map(p => p[1]);
-  const W = box.clientWidth, H = box.clientHeight, m = {l: 58, r: 10, t: 10, b: 24};
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 54, r: 10, t: 14, b: 24};
   const all = vals.concat(spyVals || []);
   let lo = Math.min(...all), hi = Math.max(...all);
   const padv = Math.max((hi - lo) * 0.12, 1); lo -= padv; hi += padv;
   const xEnd = xs.at(-1) || 1;
   const X = i => m.l + xs[i] * (W - m.l - m.r) / xEnd;
-  const nearest = x => { let lo = 0, hi = xs.length - 1;     // index whose position is closest to x (market-time units)
-    while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (xs[mid] <= x) lo = mid; else hi = mid; }
-    return x - xs[lo] <= xs[hi] - x ? lo : hi; };
+  const nearest = x => { let a = 0, b = xs.length - 1; while (b - a > 1) { const mid = (a + b) >> 1; if (xs[mid] <= x) a = mid; else b = mid; } return x - xs[a] <= xs[b] - x ? a : b; };
   const Y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
   const line = arr => arr.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
   const span = new Date(pts.at(-1)[0]) - new Date(pts[0][0]);
@@ -812,13 +796,18 @@ function renderChart() {
   for (const v of niceTicks(lo, hi, 5)) grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
     `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">$${v.toLocaleString("en-US", {maximumFractionDigits: v % 1 ? 2 : 0})}</text>`;
   const nt = Math.max(1, Math.min(5, Math.floor((W - m.l - m.r) / 100)));
-  for (let k = 0; k <= nt; k++) {
-    const i = nearest(k * xEnd / nt);
-    grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(pts[i][0]))}</text>`;
+  for (let k = 0; k <= nt; k++) { const i = nearest(k * xEnd / nt);
+    grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(pts[i][0]))}</text>`; }
+  // the new plan's first day, if it's inside this range
+  let mark = "";
+  const st = P().started;
+  if (st && !S.preview) {
+    const i = pts.findIndex(p => timeofday(p[0]) >= st);
+    if (i > 0) mark = `<g class="mark"><line x1="${X(i)}" x2="${X(i)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-dasharray="2 3" opacity=".6"/><text x="${X(i) > W - 80 ? X(i) - 4 : X(i) + 4}" y="${m.t + 2}" text-anchor="${X(i) > W - 80 ? "end" : "start"}">New plan</text></g>`;
   }
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Charles portfolio value vs SPY. Arrow keys read values.">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Your portfolio value vs SPY. Arrow keys read values.">
     <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--series-1)" stop-opacity=".18"/><stop offset="1" stop-color="var(--series-1)" stop-opacity="0"/></linearGradient></defs>
-    <g class="axis">${grid}</g>
+    <g class="axis">${grid}</g>${mark}
     <path d="${line(vals)}L${X(vals.length - 1)},${H - m.b}L${X(0)},${H - m.b}Z" fill="url(#g)"/>
     ${spyVals ? `<path d="${line(spyVals)}" fill="none" stroke="var(--ref)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
     <path d="${line(vals)}" fill="none" stroke="var(--series-1)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
@@ -826,262 +815,220 @@ function renderChart() {
     ${spyVals ? `<circle id="sdot" r="4.5" fill="var(--ref)" stroke="var(--surface)" stroke-width="2" opacity="0"/>` : ""}
     <circle id="cdot" r="4.5" fill="var(--series-1)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
   </svg><div class="tip" id="tip"></div>`;
-  const svg = box.querySelector("svg"), tip = $("tip"), cross = box.querySelector("#cross"),
-        dot = box.querySelector("#cdot"), sdot = box.querySelector("#sdot");
-  let cur = -1;
-  const show = i => {
-    cur = Math.max(0, Math.min(pts.length - 1, i));
-    const xi = X(cur);
-    cross.setAttribute("x1", xi); cross.setAttribute("x2", xi); cross.setAttribute("opacity", .5);
-    dot.setAttribute("cx", xi); dot.setAttribute("cy", Y(vals[cur])); dot.setAttribute("opacity", 1);
-    if (sdot) { sdot.setAttribute("cx", xi); sdot.setAttribute("cy", Y(spyVals[cur])); sdot.setAttribute("opacity", 1); }
-    tip.innerHTML = `<div class="t">${new Date(pts[cur][0]).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
-      <div class="r">${keySvg("--series-1", false)}<span>Charles</span><b class="num">${usd(vals[cur])}</b></div>
-      ${spyVals ? `<div class="r">${keySvg("--ref", true)}<span>SPY, same money</span><b class="num">${usd(spyVals[cur])}</b></div>` : ""}`;
-    tip.style.display = "block";
-    const tw = tip.offsetWidth;
-    tip.style.left = (xi + 12 + tw > W ? Math.max(0, xi - tw - 12) : xi + 12) + "px";
-  };
-  const hide = () => { tip.style.display = "none"; [cross, dot, sdot].forEach(e => e && e.setAttribute("opacity", 0)); };
-  const at = ev => { const r = svg.getBoundingClientRect();
-    show(nearest((ev.clientX - r.left - m.l) / (W - m.l - m.r) * xEnd)); };
-  svg.onpointermove = at; svg.onpointerdown = at; svg.onpointerleave = hide; svg.onblur = hide;
-  svg.onpointerup = ev => { if (ev.pointerType !== "mouse") setTimeout(hide, 1500); };
-  svg.onkeydown = ev => {
-    if (ev.key === "ArrowLeft") { show(cur < 0 ? pts.length - 1 : cur - 1); ev.preventDefault(); }
-    if (ev.key === "ArrowRight") { show(cur < 0 ? 0 : cur + 1); ev.preventDefault(); }
-  };
-
+  hover(box, pts.length, X, i => [[Y(vals[i]), "#cdot"], spyVals && [Y(spyVals[i]), "#sdot"]],
+    i => `<div class="t">${new Date(pts[i][0]).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
+      <div class="r">${keySvg("--series-1", false)}<span>Charles</span><b class="num">${usd(vals[i])}</b></div>
+      ${spyVals ? `<div class="r">${keySvg("--ref", true)}<span>SPY, same start</span><b class="num">${usd(spyVals[i])}</b></div>` : ""}`,
+    x => nearest((x - m.l) / (W - m.l - m.r) * xEnd));
   const rb = (vals.at(-1) / vals[0] - 1) * 100, rs = spyVals ? (spyVals.at(-1) / spyVals[0] - 1) * 100 : null;
   const db = maxDrop(vals), ds = spyVals ? maxDrop(spyVals) : null;
   $("r-bot").textContent = pct(rb); $("r-bot").className = "num " + cls(rb);
   $("r-spy").textContent = pct(rs); $("r-spy").className = "num " + cls(rs);
   $("d-bot").textContent = db ? db.toFixed(2) + "%" : "0%"; $("d-spy").textContent = ds == null ? "—" : ds ? ds.toFixed(2) + "%" : "0%";
-  if (rs != null) {
-    const ahead = rb >= rs, safer = db >= ds, ok = ahead && safer;
-    $("verdict").innerHTML = `<span class="ico ${ok ? "up" : "muted"}">${ok ? "✓" : "○"}</span><span><b class="${ok ? "up" : ""}">${ok ? "Meeting the goal" : "Not meeting the goal yet"}</b>
-      <span class="muted">· ${ahead ? "ahead of" : "behind"} SPY by ${Math.abs(rb - rs).toFixed(2)} pts, worst drop ${safer ? "no deeper than" : "deeper than"} SPY's.</span></span>`;
-  } else $("verdict").textContent = "";
-  $("chart-note").textContent = `Both lines start at Charles's value on ${new Date(pts[0][0]).toLocaleString("en-US",
-    {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}${range === "All" ? "" : " (the market close before this range)"}; SPY shows what the same money in SPY would be worth. Nights and weekends are squeezed so trading hours line up.`;
-  $("chart-table").innerHTML = `<table><tr><th>Time</th><th class="r">Charles</th>${spyVals ? `<th class="r">SPY, same money</th>` : ""}</tr>` +
-    pts.map((p, i) => [p, i]).reverse().slice(0, 60).map(([p, i]) => `<tr><td>${new Date(p[0]).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric"})}</td>
-      <td class="r num">${usd(vals[i])}</td>${spyVals ? `<td class="r num">${usd(spyVals[i])}</td>` : ""}</tr>`).join("") + `</table>`;
+  $("chart-note").textContent = `The dashed line is what your ${usd(S.equity[0][1], 0)} would be worth had it gone into SPY (an S&P 500 index fund) on ${new Date(S.equity[0][0]).toLocaleDateString("en-US", {month: "short", day: "numeric", timeZone: "America/New_York"})} instead. Shorter ranges zoom in; their returns count from the range's start. Nights and weekends are squeezed so trading hours line up.${st ? ` "New plan" marks ${dayFmt(st, {month: "short", day: "numeric"})}, when Charles switched to the core + momentum plan; before it, Charles's old rules traded.` : ""}`;
+}
+const timeofday = iso => new Date(iso).toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+
+/* crosshair + tooltip shared by both charts */
+function hover(box, n, X, dots, tipHtml, idxAt) {
+  const svg = box.querySelector("svg"), tip = box.querySelector(".tip"), cross = box.querySelector("#cross");
+  const W = box.clientWidth; let cur = -1;
+  const show = i => {
+    cur = Math.max(0, Math.min(n - 1, i)); const xi = X(cur);
+    cross.setAttribute("x1", xi); cross.setAttribute("x2", xi); cross.setAttribute("opacity", .5);
+    for (const d of dots(cur).filter(Boolean)) { const el = box.querySelector(d[1]); if (el) { el.setAttribute("cx", xi); el.setAttribute("cy", d[0]); el.setAttribute("opacity", 1); } }
+    tip.innerHTML = tipHtml(cur); tip.style.display = "block";
+    const tw = tip.offsetWidth; tip.style.left = (xi + 12 + tw > W ? Math.max(0, xi - tw - 12) : xi + 12) + "px";
+  };
+  const hide = () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); box.querySelectorAll("circle").forEach(c => c.setAttribute("opacity", 0)); };
+  const at = ev => { const r = svg.getBoundingClientRect(); show(idxAt(ev.clientX - r.left)); };
+  svg.onpointermove = at; svg.onpointerdown = at; svg.onpointerleave = hide; svg.onblur = hide;
+  svg.onpointerup = ev => { if (ev.pointerType !== "mouse") setTimeout(hide, 1500); };
+  svg.onkeydown = ev => { if (ev.key === "ArrowLeft") { show(cur < 0 ? n - 1 : cur - 1); ev.preventDefault(); }
+    if (ev.key === "ArrowRight") { show(cur < 0 ? 0 : cur + 1); ev.preventDefault(); } };
+}
+
+/* the backtest chart: $1,000 since 2007, the plan vs SPY (log scale so 2008 and 2024 both read) */
+const BT = [["charles", "--series-1", false, "Charles's plan"], ["charles_sectors", "--pick", false, "Same plan, sector funds"], ["spy", "--ref", true, "SPY (buy and hold)"]];
+function renderBacktest() {
+  const B = S && S.backtest, box = $("bt-chart");
+  if (!B) { box.innerHTML = `<div class="empty">No simulation file yet.</div>`; return; }
+  const runs = BT.filter(([k]) => B.runs[k]);
+  $("bt-legend").innerHTML = runs.map(([k, c, d, l]) => `<span class="key">${keySvg(c, d)}${l}</span>`).join("");
+  const base = B.runs[runs[0][0]].curve, n = base.length;
+  if (!box.clientWidth || n < 2) return;
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 54, r: 10, t: 10, b: 24};
+  const all = runs.flatMap(([k]) => B.runs[k].curve.map(p => p[1]));
+  const lo = Math.log(Math.min(...all) * 0.92), hi = Math.log(Math.max(...all) * 1.06);
+  const X = i => m.l + i * (W - m.l - m.r) / (n - 1), Y = v => m.t + (hi - Math.log(v)) / (hi - lo) * (H - m.t - m.b);
+  let grid = "";
+  for (const v of [500, 1000, 2000, 5000, 10000, 20000, 50000].filter(v => Math.log(v) > lo && Math.log(v) < hi))
+    grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">$${v >= 1000 ? v / 1000 + "k" : v}</text>`;
+  const years = [...new Set(base.map(p => p[0].slice(0, 4)))].filter((y, i, a) => i % Math.ceil(a.length / Math.max(2, Math.floor((W - 70) / 60))) === 0);
+  for (const y of years) { const i = base.findIndex(p => p[0].startsWith(y)); if (i >= 0) grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${y}</text>`; }
+  const paths = runs.map(([k, c, d]) => `<path d="${B.runs[k].curve.map((p, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("")}" fill="none" stroke="var(${c})" stroke-width="${k === "charles" ? 2.2 : 1.6}"${d ? ' stroke-dasharray="5 4"' : ""} stroke-linejoin="round"/>`).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Simulated growth of $1,000 since 2007: the plan vs SPY"><g class="axis">${grid}</g>${paths}
+    <line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
+    ${runs.map(([k, c], j) => `<circle id="bd${j}" r="4" fill="var(${c})" stroke="var(--surface)" stroke-width="2" opacity="0"/>`).join("")}</svg><div class="tip"></div>`;
+  hover(box, n, X, i => runs.map(([k], j) => [Y(B.runs[k].curve[Math.min(i, B.runs[k].curve.length - 1)][1]), "#bd" + j]),
+    i => `<div class="t">${dayFmt(base[i][0], {month: "short", year: "numeric"})}</div>` + runs.map(([k, c, d, l]) =>
+      `<div class="r">${keySvg(c, d)}<span>${l}</span><b class="num">${usd(B.runs[k].curve[Math.min(i, B.runs[k].curve.length - 1)][1], 0)}</b></div>`).join(""),
+    x => Math.round((x - m.l) / (W - m.l - m.r) * (n - 1)));
+  $("bt-stats").innerHTML = `<span class="h"></span><span class="h right">A year, on average</span><span class="h right">Worst drop</span>` +
+    runs.map(([k, c, d, l]) => { const r = B.runs[k]; return `<span><span class="sw" style="background:var(${c})"></span>${l}</span><b class="right">${pct(r.cagr_pct, 1)}</b><span class="right down">${r.max_drawdown_pct.toFixed(0)}%</span>`; }).join("");
+  $("bt-caveat").innerHTML = `<b>Read this with care.</b> These are simulated trades on past prices, not real results, and the past doesn't promise the future. The stock list is today's 100 big names, so it already contains past winners: that flatters the blue line. The purple line runs the same plan on sector funds, which has no such head start; the truth for the future is likely somewhere between the two. What held up in every version: the safety switch kept the worst drop well below SPY's (2008: SPY fell over 50%), even with aggressive mode's 2× core in calm stretches.`;
 }
 
 function render() {
-  const a = S.account;
-  $("st-bot").innerHTML = `<span class="dot ${S.bot_running ? "good" : "bad"}"></span><span>${S.bot_running ? "Running" : "Stopped"}</span>`;
-  const mk = {open: ["good", "Market open"], pre: ["warn", "Pre-market"], after: ["warn", "After hours"], closed: ["", "Market closed"]}[S.market] || ["", "—"];
-  $("st-mkt").innerHTML = `<span class="dot ${mk[0]}"></span><span>${mk[1]}</span>`;
-  $("updated").textContent = "Last cycle " + ago(S.last_cycle);
+  const a = S.account, p = P(), s = SET();
+  $("preview-note").hidden = !S.preview;
+  $("st-bot").innerHTML = S.preview ? `<span class="dot warn"></span><span>Preview</span>` : `<span class="dot ${S.bot_running ? "good" : "bad"}"></span><span>${S.bot_running ? "Running" : "Stopped"}</span>`;
+  $("updated").textContent = p.updated ? "Last check " + ago(p.updated) : "";
 
+  // portfolio
   if (a) {
     countUp($("value"), a.total_value, usd);
-    $("ret").innerHTML = `<span class="${cls(a.total_return)}">${arrow(a.total_return)}${sgnUsd(a.total_return)} (${pct(a.total_return_pct)})</span><span class="muted" style="font-weight:500">since ${usd(S.start_cash, 0)} start</span>`;
-    $("cash").textContent = usd(a.cash, 0); $("npos").textContent = a.open_positions;
-  } else { $("value").textContent = "—"; $("ret").textContent = "Alpaca not reachable right now"; }
-  const t = S.today;
-  $("today").textContent = sgnUsd(t.pnl); $("today").className = "v num " + cls(t.pnl);
-  const used = Math.min(1, Math.max(0, -t.pnl) / t.limit);
-  $("loss-meter").style.width = (used * 100) + "%";
-  $("loss-meter").style.background = used > .75 ? "var(--critical)" : used > .4 ? "var(--warn)" : "var(--series-1)";
-  $("loss-label").textContent = `${usd(Math.max(0, -t.pnl))} of ${usd(t.limit, 0)} used`;
-  $("halt").innerHTML = t.halted ? `<div class="banner">⏸ Trading paused for today: the daily loss limit was hit.</div>` : "";
+    const ss = S.since_start || {}, beat = ss.spy_pct == null ? null : a.total_return_pct - ss.spy_pct;
+    $("ret").innerHTML = `<span class="${cls(a.total_return)}">${arrow(a.total_return)}${sgnUsd(a.total_return)} (${pct(a.total_return_pct)})</span><span class="muted" style="font-weight:500">since the ${usd(S.start_cash, 0)} start</span>` +
+      (beat == null ? "" : `<div class="vs-spy"><span class="muted">SPY ${pct(ss.spy_pct)} over the same time ·</span> <b class="${cls(beat)}">${beat >= 0 ? "ahead" : "behind"} by ${Math.abs(beat).toFixed(2)} pts</b></div>`);
+    $("today").textContent = sgnUsd(a.day_change); $("today").className = "v num " + cls(a.day_change);
+    $("invested").textContent = a.total_value ? Math.round((a.total_value - a.cash) / a.total_value * 100) + "%" : "—";
+    $("cash").textContent = usd(a.cash, 0);
+  } else { $("value").textContent = "—"; $("ret").textContent = "The account can't be reached right now."; }
+  $("halt").innerHTML = S.today.halted ? `<div class="banner">⏸ Buys are paused for today: the account is down more than the ${usd(S.today.limit, 0)} daily limit.</div>` : "";
 
-  const st = S.stats;
-  $("winrate").textContent = st.win_rate == null ? "—" : st.win_rate + "%";
-  $("avgwin").textContent = usd(st.avg_win); $("avgloss").textContent = usd(st.avg_loss);
-  $("nclosed").textContent = st.total_closed ? `${st.total_closed} closed · ${sgnUsd(st.total_pnl)}` : "";
-  const X = S.exits || {};
-  if (X.n) {
-    const kept = X.peak_total > 0 ? Math.max(0, Math.min(1, X.exit_total / X.peak_total)) : 0;
-    $("giveback-wrap").style.display = "";
-    $("giveback-label").textContent = `${sgnUsd(X.exit_total)} of ${sgnUsd(X.peak_total)} peak`;
-    $("giveback-meter").style.width = (kept * 100) + "%";
-    $("giveback-note").textContent = `${X.n} tracked sale${X.n === 1 ? "" : "s"} gave back ${usd(X.gave_back_total)} from their best points. The profit_lock test book checks whether locking in gains does better.`;
+  // safety switch
+  const mi = modeInfo(), t = p.trend;
+  $("mode-pill").innerHTML = `<span class="bi ${mi.tone}">${svgI(IC[mi.icon])}</span>${mi.title}`;
+  $("mode-text").textContent = mi.text;
+  $("mode-asof").textContent = p.as_of ? "as of " + dayFmt(p.as_of, {month: "short", day: "numeric"}) + " close" : "";
+  const g = t ? Math.max(-12, Math.min(12, t.gap_pct)) : 0;
+  $("needle").style.left = (50 + g / 12 * 50) + "%";
+  $("needle").style.borderColor = t && t.gap_pct < 0 ? "var(--safe)" : "var(--series-1)";
+  const vv = p.vol, lim = s.AGG_VOL_MAX || .2, scale = 0.4;          // the bar runs 0–40% a year
+  $("calm").hidden = vv == null || !s.AGGRESSIVE;
+  if (vv != null) {
+    $("calm-bar").style.width = Math.min(100, vv / scale * 100) + "%";
+    $("calm-bar").style.background = vv < lim ? "var(--good)" : vv < (s.AGG_VOL_EXIT || .25) ? "var(--warn)" : "var(--critical)";
+    $("calm-mark").style.left = (lim / scale * 100) + "%";
+    $("calm-val").textContent = `${(vv * 100).toFixed(0)}% a year · calm < ${Math.round(lim * 100)}%`;
   }
-  $("watch").innerHTML = S.watchlist.length ? S.watchlist.map(s => `<span class="chip">${esc(s)}</span>`).join("") : `<div class="empty">No watchlist yet today.</div>`;
+  $("gauge").setAttribute("aria-label", t ? `SPY is ${Math.abs(t.gap_pct).toFixed(1)}% ${t.gap_pct >= 0 ? "above" : "below"} its 200-day average` : "No reading yet");
   renderChart();
 
-  // Holdings — fixed colour order; past 7 positions the rest fold into "Other"
-  const P = S.positions;
-  $("pos-count").textContent = P.length ? P.length + " open" : "";
-  if (a) {
-    const total = a.total_value || 1;
-    const named = P.slice(0, 7), rest = P.slice(7).reduce((s, p) => s + p.market_value, 0);
-    const parts = named.map((p, i) => ({k: p.symbol, v: p.market_value, c: `var(${SLOTS[i]})`}));
-    if (rest) parts.push({k: "Other", v: rest, c: `var(${SLOTS[7]})`});
-    parts.push({k: "Cash", v: a.cash, c: "var(--grid)"});
-    $("alloc").innerHTML = parts.filter(p => p.v > 0).map(p => `<i style="width:${p.v / total * 100}%;background:${p.c}" title="${esc(p.k)} ${usd(p.v)}"></i>`).join("");
-    $("alloc-keys").innerHTML = parts.map(p => `<span><span class="sw" style="background:${p.c}"></span>${esc(p.k)} <b class="num">${(p.v / total * 100).toFixed(0)}%</b></span>`).join("");
-  }
-  $("positions").innerHTML = P.length ? P.map(p => {
-    const room = p.stop_dist_pct;
-    return `<div class="row-i tap" ${tapAttrs("pos", p.symbol)}>
-      <div><span class="sym">${esc(p.symbol)}</span> <span class="muted small num">${+p.shares.toFixed(4)} sh @ ${usd(p.avg_price)}</span></div>
-      <div class="right num"><b>${usd(p.market_value)}</b></div>
-      <div class="small muted num">now ${usd(p.current_price)}${p.peak_pnl != null ? ` · best ${sgnUsd(p.peak_pnl)} (${pct(p.peak_pct, 1)})` : ""}</div>
-      <div class="right small num ${cls(p.unrealized_pnl)}">${sgnUsd(p.unrealized_pnl)} (${pct(p.unrealized_pct, 1)})</div>
-      ${p.stop ? `<div class="stopbar"><span class="num">stop ${usd(p.stop)}</span><div class="meter"><i style="width:${Math.min(100, Math.max(3, room / 10 * 100))}%;background:${room < 2 ? "var(--critical)" : room < 4 ? "var(--warn)" : "var(--good)"}"></i></div><span class="num">${room}% room</span></div>` : ""}
-    </div>`; }).join("") : `<div class="empty">No open positions.</div>`;
+  // holdings
+  const H = S.positions, total = a ? a.total_value : 0;
+  $("pos-count").textContent = H.length ? `${H.length} holding${H.length === 1 ? "" : "s"}` : "";
+  const sum = role => H.filter(h => h.role === role).reduce((x, h) => x + h.market_value, 0);
+  const now = ["core", "pick", "safety", "leaving"].map(r => [r, sum(r)]).concat([["cash", a ? Math.max(0, a.cash) : 0]]);
+  const tg = p.targets || {}, planParts = [["core", (tg[s.CORE] || 0) + (tg[s.AGG_CORE] || 0)], ["pick", (p.picks || []).reduce((x, k) => x + (tg[k] || 0), 0)], ["safety", tg[s.SAFE] || 0]];
+  const bar = (parts, tot) => parts.filter(([, v]) => v > 0).map(([r, v]) => `<i style="width:${v / tot * 100}%;background:var(${ROLE[r][1]})" title="${ROLE[r][0]} ${(v / tot * 100).toFixed(0)}%"></i>`).join("");
+  $("alloc-now").innerHTML = total ? bar(now, total) : ""; $("alloc-plan").innerHTML = p.targets ? bar(planParts, 1) : "";
+  $("alloc-now").setAttribute("aria-label", "Now: " + now.filter(([, v]) => v > 0).map(([r, v]) => `${ROLE[r][0]} ${(v / total * 100).toFixed(0)}%`).join(", "));
+  $("alloc-plan").setAttribute("aria-label", "Plan: " + planParts.filter(([, v]) => v > 0).map(([r, v]) => `${ROLE[r][0]} ${(v * 100).toFixed(0)}%`).join(", "));
+  $("alloc-keys").innerHTML = ["core", "pick", "safety", "leaving", "cash"].filter(r => now.find(x => x[0] === r)[1] > 0 || planParts.find(x => x[0] === r)?.[1] > 0)
+    .map(r => `<span><span class="sw" style="background:var(${ROLE[r][1]})"></span>${ROLE[r][0]} <b class="num">${total ? (now.find(x => x[0] === r)[1] / total * 100).toFixed(0) : 0}%</b>${planParts.find(x => x[0] === r) ? ` <span class="muted">/ ${(planParts.find(x => x[0] === r)[1] * 100).toFixed(0)}%</span>` : ""}</span>`).join("");
+  $("alloc-note").textContent = sum("leaving") > 0 ? "\"Being sold\" are stocks from Charles's old rules; they go at the next check. Small gaps between now and the plan are left alone until they grow past 3 points or the monthly re-pick."
+    : "Small gaps between now and the plan are left alone until they grow past 3 points or the monthly re-pick.";
+  const groups = [["core", "The whole market"], ["pick", "Momentum picks"], ["safety", "Safety"], ["leaving", "Being sold"]];
+  $("positions").innerHTML = H.length ? groups.filter(([r]) => H.some(h => h.role === r)).map(([r, title]) => {
+    const rows = H.filter(h => h.role === r);
+    return `<div class="group"><span class="sw" style="background:var(${ROLE[r][1]})"></span>${title}<span class="aside num">${usd(rows.reduce((x, h) => x + h.market_value, 0), 0)}</span></div>` +
+      rows.map(h => `<div class="row-i tap" ${tapAttrs("pos", h.symbol)}>
+        <div><span class="sym">${esc(h.symbol)}</span> <span class="muted small">${esc(nameOf(h.symbol))}</span></div>
+        <div class="right num"><b>${usd(h.market_value)}</b></div>
+        <div class="small muted num">${h.actual_pct != null ? h.actual_pct.toFixed(1) + "% of account" : ""}${h.target_pct ? ` · plan ${h.target_pct.toFixed(0)}%` : ""}${h.momentum != null && r === "pick" ? ` · ${pct(h.momentum, 0)} past year` : ""}</div>
+        <div class="right small num ${cls(h.unrealized_pnl)}">${sgnUsd(h.unrealized_pnl)} (${pct(h.unrealized_pct, 1)})</div>
+      </div>`).join(""); }).join("") : `<div class="empty">Nothing held right now. It's all cash.</div>`;
 
-  // Options sleeve
-  const O = S.options || {};
-  const OS = O.settings || {};
-  $("opt-sum").textContent = O.open ? `${O.open.length} open · ${usd(O.at_risk, 0)} at risk · ${O.closed_n || 0} closed ${O.closed_n ? sgnUsd(O.realised_pnl) : ""}` : "";
-  const rowsO = (O.open || []).map(sp => {
-    const val = sp.value, pnl = val == null ? null : (val - sp.debit) * 100;
-    const dte = Math.round((new Date(sp.expiry + "T20:00:00Z") - Date.now()) / 864e5);
-    const prog = val == null ? 0 : Math.max(0, Math.min(1, (val - sp.debit * (1 - OS.stop_loss_frac)) /
-      ((sp.debit + OS.take_profit_frac * (sp.width - sp.debit)) - sp.debit * (1 - OS.stop_loss_frac))));
-    return `<div class="row-i">
-      <div><span class="sym">${esc(sp.symbol)}</span> <span class="muted small num">${sp.long_strike}/${sp.short_strike} call spread · exp ${new Date(sp.expiry + "T12:00:00").toLocaleDateString("en-US", {month: "short", day: "numeric"})} (${dte} d)</span></div>
-      <div class="right num"><b>${val == null ? "—" : usd(val * 100)}</b></div>
-      <div class="small muted num">paid ${usd(sp.max_loss)} · max gain ${usd(sp.max_profit)}</div>
-      <div class="right small num ${cls(pnl)}">${pnl == null ? "" : sgnUsd(pnl)}</div>
-      <div class="stopbar"><span class="num">stop</span><div class="meter"><i style="width:${Math.max(3, prog * 100)}%;background:var(--series-1)"></i></div><span class="num">target</span></div>
-    </div>`; });
-  const lastClosed = (O.closed || []).filter(x => x.pnl != null).slice(0, 5).map(x => `<div class="row-i">
-      <div><span class="sym">${esc(x.symbol)}</span> <span class="muted small num">${x.long_strike}/${x.short_strike}C · ${esc((x.exit_reason || "").replace("_", " "))}</span></div>
-      <div class="right num small ${cls(x.pnl)}">${sgnUsd(x.pnl)}</div></div>`);
-  $("options").innerHTML = rowsO.join("") + (lastClosed.length ? `<div class="day">Recently closed</div>` + lastClosed.join("") : "")
-    || `<div class="empty">No option spreads yet. One opens when Charles buys a stock that has a spread within the limits below.</div>`;
+  // the plan
+  const nPick = (p.picks || []).length;
+  const stepRow = (n, color, title, text, now) => `<div class="step"><span class="n" style="background:var(${color})">${n}</span><div><h3>${title}</h3><p>${text}</p>${now ? `<div class="now">${now}</div>` : ""}</div></div>`;
+  $("steps").innerHTML =
+    stepRow(1, "--core", `${Math.round(s.CORE_PCT * 100)}% in the whole market`, `An S&P 500 index fund (${s.CORE}): 500 big US companies in one. This is where most long-term growth comes from.`,
+      p.mode === "invest" ? `<span class="up">● Holding it now</span>` : p.mode === "aggressive" ? `<span class="up">● Held as a 2× S&P fund now (step 4)</span>` : p.mode === "safety" ? `<span class="muted">○ Paused: safety mode</span>` : "") +
+    stepRow(2, "--pick", `${s.PICKS} momentum picks, ${Math.round(s.PICK_PCT * 100)}% each`, "Stocks that rose the most over the past year tend to keep doing well for a while. Once a month Charles picks the strongest 4, and the AI skips any with serious bad news.",
+      p.mode !== "safety" && p.mode ? (nPick ? `<span style="color:var(--pick)">● ${p.picks.map(esc).join(", ")}</span>` : `<span class="muted">○ None qualify, parked in T-bills</span>`) : "") +
+    stepRow(3, "--safe", "A safety switch", `If SPY ends a month below its ${s.TREND_DAYS}-day average, everything moves to T-bills (about 4% a year) until it recovers. That's what kept the worst years from being disasters.`,
+      p.mode ? (p.mode === "safety" ? `<span style="color:var(--safe)">● On: waiting in T-bills</span>` : `<span class="muted">○ Off: the market's trend is up</span>`) : "") +
+    (s.AGGRESSIVE ? stepRow(4, "--good", "Aggressive mode, when it's calm", `When the market is rising and calm (swings under ${Math.round((s.AGG_VOL_MAX || .2) * 100)}% a year), Charles holds the core in a 2× S&P 500 fund (${esc(s.AGG_CORE || "SSO")}) instead. It switches on only at a monthly check and off on any choppy day: calm, rising markets are where leverage has paid, choppy ones are where it hurts.`,
+      p.mode === "aggressive" ? `<span class="up">● On: 2× core</span>` : p.mode ? `<span class="muted">○ Off: ${p.mode === "safety" ? "safety mode" : "not calm enough, or waiting for the monthly check"}</span>` : "") : "") +
+    `<p class="note" style="margin-top:4px">No stop-losses, no day-trading. In a normal month Charles trades only on the re-pick day. A daily loss limit still pauses buys on a very bad day.</p>`;
+  $("rank-asof").textContent = p.as_of ? dayFmt(p.as_of, {month: "short", day: "numeric"}) + " close" : "";
+  const R = (p.ranked || []).slice(0, 10), vet = Object.fromEntries((p.vetoes || []).map(v => [v.symbol, v]));
+  const mx = Math.max(...R.map(r => Math.abs(r.momentum)), 1);
+  $("ranking").innerHTML = R.length ? R.map(r => {
+    const picked = (p.picks || []).includes(r.symbol), v = vet[r.symbol];
+    const why = v ? `<span class="tag veto" style="margin-left:0">AI skipped</span> ${esc(v.reason)}` : !r.above_trend ? "Below its 200-day average, so it doesn't qualify." : r.momentum <= 0 ? "No gain over the year." : "";
+    return `<div class="rank"><span class="k">${r.rank}</span>
+      <div style="min-width:0"><b>${esc(r.symbol)}</b>${picked ? `<span class="tag pick">✓ Picked</span>` : ""}<div class="muted small nm">${esc(nameOf(r.symbol))}</div></div>
+      <div class="hb"><div class="hbar ${r.eligible && !v ? "" : "off"}" style="width:${Math.max(2, Math.abs(r.momentum) / mx * 100)}%"></div></div>
+      <b class="num right ${cls(r.momentum)}">${pct(r.momentum, 0)}</b>${why ? `<div class="why">${why}</div>` : ""}</div>`; }).join("")
+    : `<div class="empty">The first ranking comes with Charles's first check.</div>`;
+  if (tab === "plan") renderBacktest();
 
-  // Opening range breakout sleeve
-  const R = S.orb || {}, RT = R.today;
-  $("orb-card").hidden = !(R.enabled || RT || R.n);
-  if (!$("orb-card").hidden) {
-    $("orb-sum").textContent = `${(R.symbols || []).join(", ")}${RT && RT.regime ? " · regime " + pretty(RT.regime) : ""} · all-time ${sgnUsd(R.total_pnl)} on ${R.n} trade${R.n === 1 ? "" : "s"}${R.win_rate != null ? ` (${R.win_rate}% won)` : ""}`;
-    const label = {range: "building the range", watch: "watching for a breakout", entering: "buying", in: "in a trade", exiting: "selling", done: "done for today"};
-    const today = RT ? Object.entries(RT.symbols || {}).map(([sym, x]) => {
-      const p = x.pos, r = x.range;
-      return `<div class="row-i">
-        <div><span class="sym">${esc(sym)}</span> <span class="tag">${esc(label[x.status] || x.status)}</span></div>
-        <div class="right num ${cls(RT.pnl)}"><b>${sgnUsd(RT.pnl)}</b> <span class="small muted">today</span></div>
-        <div class="small muted num">${r ? `range ${usd(r.low)} – ${usd(r.high)}` : "range forms 9:30–9:35 ET"}${RT.atr && RT.atr[sym] ? ` · ATR ${usd(RT.atr[sym])}` : ""} · ${esc(RT.day)}</div>
-        <div class="right small muted">${RT.disabled ? esc(RT.disabled) : ""}</div>
-        ${p ? `<div class="small num" style="grid-column:1/-1">${esc(p.side)} ${p.qty} sh @ ${usd(p.entry)} · stop ${usd(p.stop)} · target ${usd(p.target)}</div>`
-            : `<div class="small muted" style="grid-column:1/-1">${esc(x.note || "")}</div>`}
-      </div>`; }).join("") : `<div class="empty">No ORB session yet. The first one starts at the next market open.</div>`;
-    const recent = (R.recent || []).slice().reverse().slice(0, 6).map(t => `<div class="row-i">
-      <div><span class="sym">${esc(t.symbol)}</span> <span class="muted small num">${esc(t.day)} · ${usd(t.entry)} → ${usd(t.exit)} · ${esc(t.reason)}</span></div>
-      <div class="right num small ${cls(t.pnl)}">${sgnUsd(t.pnl)}${t.r != null ? ` <span class="muted">(${t.r > 0 ? "+" : ""}${t.r}R)</span>` : ""}</div></div>`);
-    $("orb").innerHTML = today + (recent.length ? `<div class="day">Recent ORB trades</div>` + recent.join("") : "");
-    const sw = $("orb-switch");
-    sw.hidden = !R.installed;
-    sw.setAttribute("aria-checked", R.on ? "true" : "false");
-    sw.querySelector(".dot").className = "dot " + (R.on ? "good" : "");
-    sw.lastElementChild.textContent = R.on ? "On" : "Off";
-    sw.title = R.on ? "ORB takes new trades. Tap to switch off." : "ORB takes no new trades. Tap to switch on.";
-  }
-  $("opt-note").textContent = OS.max_loss_per_trade ? `When Charles buys a stock it also buys a call spread on it, ${OS.dte_min}–${OS.dte_max} days out. Most it can lose = what it pays: ≤ ${usd(OS.max_loss_per_trade, 0)} per spread, ≤ ${Math.round(OS.max_risk_pct * 100)}% of the account in all, ${OS.max_open} open at most. Closes at half the max gain, at half the cost lost, or ${OS.exit_dte} days before expiry. The bar runs from the stop to the profit target.` : "";
-
-  // Experiments
-  $("exps").innerHTML = S.experiments.map(e => `<div class="exp">
-      <div class="exp-top"><div><span class="exp-name">${esc(pretty(e.name))}</span><span class="tag">${e.kind}</span></div>
-        <b class="num ${cls(e.return_pct)}">${pct(e.return_pct)}</b></div>
-      <div class="exp-about">${esc(e.about)}</div>
-      <div class="exp-stats num">
-        <div><div class="label">vs baseline</div><span class="${cls(e.vs_baseline)}">${e.name === "baseline" ? "ref." : e.vs_baseline == null ? "—" : (e.vs_baseline >= 0 ? "+" : "") + e.vs_baseline.toFixed(2)}</span></div>
-        <div><div class="label">SPY same days</div>${pct(e.spy_pct)}</div>
-        <div><div class="label">Worst drop</div>${e.max_drawdown_pct == null ? "—" : e.max_drawdown_pct.toFixed(2) + "%"}</div>
-        <div><div class="label">Trades</div>${e.closed}${e.win_pct != null ? ` · ${e.win_pct}% won` : ""}</div>
-      </div>
-      <div class="prog"><div class="meter"><i style="width:${e.progress * 100}%"></i></div><span>${Math.round(e.progress * 100)}% of ${e.needs}</span></div>
-    </div>`).join("") || `<div class="empty">No shadow books yet.</div>`;
-  const rd = new Date(S.review_from + "T12:00:00");
-  $("exp-note").textContent = `First promotion review ${rd.toLocaleDateString("en-US", {month: "short", day: "numeric"})}. A book's rule only goes live once it has enough evidence, beats baseline and drops no deeper than baseline or SPY. "vs baseline" is in % points.`;
-
-  const ai = S.ai_check;
-  if (ai.length) {
-    const mx = Math.max(...ai.flatMap(r => [Math.abs(r.ai_mean), Math.abs(r.all_mean)]), .01);
-    $("ai").innerHTML = ai.map(r => `<div class="ai-h">
-        <b>${r.horizon}</b><div class="hb"><div class="hbar ${r.ai_mean < 0 ? "neg" : ""}" style="width:${Math.abs(r.ai_mean) / mx * 65}%"></div><span class="num small">${pct(r.ai_mean)} · ${r.ai_n} picks</span></div>
-        <span></span><div class="hb"><div class="hbar all" style="width:${Math.abs(r.all_mean) / mx * 65}%"></div><span class="num small muted">${pct(r.all_mean)} · ${r.all_n} candidates</span></div>
-      </div>`).join("");
-    const better = ai.filter(r => r.ai_mean > r.all_mean).length;
-    $("ai-note").textContent = better === ai.length ? "So far the AI's picks beat the average candidate." :
-      better === 0 ? "So far the AI's picks do worse than the average candidate. Small sample; the scorecard keeps counting." :
-      "Mixed so far: better on some horizons, worse on others. Small sample.";
-  } else { $("ai").innerHTML = `<div class="empty">Not enough scored decisions yet.</div>`; $("ai-note").textContent = ""; }
-
-  // Claude
-  const C = S.claude || {};
-  $("cl-when").textContent = C.report ? new Date(C.report.date + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"}) : "";
-  $("cl-report").innerHTML = C.report ? md(C.report.text) : `<div class="empty">The first report comes with the next weekday check-up (8:15 AM ET).</div>`;
-  $("cl-plan").innerHTML = C.plan ? md(C.plan) : "";
-  // without Claude's check-up (no ops/ notes, e.g. a fresh install) the tab is just the progress bars
-  $("cl-ideas-card").hidden = !C.plan;
-  $("cl-report-box").hidden = !C.report;
-  $("cl-plan-box").hidden = !C.plan;
-  $("cl-notes-card").hidden = !C.report && !C.plan;
-  $("cl-miles").innerHTML = (C.milestones || []).map(m => `<div class="mile">
-      <div class="mile-top"><b>${esc(m.name)}</b><span class="small muted">${esc(m.detail)}</span></div>
-      <div class="exp-about" style="margin-bottom:0">${esc(m.about)}</div>
-      <div class="prog"><div class="meter"><i style="width:${m.progress * 100}%"></i></div><span>${Math.round(m.progress * 100)}% of ${esc(m.needs)}</span></div>
-    </div>`).join("");
-  // the plan's "Watching" ideas: title, first sentence as the why, and the bar of the shadow book that tests it
-  const books = Object.fromEntries((S.experiments || []).map(e => [e.name, e]));
-  const ideas = planIdeas(C.plan || "");
-  $("cl-ideas").innerHTML = ideas.map(i => {
-    const b = (i.text.match(/`([a-z_]+)`/g) || []).map(x => books[x.slice(1, -1)]).find(Boolean);
-    const plain = i.text.replace(/\*\*|`/g, "");
-    const why = (plain.match(/^.+?[.!?](?=\s|$)/) || [plain])[0];
-    return `<div class="mile">
-      <div class="mile-top"><b>${esc(i.title)}</b></div>
-      <div class="exp-about" style="margin-bottom:0">${esc(why)}</div>
-      ${b ? `<div class="prog"><div class="meter"><i style="width:${b.progress * 100}%"></i></div><span>${Math.round(b.progress * 100)}% of ${esc(b.needs)}</span></div>` : ""}
-    </div>`; }).join("") || `<div class="empty">Nothing being tested right now.</div>`;
-
-  // Activity
-  const exitBy = {};
-  for (const x of (S.exits?.rows || [])) exitBy[x.symbol + (x.closed || "").slice(0, 13)] = x;
-  let html = "", lastDay = "";
-  for (const [ti, tr] of S.trades.entries()) {
+  // activity feed (bottom of Home): the latest few, the rest behind "Show all"
+  const SHOWN = 6, rows = actAll ? S.trades : S.trades.slice(0, SHOWN);
+  let html = "", lastDay = "", seenOld = false;
+  for (const [ti, tr] of rows.entries()) {
     const d = new Date(tr.timestamp), day = d.toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"});
+    if (isOld(tr) && !seenOld && S.trades.some(x => !isOld(x))) { html += `<div class="day">Before the new plan · Charles's old rules</div>`; seenOld = true; lastDay = ""; }
     if (day !== lastDay) { html += `<div class="day">${day}</div>`; lastDay = day; }
     const act = (tr.action || "").startsWith("BUY") ? "BUY" : "SELL";
-    html += `<div class="act tap" ${tapAttrs("trade", ti)}><div class="badge ${act}">${esc(tr.action)}</div>
+    html += `<div class="act tap" ${tapAttrs("trade", ti)}><div class="badge ${act}">${act === "BUY" ? "Buy" : "Sell"}</div>
       <div><b>${esc(tr.symbol)}</b> <span class="muted small num">${usd(tr.value)} · ${d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"})}</span>
-        <div class="why">${esc(tr.reasoning)}</div>${(() => { const x = act === "SELL" && exitBy[tr.symbol + (tr.timestamp || "").slice(0, 13)];
-          return x ? `<div class="small muted num" style="margin-top:2px">best was ${sgnUsd(x.peak_pnl)} (${pct(x.peak_pct, 1)}) · gave back ${usd(Math.max(0, x.gave_back))}</div>` : ""; })()}</div>
+        <div class="why2">${esc(tr.reasoning)}</div></div>
       <div class="right num small ${cls(tr.pnl)}">${tr.pnl == null ? "" : sgnUsd(tr.pnl)}</div></div>`;
   }
   $("trades").innerHTML = html || `<div class="empty">No trades yet.</div>`;
+  $("act-more").hidden = S.trades.length <= SHOWN;
+  $("act-more").textContent = actAll ? "Show less" : `Show all ${S.trades.length}`;
+  $("act-count").textContent = S.trades.length ? `${S.trades.length} trades` : "";
+  const planned = S.preview ? (p.last_orders || []) : [];
+  $("planned-wrap").hidden = !planned.length;
+  $("planned").innerHTML = planned.map(o => `<div class="act"><div class="badge ${o.side === "buy" ? "BUY" : "SELL"}">${o.side === "buy" ? "Buy" : "Sell"}</div>
+      <div><b>${esc(o.symbol)}</b> <span class="muted small">${esc(nameOf(o.symbol))}</span><div class="why2">${esc(o.reason)}</div></div>
+      <div class="right num small">${o.all ? "all" : usd(o.amount)}</div></div>`).join("");
+
+  // Self-Tune: one verdict, the progress bars, the rules; the report stays folded
+  const E = S.evaluation, rs = (S.rules || {}).settings || s, C = S.claude || {};
+  const cand = E && E.candidate, fmtRule = (k, v) => k === "CORE_PCT" || k === "AGG_VOL_MAX" ? Math.round(v * 100) + "%" : typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+  const t1 = !E ? ["clock", "info", "The first rule check is coming", "Claude will test small changes to the plan's numbers on 19 years of history."]
+    : cand ? ["spark", "warn", `Considering: ${cand.label.toLowerCase()} ${fmtRule(cand.setting, cand.from)} → ${fmtRule(cand.setting, cand.to)}`, cand.why]
+    : ["check", "up", "No change needed", `None of the ${E.tested} alternatives beat the current rules in every test (checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}).`];
+  $("tune-ico").className = "bi " + t1[1]; $("tune-ico").innerHTML = svgI(IC[t1[0]]);
+  $("tune-title").textContent = t1[2]; $("tune-sub").textContent = t1[3];
+  $("miles").innerHTML = (S.milestones || []).map(m => `<div class="mile">
+      <div class="mile-top"><b>${esc(m.name)}</b><span class="small muted">${esc(m.detail)}</span></div>
+      <div class="prog"><div class="meter"><i style="width:${m.progress * 100}%"></i></div><span>${esc(m.needs)}</span></div></div>`).join("");
+  $("rules").innerHTML = [["In the whole market", Math.round(rs.CORE_PCT * 100) + "%"], ["Momentum picks", `${rs.PICKS} × ${+(rs.PICK_PCT * 100).toFixed(1)}%`],
+    ["Safety switch", rs.SAFETY_SWITCH ? `On · checked ${rs.SWITCH_CHECK}` : "Off"],
+    ["Aggressive mode", rs.AGGRESSIVE ? `On when calm (< ${Math.round(rs.AGG_VOL_MAX * 100)}%)` : "Off"], ["Trend line", `${rs.TREND_DAYS}-day average`]]
+    .map(([l, v]) => `<div class="rule"><span>${l}</span><b class="num">${v}</b></div>`).join("");
+  $("rules-note").textContent = "Claude may change one number at most once a quarter, and only when the change wins every test." +
+    ((S.rules || {}).last_change ? ` Last change: ${S.rules.last_change.split(":")[0]}.` : "");
+  $("cl-when").textContent = C.report ? "· " + dayFmt(C.report.date) : "";
+  $("cl-report").innerHTML = C.report ? md(C.report.text) : `<div class="empty">The first report comes with the next weekday check-up (8:15 AM ET).</div>`;
 
   charlesBrief();
-  if (a) markSeen(a.total_value);
+  if (a && !S.preview) markSeen(a.total_value);
   document.body.classList.remove("loading");
 }
 
-$("orb-switch").addEventListener("click", async () => {
-  const sw = $("orb-switch"), on = sw.getAttribute("aria-checked") !== "true";
-  if (!confirm(on ? "Switch ORB on? It can take a new trade from the next breakout."
-                  : "Switch ORB off? It takes no new trades. A trade already open keeps its stop and still closes by 3:55 PM ET.")) return;
-  sw.disabled = true;
-  try {
-    const r = await fetch("/api/orb", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({on})});
-    if (!r.ok) throw new Error((await r.json()).error || r.status);
-    await load();
-  } catch (e) { alert("Couldn't switch ORB: " + e.message); }
-  finally { sw.disabled = false; }
-});
-
 async function load() {
   try {
-    const r = await fetch("/api/state", {cache: "no-store"});
+    const r = await fetch("api/state", {cache: "no-store"});
     S = await r.json();
     if (S.error) throw new Error(S.error);
     render();
   } catch (e) {
-    $("st-bot").innerHTML = `<span class="dot bad"></span><span>Dashboard offline</span>`;
+    $("st-bot").innerHTML = `<span class="dot bad"></span><span>Offline</span>`;
   }
 }
 buildTabs(); load();
 setInterval(() => { if (!document.hidden) load(); }, 30000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
-let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => S && renderChart(), 120); });
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (S) { renderChart(); renderBacktest(); } }, 120); });
 </script>
 <script>
 // The Kalshi tab shows only when the Kalshi dashboard (kalshi/, run separately) answers behind /kalshi/.

@@ -1,43 +1,39 @@
 """
-strategy_settings.py — tunable strategy/sizing settings from strategy.json.
+strategy_settings.py — the plan's settings from strategy.json (git-tracked), over allocator.DEFAULTS.
 
-strategy.json (git-tracked) is the one place the daily check-up may tune the
-strategy to market conditions. apply() runs at startup after
-main._apply_wizard_settings, so it overrides config.py and the sizing in
-data/launch_authorized.json. Every value is clamped to the hard limits below,
-which the check-up is not allowed to edit. MAX_DAILY_LOSS is deliberately not
-tunable here: the kill switch stays with the owner.
+Every value is clamped to the hard limits below. Changes are slow and evidence-based: evaluate.py
+tests one-step changes every month, and at most one change that passes every test is applied a
+quarter. MAX_DAILY_LOSS is not here on purpose: the kill switch stays the owner's (config.py /
+data/launch_authorized.json).
 """
 import json
 import logging
 import os
 
-import config
-
 log = logging.getLogger(__name__)
 
 PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "strategy.json")
 
-# name: (min, max, max change per check-up, type)
+# name: (min, max, type) — for str settings, (allowed values, None, str)
 LIMITS = {
-    "MIN_POSITION_SIZE_PCT":   (0.05, 0.15, 0.025, float),
-    "MAX_POSITION_SIZE_PCT":   (0.08, 0.20, 0.025, float),
-    "MAX_OPEN_POSITIONS":      (2,    6,    1,     int),
-    "STOP_LOSS_PCT":           (0.03, 0.08, 0.01,  float),
-    "TAKE_PROFIT_PCT":         (0.08, 0.30, 0.03,  float),
-    "TRAILING_STOP_ATR_MULT":  (1.5,  3.5,  0.5,   float),
-    "MIN_CONFIDENCE_FLOOR":    (0.60, 0.80, 0.05,  float),
-    "LLM_SELL_MIN_CONFIDENCE": (0.65, 0.90, 0.05,  float),
-    "TRADE_COOLDOWN_HOURS":    (2,    24,   4,     int),
-    "PROFIT_LOCK_TRIGGER":     (0.02, 0.08, 0.01,  float),
-    "PROFIT_LOCK_KEEP":        (0.3,  0.8,  0.1,   float),
+    "CORE_PCT":      (0.50, 0.95, float),
+    "PICKS":         (0,    8,    int),
+    "PICK_PCT":      (0.0,  0.10, float),
+    "DRIFT_PCT":     (0.01, 0.10, float),
+    "TREND_DAYS":    (100,  300,  int),
+    "SAFETY_SWITCH": (None, None, bool),
+    "SWITCH_CHECK":  (("monthly", "daily"), None, str),
+    "AGGRESSIVE":    (None, None, bool),
+    "AGG_CORE":      (("SSO", "UPRO"), None, str),        # 2x or 3x S&P fund — the owner's call
+    "AGG_VOL_MAX":   (0.10, 0.25, float),
+    "AGG_VOL_EXIT":  (0.15, 0.35, float),
 }
 
 
-def load() -> dict:
+def load(path: str = PATH) -> dict:
     """The settings from strategy.json, clamped to LIMITS (unknown keys ignored)."""
     try:
-        with open(PATH) as f:
+        with open(path) as f:
             raw = json.load(f).get("settings", {})
     except FileNotFoundError:
         return {}
@@ -46,7 +42,19 @@ def load() -> dict:
         if name not in LIMITS:
             log.warning(f"🎛️  strategy.json: unknown setting {name} ignored")
             continue
-        lo, hi, _, typ = LIMITS[name]
+        lo, hi, typ = LIMITS[name]
+        if typ is bool:
+            if isinstance(value, bool):
+                out[name] = value
+            else:
+                log.warning(f"🎛️  strategy.json: {name}={value!r} is not true/false — ignored")
+            continue
+        if typ is str:
+            if value in lo:
+                out[name] = value
+            else:
+                log.warning(f"🎛️  strategy.json: {name}={value!r} not one of {lo} — ignored")
+            continue
         try:
             v = typ(value)
         except (TypeError, ValueError):
@@ -56,25 +64,25 @@ def load() -> dict:
         if clamped != v:
             log.warning(f"🎛️  strategy.json: {name}={v} outside {lo}..{hi} — using {clamped}")
         out[name] = clamped
-    lo_pct = out.get("MIN_POSITION_SIZE_PCT", config.MIN_POSITION_SIZE_PCT)
-    if out.get("MAX_POSITION_SIZE_PCT", config.MAX_POSITION_SIZE_PCT) < lo_pct:
-        log.warning("🎛️  strategy.json: max position size below min — raising max to min")
-        out["MAX_POSITION_SIZE_PCT"] = lo_pct
+    import allocator
+    s = {**allocator.DEFAULTS, **out}
+    if s["AGG_VOL_EXIT"] < s["AGG_VOL_MAX"]:
+        out["AGG_VOL_EXIT"] = s["AGG_VOL_MAX"]
+        log.warning("🎛️  strategy.json: AGG_VOL_EXIT below AGG_VOL_MAX — raised to match")
+    room = 1 - s["CASH_PCT"] - s["CORE_PCT"]
+    if s["PICKS"] * s["PICK_PCT"] > room + 1e-9:
+        out["PICK_PCT"] = round(room / s["PICKS"], 4) if s["PICKS"] else 0.0
+        log.warning(f"🎛️  strategy.json: picks don't fit next to the core — PICK_PCT {out['PICK_PCT']}")
     return out
 
 
 def apply() -> dict:
-    """Load strategy.json and set the values on config. Returns what was applied."""
+    """Load and log the settings (the rebalancer reads them itself on every run)."""
     try:
         settings = load()
     except Exception as e:
-        log.error(f"🎛️  strategy.json unreadable ({e}) — keeping config/launch settings")
+        log.error(f"🎛️  strategy.json unreadable ({e}) — using the defaults")
         return {}
-    for name, value in settings.items():
-        setattr(config, name, value)
-    if "MIN_CONFIDENCE_FLOOR" in settings:
-        # the auto-tuner may raise MIN_CONFIDENCE later, never below the floor
-        config.MIN_CONFIDENCE = max(config.MIN_CONFIDENCE, config.MIN_CONFIDENCE_FLOOR)
     if settings:
         log.info("🎛️  Strategy settings: " + ", ".join(f"{k}={v}" for k, v in settings.items()))
     return settings

@@ -1,37 +1,16 @@
-# Core — pinned for Python 3.11 compatibility
+# Charles — Python 3.11 (conda env `tradingbot` on the server)
 numpy==1.26.4
 pandas==2.1.4
 
-pyarrow==14.0.2
-pyzmq>=25.0.0
-
-groq>=0.9.0
-
-# Market data
+# Market data, news headlines (the AI news veto) and HTTP
 yfinance>=0.2.40
+feedparser>=6.0.11
 requests>=2.32.0
 
-# NLP / Sentiment
-nltk>=3.9.1
-vaderSentiment>=3.3.2
-textblob>=0.18.0
-
-# Data feeds
-feedparser>=6.0.11
-
-# Scheduling
-apscheduler>=3.10.4
-
-# Broker
+# Broker (Alpaca paper account)
 alpaca-py>=0.33.0
 
-# Utilities
+# Scheduling and settings
+apscheduler>=3.10.4
 python-dotenv>=1.0.0
-colorama>=0.4.6
 pytz>=2024.1
-
-# FinBERT — optional, improves sentiment accuracy
-# Downloads ~500MB model on first run, cached locally after that
-# Comment these out if install is slow or fails
-transformers>=4.40.0
-torch>=2.3.0

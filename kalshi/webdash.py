@@ -49,7 +49,7 @@ def _json(path: str, default):
 
 
 def review() -> dict:
-    """Newest ops/journal/YYYY-MM-DD.md and the plan, for the Self-Tuning tab."""
+    """Newest ops/journal/YYYY-MM-DD.md and the plan, for the Self-Tune tab."""
     try:
         names = sorted(n for n in os.listdir(JOURNAL) if len(n) == 13 and n.endswith(".md"))
     except FileNotFoundError:
@@ -74,7 +74,7 @@ STRATEGY_INFO = {
 }
 
 
-# Levels (gates.py, owner 2026-10-15): what each strategy may bet, and what it shows on the Self-Tuning tab
+# Levels (gates.py, owner 2026-10-15): what each strategy may bet, and what it shows on the Self-Tune tab
 LEVEL_TEXT = {"predict": "predicting only, no money", "small": "small bets ($5 max)", "normal": "betting normally"}
 TUNE_SETTING = {"trust_model": "forecast trust", "min_edge": "smallest gap it bets on",
                 "strategy_cap_pct": "share of the book", "kelly_fraction": "bet size", "max_bet_pct": "biggest bet"}

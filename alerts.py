@@ -95,181 +95,54 @@ def _notify(icon: str, title: str, message: str, level: str = "info"):
 
 # ── Alert functions ───────────────────────────────────────────────────────────
 
+def _usd(v: float) -> str:
+    return ("−$" if v < 0 else "$") + f"{abs(v):,.2f}"
+
+
 def bot_started():
-    _notify("🤖", "Bot started", "Paper trading mode active", "info")
-    _send("🤖 *AI Trading Bot started*\nPaper trading mode active. Watching the market...")
+    _notify("🐶", "Charles started", "Paper account", "info")
+    _send("🐶 Charles started (paper account). It checks the plan at 10:00 AM ET on weekdays.")
 
 
-def trade_executed(trade: dict):
-    action = trade.get("action", "?")
-    symbol = trade.get("symbol", "?")
-    value  = float(trade.get("value", 0) or 0)
-    price  = float(trade.get("price", 0) or 0)
-    conf   = float(trade.get("confidence", 0) or 0)
-    reason = trade.get("reasoning", "")
-    source = trade.get("source", "llm")
-    pnl    = trade.get("pnl")
-
-    # Dashboard notification
-    pnl_str = f" | P&L ${pnl:+,.2f}" if pnl is not None else ""
-    icon    = "📈" if action == "BUY" else ("📉" if action == "SELL" else "⚡")
-    level   = "success" if (pnl or 0) >= 0 else "warning"
-    _notify(icon, f"{action} {symbol}",
-            f"${value:,.2f}{pnl_str} | {reason[:80]}", level=level)
-
-    # Telegram message
-    trade_icon = "🟢" if action == "BUY" else "🔴"
-    pnl_line = ""
-    if action == "SELL" and pnl is not None:
-        pct  = trade.get("pnl_pct", 0)
-        sign = "+" if pnl >= 0 else ""
-        pnl_line = f"\n💰 *P&L:* `{sign}${pnl:,.2f} ({sign}{pct:.1f}%)`"
-
-    _send(
-        f"{trade_icon} *{action} {symbol}*\n"
-        f"💵 *Price:* `${price:,.4f}`\n"
-        f"💼 *Value:* `${value:,.2f}`\n"
-        f"🎯 *Confidence:* `{conf:.0%}` _{source}_\n"
-        f"🧠 *Reason:* {reason}"
-        f"{pnl_line}"
-    )
-
-
-def stop_loss_hit(symbol: str, pnl_pct: float):
-    _notify("🛑", f"Stop loss: {symbol}", f"Loss: {pnl_pct:.1f}% — closed", "error")
-    _send(f"🛑 *Stop loss hit: {symbol}*\nLoss: `{pnl_pct:.1f}%` — position closed.")
-
-
-def take_profit_hit(symbol: str, pnl_pct: float):
-    _notify("🎯", f"Take profit: {symbol}", f"Gain: +{pnl_pct:.1f}% — closed", "success")
-    _send(f"🎯 *Take profit hit: {symbol}*\nGain: `+{pnl_pct:.1f}%` — position closed.")
-
-
-def earnings_skip(symbol: str, days: int):
-    _notify("📅", f"Skipped {symbol}", f"Earnings in {days} day(s)", "warning")
-    _send(f"📅 *Skipped {symbol}* — earnings in {days} day(s). Blackout active.")
-
-
-def market_trend(regime: str, momentum_pct: float, allow_longs: bool = True, description: str = ""):
-    icons = {"TRENDING_BULL": "📈", "TRENDING_BEAR": "📉",
-             "RANGING": "↔️", "VOLATILE": "⚡"}
-    icon = icons.get(regime, "🌡️")
-    buy_status = "enabled" if allow_longs else "suppressed"
-    _notify(icon, f"Market regime: {regime}",
-            f"Momentum {momentum_pct:+.1f}% — buys {buy_status}",
-            "info")
-    _send(f"{icon} *Market regime: {regime}*\n"
-          f"{description}\n"
-          f"10-day momentum {momentum_pct:+.1f}% — "
-          f"buy signals {buy_status}.")
-
-
-def regime_changed(old: str, new: str, detail: dict):
-    icons = {"TRENDING_BULL": "📈", "TRENDING_BEAR": "📉",
-             "RANGING": "↔️", "VOLATILE": "⚡"}
-    icon  = icons.get(new, "🌡️")
-    atr   = detail.get("atr_pct", 0)
-    mom   = detail.get("momentum_10d", 0)
-    _notify(icon, f"Regime: {old} → {new}",
-            f"ATR={atr:.1f}% Mom={mom:+.1f}%", "info")
-    _send(
-        f"{icon} *Regime changed: {old} → {new}*\n"
-        f"ATR: `{atr:.1f}%`  Mom: `{mom:+.1f}%`\n"
-        f"{'✅ Shorts enabled' if new == 'TRENDING_BEAR' else '❌ Shorts off'}  |  "
-        f"{'✅ Hedges enabled' if new in ('TRENDING_BEAR','VOLATILE') else '❌ Hedges off'}"
-    )
-
-
-def trailing_stop_raised(symbol: str, old_stop: float, new_stop: float, high: float):
-    _notify("📈", f"Trailing stop raised: {symbol}",
-            f"${old_stop:,.2f} → ${new_stop:,.2f} (high ${high:,.2f})", "info")
-    _send(
-        f"📈 *Trailing stop raised: {symbol}*\n"
-        f"New high: `${high:,.2f}`\n"
-        f"Stop: `${old_stop:,.2f}` → `${new_stop:,.2f}`"
-    )
-
-
-def position_skipped(symbol: str, reason: str):
-    if any(k in reason.lower() for k in ["earnings", "halted", "cooldown", "blackout"]):
-        _notify("⏭️", f"Skipped {symbol}", reason, "warning")
-        _send(f"⏭️ *Skipped {symbol}*\n_{reason}_")
+def rebalanced(summary: str, lines: list):
+    """After the daily check placed orders or switched modes."""
+    _notify("🧭", "Rebalanced", "; ".join(lines)[:200], "info")
+    _send("🧭 Charles rebalanced\n" + "\n".join(lines) + f"\n\n{summary}")
 
 
 def daily_loss_halted(loss: float, limit: float):
-    _notify("🚨", "Trading HALTED",
-            f"Daily loss ${abs(loss):,.2f} hit limit ${limit:,.2f}", "error")
-    _send(
-        f"🚨 *TRADING HALTED*\n"
-        f"Daily loss `${abs(loss):,.2f}` hit limit `${limit:,.2f}`\n"
-        f"No new trades until midnight."
-    )
+    _notify("🚨", "Buys paused", f"Down {_usd(abs(loss))} today (limit {_usd(limit)})", "error")
+    _send(f"🚨 Buys paused for today: the account is down {_usd(abs(loss))}, past the "
+          f"{_usd(limit)} daily limit. Sales still go through; buys resume tomorrow.")
 
 
 def error_alert(msg: str):
     _notify("⚠️", "Bot error", msg[:100], "error")
-    _send(f"⚠️ *Bot error*\n`{msg[:300]}`")
+    _send(f"⚠️ Charles hit an error\n{msg[:300]}")
 
 
-def daily_summary(summary: dict, extra: list | None = None):
-    total  = summary.get("total_value", 0)
-    ret    = summary.get("total_return_pct", 0)
-    wins   = summary.get("win_rate", 0)
-    trades = summary.get("total_trades", 0)
-    sign   = "+" if ret >= 0 else ""
-    _notify("📊", "Daily summary",
-            f"${total:,.2f} | {sign}{ret:.2f}% | {wins:.0f}% win rate", "info")
+def daily_summary(summary: dict, plan: dict | None = None):
+    total = summary.get("total_value", 0)
+    day = summary.get("day_change", 0) or 0
+    ret = summary.get("total_return_pct", 0)
+    _notify("📊", "Daily summary", f"{_usd(total)} | {'+' if day >= 0 else ''}{_usd(day)} today", "info")
+    mode = (plan or {}).get("mode")
     _send(
-        f"📊 *Daily Summary*\n"
-        f"💼 Portfolio: `${total:,.2f}`\n"
-        f"📈 Return: `{sign}{ret:.2f}%`\n"
-        f"✅ Win rate: `{wins:.1f}%`\n"
-        f"🔄 Total trades: `{trades}`"
-        + "".join(f"\n{line}" for line in (extra or []))
+        f"📊 Charles today: {'+' if day >= 0 else ''}{_usd(day)}\n"
+        f"Portfolio {_usd(total)} ({'+' if ret >= 0 else ''}{ret:.2f}% since the start)\n"
+        + ({"invest": "📈 Invest mode", "safety": "🛡️ Safety mode"}.get(mode, "") +
+           (f" · next re-pick {plan['next_rebalance']}" if plan and plan.get("next_rebalance") else ""))
     )
 
 
 def heartbeat(status: dict):
-    active    = status.get("active", True)
-    halted    = status.get("halted", False)
-    daily_pnl = status.get("daily_pnl", 0)
-    daily_pct = status.get("daily_pnl_pct", 0)
-    total     = status.get("total_value", 0)
-    open_pos  = status.get("open_positions", 0)
-    regime    = status.get("regime", "UNKNOWN")
-    trades    = status.get("trades_today", 0)
-    next_macro= status.get("next_macro")
-    last_trade= status.get("last_trade", "None today")
-    finbert   = status.get("finbert_on", False)
-
-    status_line = ("🚨 *HALTED*" if halted
-                   else "✅ *ACTIVE*" if active
-                   else "⚠️ *INACTIVE*")
-    pnl_icon = "📈" if daily_pnl >= 0 else "📉"
-    sign     = "+" if daily_pnl >= 0 else ""
-
-    regime_icons = {"TRENDING_BULL": "📈", "TRENDING_BEAR": "📉",
-                    "RANGING": "↔️", "VOLATILE": "⚡"}
-    r_icon = regime_icons.get(regime, "🌡️")
-
-    macro_line = ""
-    if next_macro:
-        macro_line = (f"\n📅 Next event: *{next_macro['name']}* "
-                      f"in {next_macro['hours_away']:.1f}h"
-                      + (" ⚠️" if next_macro["hours_away"] < 4 else ""))
-
+    day = status.get("day_change", 0) or 0
+    mode = {"invest": "📈 Invest mode", "safety": "🛡️ Safety mode"}.get(status.get("mode"), "Waiting for the first check")
     _send(
-        f"💓 *Bot Heartbeat*\n"
-        f"─────────────────\n"
-        f"Status:   {status_line}\n"
-        f"P&L:      {pnl_icon} `{sign}${daily_pnl:,.2f}` ({sign}{daily_pct:.2f}%) today\n"
-        f"Value:    `${total:,.2f}`\n"
-        f"Regime:   {r_icon} {regime.replace('_', ' ')}\n"
-        f"Positions: `{open_pos}` open\n"
-        f"Trades:   `{trades}` today\n"
-        f"Last:     _{last_trade}_\n"
-        f"Sentiment: {'🧠 FinBERT' if finbert else '📊 VADER'}"
-        f"{macro_line}"
+        f"💓 Charles is running{' — buys paused today' if status.get('halted') else ''}\n"
+        f"Value {_usd(status.get('total_value', 0))} ({'+' if day >= 0 else ''}{_usd(day)} today)\n"
+        f"{mode} · {status.get('open_positions', 0)} holdings"
+        + (f" · next re-pick {status['next_rebalance']}" if status.get("next_rebalance") else "")
     )
 
 
