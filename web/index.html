@@ -478,7 +478,7 @@ const TABS = [
   ["plan", "Plan", '<path d="M4 6h16M4 12h10M4 18h6"/><circle cx="18" cy="16" r="3"/>'],
   ["tune", "Self-Tune", '<path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/>'],
 ];
-const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["All", 1e5]];
+const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["Plan", "plan"], ["All", 1e5]];   // "Plan": since data/plan.json "started"
 const ROLE = {core: ["Whole market", "--core"], pick: ["Momentum picks", "--pick"], safety: ["T-bills (safety)", "--safe"],
               leaving: ["Being sold", "--leaving"], cash: ["Cash", "--cash"]};
 let S = null, tab = "home", range = "1M", actAll = false;
@@ -684,7 +684,7 @@ function buildTabs() {
     `<button data-t="${k}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ic}</svg>${l}</button>`).join("");
   $("tabs-top").innerHTML = TABS.map(([k, l]) => `<button data-t="${k}">${l}</button>`).join("");
   document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => setTab(b.dataset.t));
-  $("range").innerHTML = RANGES.map(([k]) => `<button data-r="${k}">${k}</button>`).join("");
+  $("range").innerHTML = RANGES.map(([k, d]) => `<button data-r="${k}"${d === "plan" ? ` title="Since the new plan started" aria-label="Since the new plan" hidden` : ""}>${k}</button>`).join("");
   document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r; try { localStorage.setItem("range", range); } catch (e) {} renderChart(); });
   $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Charles</span><span class="key">${keySvg("--ref", true)}SPY, same start</span>`;
   $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
@@ -750,10 +750,17 @@ function rangeStart(days) {
   const q = new Date(day);
   return etAt(q.getUTCFullYear(), q.getUTCMonth() + 1, q.getUTCDate(), 16, 0);
 }
+const planStart = () => S && !S.preview && P().started || null;   // the "Plan" range exists only once the plan has started
 function series() {
-  const days = RANGES.find(r => r[0] === range)[1];
-  const cut = days >= 1e5 ? "" : new Date(rangeStart(days)).toISOString();
-  let from = S.equity.findIndex(p => p[0] >= cut);
+  const days = (RANGES.find(r => r[0] === range) || RANGES.at(-1))[1];
+  let from;
+  if (days === "plan") {   // start at the last point before the plan's first day, so the first move counts
+    const st = planStart(), i = st ? S.equity.findIndex(p => timeofday(p[0]) >= st.slice(0, 10)) : 0;
+    from = i < 0 ? S.equity.length : Math.max(0, i - 1);
+  } else {
+    const cut = days >= 1e5 ? "" : new Date(rangeStart(days)).toISOString();
+    from = S.equity.findIndex(p => p[0] >= cut);
+  }
   if (from < 0 || S.equity.length - from < 2) from = Math.max(0, S.equity.length - 2);
   const pts = S.equity.slice(from);
   const hourly = (S.spy_hourly || []).map(([t, v]) => [+new Date(t), v]);
@@ -776,7 +783,9 @@ function niceTicks(lo, hi, n) {
 
 /* the main chart: Charles vs SPY in market time, with the day the new plan started marked */
 function renderChart() {
-  document.querySelectorAll("[data-r]").forEach(b => b.classList.toggle("on", b.dataset.r === range));
+  const hasPlan = !!planStart();
+  if (S && !hasPlan && range === "Plan") range = "All";
+  document.querySelectorAll("[data-r]").forEach(b => { b.classList.toggle("on", b.dataset.r === range); if (b.dataset.r === "Plan") b.hidden = !hasPlan; });
   const box = $("chart");
   if (!S || S.equity.length < 2) { box.innerHTML = `<div class="empty">Not enough history yet.</div>`; return; }
   if (!box.clientWidth) return;
@@ -825,7 +834,7 @@ function renderChart() {
   $("r-bot").textContent = pct(rb); $("r-bot").className = "num " + cls(rb);
   $("r-spy").textContent = pct(rs); $("r-spy").className = "num " + cls(rs);
   $("d-bot").textContent = db ? db.toFixed(2) + "%" : "0%"; $("d-spy").textContent = ds == null ? "—" : ds ? ds.toFixed(2) + "%" : "0%";
-  $("chart-note").textContent = `The dashed line is what your ${usd(S.equity[0][1], 0)} would be worth had it gone into SPY (an S&P 500 index fund) on ${new Date(S.equity[0][0]).toLocaleDateString("en-US", {month: "short", day: "numeric", timeZone: "America/New_York"})} instead. Shorter ranges zoom in; their returns count from the range's start. Nights and weekends are squeezed so trading hours line up.${st ? ` "New plan" marks ${dayFmt(st, {month: "short", day: "numeric"})}, when Charles switched to the core + momentum plan; before it, Charles's old rules traded.` : ""}`;
+  $("chart-note").textContent = `The dashed line is what your ${usd(S.equity[0][1], 0)} would be worth had it gone into SPY (an S&P 500 index fund) on ${new Date(S.equity[0][0]).toLocaleDateString("en-US", {month: "short", day: "numeric", timeZone: "America/New_York"})} instead. Shorter ranges zoom in; their returns count from the range's start. Nights and weekends are squeezed so trading hours line up.${st ? ` "New plan" marks ${dayFmt(st, {month: "short", day: "numeric"})}, when Charles switched to the core + momentum plan; before it, Charles's old rules traded.${hasPlan ? ` The "Plan" range shows only the time since then.` : ""}` : ""}`;
 }
 const timeofday = iso => new Date(iso).toLocaleDateString("en-CA", {timeZone: "America/New_York"});
 

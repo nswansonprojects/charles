@@ -147,6 +147,13 @@ class PlanViews(BotTestCase):
             self.assertGreater(len(r["curve"]), 500)
             self.assertLess(r["max_drawdown_pct"], 0)
 
+    def test_page_has_a_since_the_plan_range(self):
+        with open(os.path.join(wd.ROOT, "web", "index.html")) as f:
+            page = f.read()
+        self.assertIn('["Plan", "plan"]', page)                 # the fifth range button
+        self.assertIn('days === "plan"', page)                  # series() starts it at plan.json "started"
+        self.assertIn("P().started", page)
+
     def test_next_evaluation_is_the_first_sunday(self):
         at = lambda y, mo, d: wd.next_evaluation(datetime(y, mo, d, 15, tzinfo=timezone.utc)).date().isoformat()
         self.assertEqual(at(2026, 10, 16), "2026-11-01")

@@ -48,6 +48,79 @@ def _spy_return(start_date: str, end_date: str) -> float:
         return 0.0
 
 
+_MODE_NAMES = {"invest": "invest", "safety": "safety (T-bills)", "aggressive": "aggressive (SSO)"}
+
+
+def _read_json(path: str, default):
+    try:
+        with open(path) as f: return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def _read_vetoes(path: str) -> list:
+    rows = []
+    try:
+        with open(path) as f:
+            for line in f:
+                try: rows.append(json.loads(line))
+                except ValueError: continue
+    except OSError:
+        pass
+    return rows
+
+
+def plan_lines(start_dt: datetime, end_dt: datetime, data_dir: str = None, spy=None) -> list:
+    """Plain-English lines about the plan for the monthly report: the plan vs SPY since it
+    started (to end_dt), the current picks, the AI's vetoes and any mode switch in the window.
+    Read-only; [] before the plan has started. `spy(start, end) -> %` is for tests."""
+    data_dir = data_dir or DATA_DIR
+    plan = _read_json(os.path.join(data_dir, "plan.json"), {})
+    started = plan.get("started")
+    if not started:
+        return []
+    spy = spy or _spy_return
+    first, end_day = start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+    lines = []
+
+    # Like evaluate.live(): the last value before the start is the base (else the first one after).
+    curve = [p for p in _read_json(os.path.join(data_dir, "equity_curve.json"), [])
+             if p.get("ts", "")[:10] <= end_day]
+    before = [p["value"] for p in curve if p["ts"][:10] < started]
+    after = [p["value"] for p in curve if p["ts"][:10] >= started]
+    vals = before[-1:] + after
+    since = datetime.fromisoformat(started).strftime("%b %-d, %Y")
+    if after and len(vals) >= 2 and vals[0]:
+        mine = (vals[-1] / vals[0] - 1) * 100
+        theirs = spy(started, end_day)
+        icon = "✅" if mine >= theirs else "⚠️"
+        lines.append(f"Plan since {since}: {mine:+.2f}% vs SPY {theirs:+.2f}% {icon}")
+    else:
+        lines.append(f"Plan since {since}: not enough history yet")
+
+    picks = plan.get("picks") or []
+    lines.append(f"Picks now:    {', '.join(picks) if picks else 'none (all in the core or T-bills)'}")
+
+    vetoed = [v for v in _read_vetoes(os.path.join(data_dir, "vetoes.jsonl"))
+              if v.get("veto") is True and first <= v.get("ts", "")[:10] <= end_day]
+    for v in vetoed[:3]:
+        lines.append(f"AI veto:      {v.get('symbol', '?')} — {v.get('reason', '')}".rstrip(" —"))
+    if len(vetoed) > 3:
+        lines.append(f"              (+{len(vetoed) - 3} more vetoes)")
+    if not vetoed:
+        lines.append("AI veto:      none this month")
+
+    switches = [s for s in plan.get("switches") or [] if first <= s.get("date", "") <= end_day]
+    if switches:
+        shown = ", ".join(f"{datetime.fromisoformat(s['date']).strftime('%b %-d')} → "
+                          f"{_MODE_NAMES.get(s.get('to'), s.get('to'))}" for s in switches[-4:])
+        more = f" (+{len(switches) - 4} earlier)" if len(switches) > 4 else ""
+        lines.append(f"Mode changes: {shown}{more}")
+    else:
+        lines.append(f"Mode changes: none this month (now {_MODE_NAMES.get(plan.get('mode'), plan.get('mode') or '?')})")
+    return lines
+
+
 def _filter_by_period(trades: list, equity: list,
                        start_dt: datetime, end_dt: datetime) -> tuple:
     """Filter trades and equity curve to a date range."""
@@ -198,6 +271,11 @@ def generate_report(period: str, custom_start: str = None,
     stats["period"]       = period
     stats["label"]        = label
     stats["generated_at"] = now.isoformat()
+    if period == "monthly":
+        try:
+            stats["plan_lines"] = plan_lines(start_dt, end_dt)
+        except Exception as e:
+            log.warning(f"Report plan lines failed: {e}")
 
     # Save CSV files
     _save_trade_csv(trades, fname)
@@ -291,6 +369,8 @@ def send_report_telegram(stats: dict):
             f"Best sym:     {stats.get('best_symbol','—')}\n"
             f"Worst sym:    {stats.get('worst_symbol','—')}"
         )
+        if stats.get("plan_lines"):
+            msg += f"\n{'─'*30}\n" + "\n".join(stats["plan_lines"])
         alerts._send(msg)
         log.info(f"📱 {period} report sent to Telegram")
     except Exception as e:

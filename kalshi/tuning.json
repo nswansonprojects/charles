@@ -2,14 +2,15 @@
   "about": "Betting-book settings the daily review may tune (weekly, at most 2 per week, each by at most its max_step in betting.LIMITS). Anything missing here uses betting.RULES. A strategy cap of 0 pauses that strategy.",
   "settings": {
     "trust_model": {"weather": 0.25, "sports": 1.0, "econ": 0.5, "longshot": 1.0},
-    "min_edge": {"weather": 0.07, "sports": 0.04, "econ": 0.06, "longshot": 0.015},
+    "min_edge": {"weather": 0.09, "sports": 0.04, "econ": 0.06, "longshot": 0.015},
     "strategy_cap_pct": {"weather": 0.10, "sports": 0.30, "econ": 0.20, "longshot": 0.30},
     "kelly_fraction": 0.25,
     "max_bet_pct": 0.03
   },
-  "last_change": "2026-10-14: strategy_cap_pct.weather 0.30 -> 0.10 (owner's call: small enough to limit losses, big enough to keep grading the model). Raising it is the owner's call, not a weekly tune",
+  "last_change": "2026-10-19: min_edge.weather 0.07 -> 0.09 because its prediction blend is still worse than the market (Brier 0.118 vs 0.115 on 522 settled markets) and its 17 would-be bets lost 19.5%; those at 0.09+ edge won 2 of 7 and made money, those at 0.07-0.09 won 2 of 10 and lost. (Weather's 0.10 cap stays the owner's call.)",
   "history": [
     {"date": "2026-10-11", "setting": "trust_model.weather", "from": 0.5, "to": 0.25, "why": "safety brake: 13 graded bets, model Brier 0.362 vs market 0.139, all-time P&L -$182.88"},
-    {"date": "2026-10-14", "setting": "strategy_cap_pct.weather", "from": 0.30, "to": 0.10, "why": "owner 2026-10-14: keep weather small (not paused, so the model keeps getting graded) until it at least matches the market; 39 graded bets, model Brier 0.36 vs market 0.16, won 33% when it expected 55%"}
+    {"date": "2026-10-14", "setting": "strategy_cap_pct.weather", "from": 0.30, "to": 0.10, "why": "owner 2026-10-14: keep weather small (not paused, so the model keeps getting graded) until it at least matches the market; 39 graded bets, model Brier 0.36 vs market 0.16, won 33% when it expected 55%"},
+    {"date": "2026-10-19", "setting": "min_edge.weather", "from": 0.07, "to": 0.09, "why": "weekly tune: prediction blend Brier 0.1179 vs market 0.1150 on 522 settled markets (91 outcomes) since the last tune; 17 shadow bets won 4, ROI -19.5% (edge 0.09+: 2/7, +$0.46/contract; 0.07-0.09: 2/10, -$1.42/contract); 30 real graded bets since last tune, all-time model Brier 0.434 vs market 0.162"}
   ]
 }

@@ -34,6 +34,76 @@ class Windows(BotTestCase):
         self.assertEqual((s, e, label), (datetime(2026, 10, 1, tzinfo=UTC), now, "October 2026"))
 
 
+class PlanLines(BotTestCase):
+    """The monthly report's plan section: plan vs SPY since the start, picks, vetoes, mode changes."""
+    OCT = (datetime(2026, 10, 1, tzinfo=UTC), datetime(2026, 10, 31, 23, 59, 59, tzinfo=UTC))
+
+    def write(self, name, obj):
+        import json, os
+        with open(os.path.join(self.tmp, name), "w") as f:
+            if name.endswith(".jsonl"):
+                f.write("".join(json.dumps(r) + "\n" for r in obj) + "not json\n")
+            else:
+                json.dump(obj, f)
+
+    def lines(self, spy=lambda s, e: 2.0):
+        return rpt.plan_lines(*self.OCT, data_dir=self.tmp, spy=spy)
+
+    def test_nothing_before_the_plan_starts(self):
+        self.assertEqual(self.lines(), [])
+        self.write("plan.json", {"mode": "invest"})
+        self.assertEqual(self.lines(), [])
+
+    def test_full_month(self):
+        self.write("plan.json", {"started": "2026-10-19", "mode": "invest", "picks": ["NVDA", "AAPL"],
+                                 "switches": [{"date": "2026-09-30", "to": "safety"},
+                                              {"date": "2026-10-20", "to": "aggressive"},
+                                              {"date": "2026-10-27", "to": "invest"}]})
+        self.write("equity_curve.json", [{"ts": "2026-10-16T20:00:00", "value": 1000.0},
+                                         {"ts": "2026-10-30T20:00:00", "value": 1030.0},
+                                         {"ts": "2026-11-02T20:00:00", "value": 9999.0}])
+        self.write("vetoes.jsonl", [{"ts": "2026-10-19T14:00:00", "symbol": "XYZ", "veto": True, "reason": "SEC probe."},
+                                    {"ts": "2026-10-19T14:00:00", "symbol": "NVDA", "veto": False, "reason": "Fine."},
+                                    {"ts": "2026-09-01T14:00:00", "symbol": "OLD", "veto": True, "reason": "Old."}])
+        spy_calls = []
+        got = self.lines(lambda s, e: spy_calls.append((s, e)) or 2.0)
+        self.assertEqual(got, [
+            "Plan since Oct 19, 2026: +3.00% vs SPY +2.00% ✅",
+            "Picks now:    NVDA, AAPL",
+            "AI veto:      XYZ — SEC probe.",
+            "Mode changes: Oct 20 → aggressive (SSO), Oct 27 → invest",
+        ])
+        self.assertEqual(spy_calls, [("2026-10-19", "2026-10-31")])
+
+    def test_quiet_month_and_no_history(self):
+        self.write("plan.json", {"started": "2026-10-30", "mode": "safety", "picks": []})
+        self.write("equity_curve.json", [{"ts": "2026-10-30T20:00:00", "value": 1000.0}])
+        self.assertEqual(self.lines(), [
+            "Plan since Oct 30, 2026: not enough history yet",
+            "Picks now:    none (all in the core or T-bills)",
+            "AI veto:      none this month",
+            "Mode changes: none this month (now safety (T-bills))",
+        ])
+
+    def test_behind_spy_and_many_switches(self):
+        self.write("plan.json", {"started": "2026-10-01", "mode": "invest", "picks": ["NVDA"],
+                                 "switches": [{"date": f"2026-10-{d:02d}", "to": "invest"} for d in range(2, 8)]})
+        self.write("equity_curve.json", [{"ts": "2026-10-01T20:00:00", "value": 1000.0},
+                                         {"ts": "2026-10-02T20:00:00", "value": 990.0}])
+        got = self.lines()
+        self.assertEqual(got[0], "Plan since Oct 1, 2026: -1.00% vs SPY +2.00% ⚠️")
+        self.assertTrue(got[-1].startswith("Mode changes: Oct 4 → invest"))
+        self.assertTrue(got[-1].endswith("(+2 earlier)"))
+
+    def test_report_message_includes_the_lines(self):
+        self.write("plan.json", {"started": "2026-10-19", "mode": "invest", "picks": ["NVDA"]})
+        stats = {"period": "monthly", "label": "October 2026", "plan_lines": self.lines()}
+        rpt.send_report_telegram(stats)
+        (name, args, _), = self.alerts.calls
+        self.assertEqual(name, "_send")
+        self.assertIn("─\nPlan since Oct 19, 2026: not enough history yet\nPicks now:    NVDA", args[0])
+
+
 class SpyEndDate(BotTestCase):
     def test_end_date_is_inclusive(self):
         calls = []
