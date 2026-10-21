@@ -90,7 +90,7 @@ risk_manager.py       the daily loss limit
 strategy_settings.py  loads strategy.json within hard limits
 alerts.py             Telegram messages
 webdash.py, web/      mobile dashboard (port 8502, read-only)
-reports.py, tax_engine.py   weekly/monthly/yearly reports
+reports.py            weekly/monthly/yearly reports
 state_io.py, timeofday.py   atomic state writes, ET market date
 update_keys.py, server_confirm.py, credential_manager.py   API key handling
 kalshi/               the Kalshi paper bot (its own README, env and services)
