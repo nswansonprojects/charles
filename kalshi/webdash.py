@@ -1,8 +1,9 @@
 """webdash.py — Kalshi paper-account dashboard (port 8503): the betting book on top,
 the arbitrage scanner below it.
 
-One page (web/index.html) plus one JSON endpoint (/api/state). Read-only: it reads
-data/ files written by run.py and never writes, trades or calls Kalshi.
+One page (web/index.html) plus one JSON endpoint (/api/state). It reads data/ files written by
+run.py and never trades or calls Kalshi. The one thing it writes: the Charles / Evil Charles
+switch (POST /api/mode, mode.py), which anyone who can open the dashboard may flip (owner 2026-10-26).
 """
 import json
 import os
@@ -13,6 +14,7 @@ from zoneinfo import ZoneInfo
 import betting
 import evaluate
 import gates
+import mode
 import paper
 import predictions
 
@@ -155,6 +157,33 @@ def calibration(closed: list) -> list:
     return out
 
 
+def evil_record(rows: list, now: datetime, days: int = 30) -> dict:
+    """Charles's shadow bets of the last `days` (where it would have bet) vs the opposite bet on each.
+    Older signals have no opposite price saved: those are estimated from the spread at the time."""
+    since = (now - timedelta(days=days)).isoformat()
+    sig = [r for r in rows if r.get("signal") and r["first"]["ts"] >= since]
+    c = {"won": 0, "cost": 0.0, "pnl": 0.0}
+    e = {"won": 0, "cost": 0.0, "pnl": 0.0}
+    estimated = 0
+    for r in sig:
+        s = r["signal"]
+        cost = s.get("opp_cost")
+        if cost is None:
+            mid = r["first"]["market_yes"] if s["side"] == "yes" else 1 - r["first"]["market_yes"]
+            ask = min(0.99, 1 - mid + max(s["ask"] - mid, 0.005))
+            cost, estimated = ask + betting.fee(100, ask) / 100, estimated + 1
+        won = s["side"] == r["result"]
+        c["won"] += won
+        c["cost"] += s["cost"]
+        c["pnl"] += s["pnl"]
+        e["won"] += not won
+        e["cost"] += cost
+        e["pnl"] += (0.0 if won else 1.0) - cost
+    view = lambda d: {"won": d["won"], "roi_pct": round(d["pnl"] / d["cost"] * 100, 1) if d["cost"] else None}
+    return {"days": days, "bets": len(sig), "events": len({r["key"] for r in sig}), "estimated": estimated,
+            "charles": view(c), "evil": view(e)}
+
+
 def betting_state(now: datetime) -> dict:
     betting.apply_tuning()  # this process runs for days: show the rules the scans use now
     led = betting.load(os.path.join(DATA, "bets.json"))
@@ -169,8 +198,8 @@ def betting_state(now: datetime) -> dict:
     closed = led["closed"]
     st = betting.stats(led)
     status = (latest.get("summary") or {}).get("strategies", {})
-    levels = gates.progress(betting.STRATEGIES, predictions.load_graded(os.path.join(DATA, "predictions_graded.jsonl")),
-                            now, os.path.join(DATA, "levels.json"))
+    graded = predictions.load_graded(os.path.join(DATA, "predictions_graded.jsonl"))
+    levels = gates.progress(betting.STRATEGIES, graded, now, os.path.join(DATA, "levels.json"))
     strategies = [{"key": k, "name": n, "about": d, **st[k], **{"data": status.get(k, {})},
                    "level": levels[k]["level"], "predictions": levels[k]["card"],
                    "min_edge": betting.RULES["min_edge"][k], "trust": betting.RULES["trust_model"][k],
@@ -200,6 +229,8 @@ def betting_state(now: datetime) -> dict:
         "last": latest.get("summary"),
         "rules": {k: v for k, v in betting.RULES.items() if not isinstance(v, dict)},
         "milestones": milestones(now, led, st, levels),
+        "mode": {k: v for k, v in mode.load().items() if k != "history"},
+        "evil_record": evil_record(graded, now),
     }
 
 
@@ -293,6 +324,27 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(200, f.read(), "text/html; charset=utf-8")
         else:
             self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        """/api/mode {"evil": true|false}: the Charles / Evil Charles switch. JSON only, so a form on
+        another site can't flip it (that would need a CORS preflight this server never answers)."""
+        if self.path.split("?")[0] != "/api/mode":
+            return self._send(404, b"not found", "text/plain")
+        try:
+            if self.headers.get("Content-Type", "").split(";")[0] != "application/json":
+                return self._send(415, b'{"ok": false, "message": "Send JSON."}', "application/json")
+            n = int(self.headers.get("Content-Length") or 0)
+            if not 0 < n <= 256:
+                return self._send(413, b'{"ok": false, "message": "Too big."}', "application/json")
+            want = json.loads(self.rfile.read(n)).get("evil")
+            if not isinstance(want, bool):
+                return self._send(400, b'{"ok": false, "message": "evil must be true or false."}', "application/json")
+            st = mode.set_evil(want)
+            self._send(200, json.dumps({"ok": True, "evil": st["evil"], "since": st["since"]}).encode(), "application/json")
+        except (ValueError, AttributeError):
+            self._send(400, b'{"ok": false, "message": "Couldn\'t read that request."}', "application/json")
+        except OSError:              # the sandbox: data/switch/ missing from ReadWritePaths
+            self._send(500, b'{"ok": false, "message": "The server couldn\'t save the switch."}', "application/json")
 
     def log_message(self, *args):
         pass

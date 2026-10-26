@@ -332,3 +332,50 @@ def test_one_cpi_release_shares_one_cap(tmp_path, monkeypatch):
     led = _run_with(tmp_path, monkeypatch, picks, markets)
     assert led["open"]
     assert sum(b["cost"] for b in led["open"]) <= betting.START_CASH * betting.RULES["max_event_pct"] + 0.01
+
+
+# ---------------------------------------------------------------- Evil Charles
+def test_evil_charles_bets_the_other_side_with_the_same_dollars(tmp_path, monkeypatch):
+    import mode
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)]
+    markets = {f"{ev}-GSW": _mkt(0.55, 0.45)}
+    charles = _run_with(tmp_path / "c", monkeypatch, picks, markets)["open"][0]
+    mode.set_evil(True, NOW)
+    evil = _run_with(tmp_path / "e", monkeypatch, picks, markets)["open"][0]
+    assert charles["side"] == "no" and evil["side"] == "yes"
+    assert evil["evil"] and evil["charles_side"] == "no"
+    assert evil["cost"] <= charles["cost"] and evil["cost"] > charles["cost"] - 1
+    assert evil["fair"] == round(1 - charles["fair"], 4)     # Charles's own view of the evil side
+
+
+def test_evil_charles_bets_nothing_where_charles_bets_nothing(tmp_path, monkeypatch):
+    import mode
+    mode.set_evil(True, NOW)
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)]
+    led = _run_with(tmp_path, monkeypatch, picks, {f"{ev}-GSW": _mkt(0.55, 0.45)}, level="predict")
+    assert led["open"] == []
+
+
+def test_evil_bets_hold_to_settlement():
+    mk = {"X": {"yes_bid_dollars": "0.70", "yes_bid_size_fp": "100"}}
+    led = {"cash": 0.0, "closed": [], "open": [
+        {"ticker": "X", "side": "yes", "contracts": 10, "cost": 5.0, "strategy": "sports", "evil": True}]}
+    assert betting.exits(led, {"X": 0.10}, mk, NOW) == []
+
+
+def test_mode_switch_saves_flips_and_ignores_repeats(tmp_path):
+    import mode
+    p = str(tmp_path / "switch" / "mode.json")
+    assert mode.load(p)["evil"] is False
+    st = mode.set_evil(True, NOW, p)
+    assert st["evil"] and st["since"] == NOW.isoformat(timespec="seconds") and len(st["history"]) == 1
+    assert len(mode.set_evil(True, NOW, p)["history"]) == 1
+    assert mode.is_evil(p) and not mode.set_evil(False, NOW, p)["evil"]
+
+
+def test_shadow_signal_carries_the_opposite_cost():
+    m = {"X": _mkt(0.55, 0.47)}
+    sig = betting.signals_of([dict(PICK, side="no", quick_edge=0.2)], m)["X"]
+    assert sig["opp_cost"] == round(0.55 + betting.fee(100, 0.55) / 100, 4)

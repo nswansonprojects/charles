@@ -14,7 +14,26 @@ Charles invests an **Alpaca paper account** (simulated money) with one plan:
    swings pass 25% or SPY closes below its average, the core goes straight back to SPY.
 
 A mobile-friendly dashboard runs on port 8502, and Telegram messages (optional) tell you about every
-trade. A separate paper-only Kalshi prediction-market bot lives in `kalshi/` (see its README).
+trade. A separate paper-only Kalshi prediction-market bot lives in `kalshi/` (see its README); its
+**Toggle Evil Charles** button makes it bet the opposite side of every bet it decides to place.
+
+## Charles Crypto (practice money)
+
+The dashboard's **Crypto** tab runs a $1,000 paper book of 60% bitcoin and 40% ether, each held only
+while it's above its 200-day average (checked weekly; otherwise that part sits in cash). Prices are
+Coinbase's public prices with a 0.6% fee per trade; it needs no exchange account and never buys anything
+for real. A systemd timer (`charles-crypto.timer`, set up by the installer) steps it every hour.
+
+`crypto_backtest.py` → `docs/crypto_backtest.json`, weekly from Dec 2016 to Oct 2026:
+
+| $1,000, Dec 2016 to Oct 2026 | A year, on average | Worst drop |
+|---|---|---|
+| The crypto plan | +75% | −61% |
+| Just hold bitcoin | +60% | −84% |
+| *Since 2021:* the crypto plan | +9% | −41% |
+| *Since 2021:* just hold bitcoin | +16% | −77% |
+
+It cuts the big drops, and lately it has earned less than just holding bitcoin. Not financial advice.
 
 Setup guide: **https://charles-bot.xyz/setup.html** (one-line installer for an Ubuntu server).
 
@@ -65,6 +84,7 @@ apply it in `strategy.json`.
 | The plan (core %, picks, safety switch, aggressive mode, 2x/3x fund) | `strategy.json`, clamped to the limits in `strategy_settings.py`, over `allocator.DEFAULTS`. Read at every check: no restart needed. |
 | Daily loss limit, start balance, AI model | `config.py` |
 | API keys | `.env` (copy `.env.example`; never commit it). `charles-keys` updates them. |
+| Kalshi / Coinbase keys | `charles-connect kalshi` or `charles-connect crypto`, over SSH (saved in `data/accounts/`, root-only). The bots don't use them yet. The dashboard's Connect Accounts page shows the steps. |
 
 ## Commands
 
@@ -72,6 +92,7 @@ apply it in `strategy.json`.
 |---------|------|
 | `charles-start`, `charles-stop`, `charles-restart`, `charles-status`, `charles-logs` | Control and watch the bot |
 | `charles-update` | `git pull`, packages, restart (re-run the installer for new services) |
+| `charles-connect --status` | Which broker accounts are connected (no secrets shown) |
 | `python rebalancer.py --dry-run [--veto]` | What the daily check would do right now, without placing anything |
 | `python backtest_core.py` | Re-run the backtest (a minute or two; needs about 1 GB of free memory) |
 | `python -m unittest discover -s tests -t tests` | Unit tests |
@@ -89,7 +110,9 @@ alpaca_executor.py    the paper account: read it, place notional orders, trade l
 risk_manager.py       the daily loss limit
 strategy_settings.py  loads strategy.json within hard limits
 alerts.py             Telegram messages
-webdash.py, web/      mobile dashboard (port 8502, read-only)
+webdash.py, web/      mobile dashboard (port 8502; stocks, Kalshi and crypto tabs, Connect Accounts steps)
+crypto_plan.py, crypto_paper.py, crypto_market.py, crypto_backtest.py   the crypto paper book
+connections.py        charles-connect: broker keys over SSH
 reports.py            weekly/monthly/yearly reports
 state_io.py, timeofday.py   atomic state writes, ET market date
 update_keys.py, server_confirm.py, credential_manager.py   API key handling

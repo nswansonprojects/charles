@@ -4,6 +4,7 @@ import pytest
 
 import betting
 import gates
+import mode
 import predictions
 
 
@@ -11,5 +12,6 @@ import predictions
 def _scratch_data(tmp_path, monkeypatch):
     for mod, name, f in ((betting, "LEDGER", "bets.json"), (betting, "EQUITY", "bets_equity.jsonl"),
                          (betting, "LATEST", "bets_latest.json"), (predictions, "PRED", "predictions.json"),
-                         (predictions, "GRADED", "predictions_graded.jsonl"), (gates, "STATE", "levels.json")):
+                         (predictions, "GRADED", "predictions_graded.jsonl"), (gates, "STATE", "levels.json"),
+                         (mode, "PATH", "mode.json")):
         monkeypatch.setattr(mod, name, str(tmp_path / f))

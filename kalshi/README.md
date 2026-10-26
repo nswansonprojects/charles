@@ -33,6 +33,12 @@ per event and per strategy, and a win must pay at least the stake. Bets settle a
 are sold early (in part, if the bids are thin) once the market catches up. All settings:
 `betting.RULES`, with overrides in `tuning.json`.
 
+**Evil Charles.** The **Toggle Evil Charles** button on the dashboard's Home tab flips the bot: every
+bet it decides to place goes on the other side, for the same money (same levels and caps), and is held
+to settlement. The logo turns red so you can see it's on. A Home card compares the bot's would-be bets
+with the opposite ones over the last 30 days, after fees. Anyone who can open the dashboard can flip it
+(`data/switch/mode.json`, `mode.py`).
+
 **Arbitrage scanner (side).** Looks for linked markets whose prices contradict each other by
 more than fees (e.g. "above 200" priced higher than "above 100") and paper-trades the
 guaranteed sets (`network.py`, `evaluate.py`, `maker.py`). These are rare.
@@ -55,7 +61,7 @@ Run a scan every 15 minutes, e.g. with cron:
 
     */15 * * * * cd /path/to/charles/kalshi && .venv/bin/python run.py >> scan.log 2>&1
 
-Dashboard (read-only, port 8503): `.venv/bin/python webdash.py`. Charles's dashboard passes it
+Dashboard (port 8503, read-only but for the Evil Charles button): `.venv/bin/python webdash.py`. Charles's dashboard passes it
 through at `/kalshi/` and shows the Kalshi tab once it answers (set `KALSHI_URL` if it runs elsewhere).
 The Self-Tune tab only shows its progress bars here: it shows reports from a private daily review that isn't part
 of this repo.

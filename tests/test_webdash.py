@@ -166,3 +166,12 @@ class PlanViews(BotTestCase):
         v = wd.evaluation_view(ev)
         self.assertEqual((v["tested"], v["passing"], v["candidate"]["to"]), (2, 1, 5))
         self.assertIsNone(wd.evaluation_view(None))
+
+
+class KalshiPreviewPage(BotTestCase):
+    def test_preview_serves_a_branch_copy_of_the_kalshi_page(self):
+        page = os.path.join(self.tmp, "kalshi.html")
+        with open(page, "w") as f:
+            f.write("<p>branch copy</p>")
+        self.patch(wd, "KALSHI_PAGE", page)
+        self.assertEqual(wd.kalshi_proxy("/kalshi/")[:2], (200, b"<p>branch copy</p>"))

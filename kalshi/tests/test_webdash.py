@@ -22,3 +22,21 @@ def test_calibration_uses_settled_bets_only():
     cal = {c["key"]: c for c in wd.calibration(CLOSED)}
     assert (cal["weather"]["n"], cal["weather"]["expected"], cal["weather"]["actual"]) == (2, 55.0, 50.0)
     assert "econ" not in cal
+
+
+def _graded(side, result, cost, opp_cost=None, ts="2026-10-20T00:00:00+00:00", key="K"):
+    sig = {"side": side, "ask": cost, "cost": cost, "pnl": (1.0 if side == result else 0.0) - cost}
+    if opp_cost is not None:
+        sig["opp_cost"] = opp_cost
+    return {"key": key, "result": result, "first": {"ts": ts, "market_yes": 0.5}, "signal": sig}
+
+
+def test_evil_record_compares_charles_with_the_opposite_bets():
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 26, tzinfo=timezone.utc)
+    rows = [_graded("yes", "no", 0.40, 0.62), _graded("yes", "yes", 0.40, 0.62, key="K2"),
+            _graded("no", "yes", 0.30), _graded("yes", "no", 0.40, 0.62, ts="2026-09-01T00:00:00+00:00")]
+    r = wd.evil_record(rows, now)
+    assert (r["bets"], r["events"], r["estimated"]) == (3, 2, 1)       # the September one is too old
+    assert r["charles"]["won"] == 1 and r["evil"]["won"] == 2
+    assert r["charles"]["roi_pct"] < 0 < r["evil"]["roi_pct"]

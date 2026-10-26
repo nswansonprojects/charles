@@ -121,6 +121,8 @@ def grade(book: dict, by_ticker: dict, lookup, now: datetime, path: str | None =
                 sig = rec.get("signal")
                 if sig:
                     sig = {**sig, "pnl": round((1.0 if sig["side"] == m["result"] else 0.0) - sig["cost"], 4)}
+                    if "opp_cost" in sig:       # the opposite bet (Evil Charles)
+                        sig["opp_pnl"] = round((0.0 if sig["side"] == m["result"] else 1.0) - sig["opp_cost"], 4)
                 graded.append({**rec, "signal": sig, "result": m["result"], "y": y,
                                "graded": now.isoformat(timespec="seconds")})
         elif stale or (m is None and close is None):

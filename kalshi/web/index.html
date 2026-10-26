@@ -212,8 +212,38 @@ nav button.on { color: var(--series-1); }
   .bar .chip.paper { display: none; }
 }
 /* Kalshi extras */
-.appswitch[hidden] { display: none; }
+.appswitch[hidden], .acct-btn[hidden] { display: none; }
+/* same as Charles's web/style.css: "Connect Accounts" button; on phones the app switch gets its own row */
+.acct-btn { display: inline-flex; align-items: center; height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; flex: none; }
+.acct-btn:hover { background: var(--surface-2); }
+@media (max-width: 640px) {
+  .appswitch { order: 10; flex-basis: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .appswitch a { text-align: center; }
+}
 nav#tabs { grid-template-columns: repeat(3, 1fr); }
+/* Evil Charles (owner 2026-10-26): a switch in the header; on, the logo goes red with red eyes and angry brows */
+.evil-btn { margin-left: auto; flex: none; height: 40px; padding: 0 16px; border-radius: 10px; border: 1px solid #c1121f;
+  background: #c1121f; color: #fff; font: inherit; font-size: 14px; font-weight: 650; cursor: pointer; white-space: nowrap; transition: background .15s, box-shadow .15s; }
+.evil-btn:hover { background: #a50f1a; }
+.evil-btn[aria-pressed="true"] { background: #7f0d15; border-color: #7f0d15; box-shadow: inset 0 2px 5px rgba(0,0,0,.35); }
+.evil-btn:focus-visible { outline: 2px solid #c1121f; outline-offset: 2px; }
+.evil-btn:disabled { opacity: .6; cursor: wait; }
+.logo { transition: background .25s; }
+.logo .angry { display: none; }
+body.evil .logo { background: #c1121f; }
+body.evil .logo .brow { display: none; }
+body.evil .logo .angry { display: inline; }
+body.evil .logo .eye { fill: #ff2626; }
+body.evil .logo .glint { fill: #ffd6d6; }
+body.evil .logo .ear-in { fill: #7f1d1d; stroke: #7f1d1d; }
+.evil-tag { display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: .04em; color: #fff; background: #c1121f; border-radius: 5px; padding: 1px 5px; vertical-align: 1px; }
+.vs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.vs > div { background: var(--surface-2); border-radius: 12px; padding: 10px 12px; }
+.vs .label { font-size: 12px; font-weight: 650; color: var(--text-2); }
+.vs .v { font-size: 20px; font-weight: 700; margin-top: 2px; }
+.brief.with-evil { flex-wrap: wrap; }
+@media (max-width: 640px) { .brief.with-evil .evil-btn { flex-basis: 100%; margin-left: 0; height: 44px; } }
 #activity { scroll-margin-top: 76px; }
 button.more { display: block; width: 100%; margin-top: 10px; padding: 10px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--surface-2); color: var(--text-2); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; }
@@ -316,7 +346,7 @@ button.bl:hover { background: var(--surface-2); }
   .page-title { display: none; }
 }
 @media (max-width: 640px) {
-  .bar { flex-wrap: nowrap; gap: 6px; }
+  .bar { flex-wrap: wrap; gap: 10px 6px; }
   .brand { font-size: 16px; }
   .bar .chip.paper, #st-mkt { display: none; }
   #st-bot { padding: 0; width: 32px; height: 32px; justify-content: center; }
@@ -340,9 +370,10 @@ button.bl:hover { background: var(--surface-2); }
       </span>
       Kalshi Net
     </div>
-    <nav class="appswitch" id="appswitch" aria-label="Dashboards" hidden><a href="/">Stocks</a><a class="on" href="/kalshi/" aria-current="page">Kalshi</a></nav>
+    <nav class="appswitch" id="appswitch" aria-label="Dashboards" hidden><a href="/">Stocks</a><a class="on" href="/kalshi/" aria-current="page">Kalshi</a><a href="/crypto/">Crypto</a></nav>
     <div class="tabs" id="tabs-top"></div>
     <span class="chip paper">Paper account</span>
+    <a class="acct-btn" id="acct-btn" href="/accounts" hidden>Connect Accounts</a>
     <span class="chip" id="st-bot"><span class="dot"></span><span>…</span></span>
     <button class="icon" id="theme" aria-label="Switch light or dark theme" title="Switch light/dark">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 9.5A5.5 5.5 0 1 1 6.5 2.5a4.5 4.5 0 0 0 7 7z"/></svg>
@@ -354,8 +385,9 @@ button.bl:hover { background: var(--surface-2); }
   <!-- HOME -->
   <section class="view on" id="v-home">
     <div class="card brief-card">
-      <div class="brief"><span class="logo" id="brief-logo" aria-hidden="true"></span>
-        <div><h1 id="greet">Hello.</h1><div class="small muted" id="brief-sub"></div></div></div>
+      <div class="brief with-evil"><span class="logo" id="brief-logo" aria-hidden="true"></span>
+        <div><h1 id="greet">Hello.</h1><div class="small muted" id="brief-sub"></div></div>
+        <button class="evil-btn" id="evil-btn" type="button" aria-pressed="false" title="Bet the opposite of every bet Charles places">Toggle Evil Charles</button></div>
       <div class="brief-list" id="brief-list"></div>
     </div>
     <div class="grid home">
@@ -373,6 +405,13 @@ button.bl:hover { background: var(--surface-2); }
           <div class="row"><span>Money in bets</span><span class="num" id="use-label"></span></div>
           <div class="meter"><i id="use-meter" style="width:0"></i></div>
         </div>
+      </div>
+
+      <div class="card" id="evil-card" style="order:2">
+        <div class="card-head"><h2>Charles vs Evil Charles</h2><span class="aside" id="evil-state"></span></div>
+        <p class="small" id="evil-about" style="margin:0"></p>
+        <div class="vs" id="evil-vs"></div>
+        <p class="note" id="evil-note" style="margin-bottom:0"></p>
       </div>
 
       <div class="card" style="order:3">
@@ -672,13 +711,16 @@ const SHEETS = {
   },
 };
 
+/* Charles's logo; Evil Charles turns it red with red eyes and angry brows (CSS: body.evil .logo) */
+const CHARLES_SVG = '<svg width="28" height="28" viewBox="0 0 32 32"><path d="M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z" fill="#fff" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/><path class="ear-in" d="M9.2 10.4 L9.8 7.3 L11.8 8.8 Z M22.8 10.4 L22.2 7.3 L20.2 8.8 Z" fill="#f2b8c0" stroke="#f2b8c0" stroke-width=".6" stroke-linejoin="round"/><path d="M16 7.4c3.2 0 5.6 1 7.4 3.2c1.6 1.9 2.3 4.3 2.1 6.9l1.4 1.6l-1.9.4c-.5 2.6-2 4.8-4 6.2l.4 1.9l-1.8-.9l-.6 2l-1.4-1.4l-1.6 1.8l-1.6-1.8l-1.4 1.4l-.6-2l-1.8.9l.4-1.9c-2-1.4-3.5-3.6-4-6.2l-1.9-.4l1.4-1.6c-.2-2.6.5-5 2.1-6.9C10.4 8.4 12.8 7.4 16 7.4Z" fill="#fff"/><ellipse cx="16" cy="21" rx="5.6" ry="3.9" fill="#edf1f6"/><path class="brow" d="M10.4 13.1l1.2-.9l1 .6l1-.6l.9.7M21.6 13.1l-1.2-.9l-1 .6l-1-.6l-.9.7" stroke="#c3cedb" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle class="eye" cx="12.6" cy="15.5" r="1.3" fill="#1f2937"/><circle class="eye" cx="19.4" cy="15.5" r="1.3" fill="#1f2937"/><circle class="glint" cx="13" cy="15.1" r=".4" fill="#fff"/><circle class="glint" cx="19.8" cy="15.1" r=".4" fill="#fff"/><path class="angry" d="M10 12.4 L14.4 14.3 M22 12.4 L17.6 14.3" stroke="#1f2937" stroke-width="1.5" fill="none" stroke-linecap="round"/><path d="M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z" fill="#fff" stroke="#d3dbe5" stroke-width=".45" stroke-linejoin="round"/><path d="M14.8 21.4q-2 .7-3.4 2.4M17.2 21.4q2 .7 3.4 2.4" stroke="#d3dbe5" stroke-width=".5" fill="none" stroke-linecap="round"/><path d="M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3" stroke="#fff" stroke-width=".6" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="18.7" rx="2" ry="1.4" fill="#1f2937"/></svg>';
+
 /* inside Charles's dashboard (port 8502, /kalshi/): one app, same name and logo (owner 2026-10-11) */
 if (location.pathname.startsWith("/kalshi")) {
-  $("appswitch").hidden = false;
+  $("appswitch").hidden = $("acct-btn").hidden = false;
   document.title = "Charles";
   // Charles's dashboard serves the app manifest and icons, so "Add to Home Screen" works from here too
   document.head.insertAdjacentHTML("beforeend", '<link rel="manifest" href="/manifest.webmanifest"><link rel="apple-touch-icon" href="/icon-180.png">');
-  document.querySelector(".brand").innerHTML = '<span class="logo" aria-hidden="true"><svg width="28" height="28" viewBox="0 0 32 32"><path d="M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z" fill="#fff" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/><path d="M9.2 10.4 L9.8 7.3 L11.8 8.8 Z M22.8 10.4 L22.2 7.3 L20.2 8.8 Z" fill="#f2b8c0" stroke="#f2b8c0" stroke-width=".6" stroke-linejoin="round"/><path d="M16 7.4c3.2 0 5.6 1 7.4 3.2c1.6 1.9 2.3 4.3 2.1 6.9l1.4 1.6l-1.9.4c-.5 2.6-2 4.8-4 6.2l.4 1.9l-1.8-.9l-.6 2l-1.4-1.4l-1.6 1.8l-1.6-1.8l-1.4 1.4l-.6-2l-1.8.9l.4-1.9c-2-1.4-3.5-3.6-4-6.2l-1.9-.4l1.4-1.6c-.2-2.6.5-5 2.1-6.9C10.4 8.4 12.8 7.4 16 7.4Z" fill="#fff"/><ellipse cx="16" cy="21" rx="5.6" ry="3.9" fill="#edf1f6"/><path d="M10.4 13.1l1.2-.9l1 .6l1-.6l.9.7M21.6 13.1l-1.2-.9l-1 .6l-1-.6l-.9.7" stroke="#c3cedb" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12.6" cy="15.5" r="1.3" fill="#1f2937"/><circle cx="19.4" cy="15.5" r="1.3" fill="#1f2937"/><circle cx="13" cy="15.1" r=".4" fill="#fff"/><circle cx="19.8" cy="15.1" r=".4" fill="#fff"/><path d="M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z" fill="#fff" stroke="#d3dbe5" stroke-width=".45" stroke-linejoin="round"/><path d="M14.8 21.4q-2 .7-3.4 2.4M17.2 21.4q2 .7 3.4 2.4" stroke="#d3dbe5" stroke-width=".5" fill="none" stroke-linecap="round"/><path d="M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3" stroke="#fff" stroke-width=".6" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="18.7" rx="2" ry="1.4" fill="#1f2937"/></svg></span>Charles';
+  document.querySelector(".brand").innerHTML = `<span class="logo" aria-hidden="true">${CHARLES_SVG}</span>Charles`;
 }
 
 /* theme: same key as Charles, so both sides switch together */
@@ -707,7 +749,7 @@ function buildTabs() {
     try { localStorage.setItem("kn-range", range); } catch (e) {} renderChart(); });
   $("legend").innerHTML = `<span class="key">${keySvg("--series-1", false)}Book</span><span class="key">${keySvg("--ref", true)}$1,000 start</span>`;
   addPageTitles();
-  $("brief-logo").innerHTML = document.querySelector(".brand .logo").innerHTML;
+  $("brief-logo").innerHTML = CHARLES_SVG.replace('width="28" height="28"', 'width="40" height="40"');
   $("act-more").onclick = () => { actAll = !actAll; render(); if (!actAll) toFeed(); };
   setTab(tab);
 }
@@ -1013,7 +1055,7 @@ function render() {
     if (dd !== lastDay) { html += `<div class="day">${dd}</div>`; lastDay = dd; }
     const p = kind === "BET" ? b.fair : null;
     html += `<div class="act tap" ${tapAttrs("bet", b.id)}><div class="badge ${kind}">${kind}</div>
-      <div><b>${esc(b.sub || b.title)}</b> <span class="side ${b.side}">${b.side.toUpperCase()}</span> <span class="muted small num">${usd(b.cost)} · ${d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"})}</span>
+      <div>${b.evil ? '<span class="evil-tag">EVIL</span> ' : ""}<b>${esc(b.sub || b.title)}</b> <span class="side ${b.side}">${b.side.toUpperCase()}</span> <span class="muted small num">${usd(b.cost)} · ${d.toLocaleTimeString("en-US", {hour: "numeric", minute: "2-digit"})}</span>
         <div class="why">${esc(STRAT[b.strategy] || b.strategy)}${b.sub && b.sub !== b.title ? " · " + esc(b.title) : ""}${p != null ? ` · ${sure(p)} likely · if it wins ${sgnUsd(b.contracts - b.cost)}, if it loses ${sgnUsd(-b.cost)}` : ""}</div></div>
       <div class="right num small ${cls(kind === "BET" ? null : b.pnl)}">${kind === "BET" ? "" : sgnUsd(b.pnl)}</div></div>`;
   }
@@ -1022,10 +1064,41 @@ function render() {
   $("act-more").textContent = actAll ? "Show less" : "Show more";
   $("act-count").textContent = B.closed.length ? `${B.closed.length} settled` : "";
 
+  renderEvil();
   kalshiBrief();
   markSeen(a.account_value);
   document.body.classList.remove("loading");
 }
+
+function renderEvil() {
+  const m = B.mode || {evil: false}, r = B.evil_record, on = !!m.evil;
+  document.body.classList.toggle("evil", on);
+  $("evil-btn").setAttribute("aria-pressed", on ? "true" : "false");
+  $("evil-state").innerHTML = on ? `<span class="evil-tag">ON</span> since ${new Date(m.since).toLocaleDateString("en-US", {month: "short", day: "numeric"})}` : "Off";
+  const betting = (B.milestones || []).some(x => x.level && x.level !== "predict");
+  $("evil-about").textContent = (on
+    ? "Evil Charles is on: every bet Charles decides to place goes on the other side, for the same money. Bets already open stay as they are."
+    : "Tap Toggle Evil Charles (top of this page) to bet the opposite of every bet Charles decides to place, for the same money.")
+    + (betting ? "" : " Right now every strategy is still only predicting, so no bets go on either way until one earns its level.");
+  if (!r || !r.bets) {
+    $("evil-vs").innerHTML = ""; $("evil-note").textContent = "The comparison shows once Charles has flagged bets that settled.";
+    return;
+  }
+  const box = (name, d) => `<div><div class="label">${name}</div><div class="v num ${cls(d.roi_pct)}">${d.roi_pct == null ? "—" : (d.roi_pct > 0 ? "+" : "") + d.roi_pct + "%"}</div><div class="small muted">won ${d.won} of ${r.bets}</div></div>`;
+  $("evil-vs").innerHTML = box("Charles's picks", r.charles) + box("The opposite (Evil)", r.evil);
+  $("evil-note").textContent = `Last ${r.days} days: every bet Charles would have placed (${r.bets} on ${r.events} separate outcomes), after fees.`
+    + (r.estimated ? " Older bets' opposite prices are estimated from the spread at the time." : "")
+    + (r.events < 30 ? " Small sample: a few outcomes can swing this a lot." : "");
+}
+$("evil-btn").onclick = async () => {
+  const btn = $("evil-btn"), want = btn.getAttribute("aria-pressed") !== "true";
+  btn.disabled = true;
+  try {
+    const res = await (await fetch("api/mode", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({evil: want})})).json();
+    if (res.ok && B) { B.mode = {evil: res.evil, since: res.since}; renderEvil(); }
+  } catch (e) {}
+  btn.disabled = false;
+};
 
 async function load() {
   try {

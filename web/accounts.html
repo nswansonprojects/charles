@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="referrer" content="no-referrer">
+<title>Connected Accounts</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" href="/icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+<style>
+/* accounts page only */
+main { max-width: 760px; }
+.acct { display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start; }
+.acct .bi { width: 44px; height: 44px; border-radius: 12px; }
+.acct .bi svg { width: 22px; height: 22px; }
+.acct h3 { margin: 0; font-size: 16.5px; letter-spacing: -.01em; }
+.status { display: flex; align-items: center; gap: 7px; font-size: 13.5px; font-weight: 600; margin-top: 8px; }
+.actions { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.btn { font: inherit; font-size: 13.5px; font-weight: 600; padding: 9px 14px; border-radius: 10px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--surface-2); color: var(--text); min-height: 40px; }
+.btn.primary { background: var(--series-1); border-color: transparent; color: #fff; }
+.btn.danger { color: var(--critical-ink); }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.steps { list-style: none; counter-reset: st; padding: 0; margin: 16px 0 0; }
+.steps li { counter-increment: st; position: relative; padding: 0 0 16px 38px; font-size: 14.5px; line-height: 1.5; }
+.steps li::before { content: counter(st); position: absolute; left: 0; top: 0; width: 26px; height: 26px; border-radius: 50%;
+  background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; font-weight: 700; display: grid; place-items: center; }
+.steps li b { font-weight: 650; }
+.steps .muted { font-size: 13px; }
+.cmd { display: flex; align-items: center; gap: 8px; margin-top: 7px; background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 10px; padding: 6px 6px 6px 12px; }
+.cmd code { flex: 1; min-width: 0; font-family: ui-monospace, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.cmd .btn { min-height: 32px; padding: 5px 11px; font-size: 12.5px; }
+.steps code, .note code { font-size: 12px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand"><span class="logo" aria-hidden="true"><img src="/icon-192.png" width="28" height="28" alt="" style="border-radius:8px"></span><span class="bname">Charles</span></div>
+    <nav class="appswitch" aria-label="Dashboards"><a href="/">Stocks</a><a href="/kalshi/" data-kalshi hidden>Kalshi</a><a href="/crypto/">Crypto</a></nav>
+    <a class="acct-btn on" href="/accounts" aria-current="page">Connect Accounts</a>
+    <button class="icon" id="theme" aria-label="Switch light or dark theme" title="Switch light/dark">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 9.5A5.5 5.5 0 1 1 6.5 2.5a4.5 4.5 0 0 0 7 7z"/></svg>
+    </button>
+  </div>
+</header>
+
+<main>
+  <h1 class="page-title" style="display:block">Connected accounts</h1>
+  <p class="page-sub" style="margin-top:0">One broker account per bot. You connect each one from a terminal over SSH, so your keys go straight to the server and never pass through this page.</p>
+  <div class="grid" id="bots"><div class="card"><div class="empty">Loading…</div></div></div>
+  <p class="note">Charles trades with the Alpaca paper keys installed by <code>charles-keys</code>. Kalshi and Crypto keys are checked and stored, but those bots don't use them yet: Kalshi trades on paper with public prices and the crypto book needs no account. Every bot stays on practice money.</p>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
+  <div class="grab"></div>
+  <button class="icon sh-close" id="sh-close" aria-label="Close">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+  <div id="sheet-body"></div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const svgI = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const ICON = {
+  charles: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>',
+  kalshi: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>',
+  crypto: '<path d="M9 7h5a2.5 2.5 0 0 1 0 5H9zM9 12h6a2.5 2.5 0 0 1 0 5H9zM9 5v14M12 5v2M12 17v2"/>',
+};
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let A = null;
+
+function openSheet(html) {
+  $("sheet-body").innerHTML = html;
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = sc.hidden = false; sh.scrollTop = 0; document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  if (sh.hidden) return;
+  sh.classList.remove("on"); sc.classList.remove("on"); document.body.style.overflow = "";
+  setTimeout(() => { sh.hidden = sc.hidden = true; $("sheet-body").innerHTML = ""; }, REDUCED ? 0 : 320);
+}
+$("scrim").onclick = closeSheet; $("sh-close").onclick = closeSheet;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+
+// The ssh login for this server; on a tunnel (localhost) the real address isn't known here.
+const HOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ? "your-server-ip" : location.hostname;
+const cmd = c => `<div class="cmd"><code>${esc(c)}</code><button class="btn" type="button" data-copy="${esc(c)}">Copy</button></div>`;
+
+function render() {
+  $("bots").innerHTML = A.bots.map(b => {
+    const dot = b.connected ? (b.check_ok === false ? "warn" : "good") : "";
+    const state = b.connected ? `Connected${b.tail ? " · key …" + esc(b.tail) : ""}` : "Not connected";
+    return `<div class="card acct"><span class="bi ${b.connected ? "up" : "info"}">${svgI(ICON[b.id] || "")}</span>
+      <div><h3>${esc(b.name)}</h3><div class="small muted">${esc(b.what)} · ${esc(b.broker)} · ${esc(b.mode)}</div>
+        <div class="status"><span class="dot ${dot}"></span>${state}</div>
+        ${b.check_msg ? `<div class="small muted" style="margin-top:2px">${esc(b.check_msg)}</div>` : ""}
+        <div class="actions"><button class="btn primary" data-steps="${esc(b.id)}">${b.connected ? "How to replace keys" : "How to connect " + esc(b.broker)}</button></div></div></div>`;
+  }).join("");
+  document.querySelectorAll("[data-steps]").forEach(el => el.onclick = () => stepsSheet(el.dataset.steps));
+}
+
+function stepsSheet(id) {
+  const b = A.bots.find(x => x.id === id);
+  const keys = b.id === "charles"
+    ? `<li><b>Run the key tool:</b>${cmd(b.command)}<div class="muted">Choose <b>2</b> (Update a key), pick <b>Alpaca API Key</b> and paste it; do the same for <b>Alpaca Secret</b>. Then choose <b>1</b> to save. Charles restarts with the new keys.</div></li>`
+    : `<li><b>Run the connect tool:</b>${cmd(b.command)}<div class="muted">Paste the ${esc(b.fields[0].label)} and press Enter. Then paste the whole private key, from <code>-----BEGIN</code> to <code>-----END</code>, and press Enter. It stays hidden while you paste. The tool checks the keys and saves them on the server.</div></li>`;
+  const after = b.id === "charles" ? "" :
+    `<p class="sh-p muted" style="margin-top:4px">To remove these keys later: ${cmd(b.command + " --remove")}</p>`;
+  openSheet(`<h2 class="sh-title" id="sh-title">Connect ${esc(b.broker)}</h2><div class="sh-sub">for ${esc(b.name)} · ${esc(b.what)}</div>
+    <ol class="steps">
+      <li><b>Get your keys from ${esc(b.broker)}.</b><div class="muted">${esc(b.help)} <a href="${esc(b.url)}" target="_blank" rel="noopener noreferrer">Open ${esc(b.broker)}</a></div></li>
+      <li><b>Open a terminal</b> on your computer.<div class="muted">Mac: the Terminal app. Windows: PowerShell. Phone: an SSH app such as Termius.</div></li>
+      <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}<div class="muted">Use your server password or SSH key, the same way you log in to manage Charles.</div></li>
+      ${keys}
+      <li><b>Come back here and refresh.</b><div class="muted">This page then shows ${esc(b.name)} as connected${b.id === "charles" ? "" : ", with the last 4 characters of the key"}.</div></li>
+    </ol>${after}`);
+}
+
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {          // http pages have no clipboard API
+    const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); } catch (e2) {}
+    t.remove();
+  }
+  btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy"; }, 1400);
+}
+document.addEventListener("click", e => { const c = e.target.closest("[data-copy]"); if (c) copy(c.dataset.copy, c); });
+
+async function load() {
+  try { A = await (await fetch("api/accounts", {cache: "no-store"})).json(); render(); }
+  catch (e) { $("bots").innerHTML = `<div class="card"><div class="empty">Couldn't load. Is the dashboard running?</div></div>`; }
+}
+(function () {
+  let t = null;
+  try { t = localStorage.getItem("charles-theme"); } catch (e) {}
+  if (t) document.documentElement.dataset.theme = t;
+  $("theme").onclick = () => {
+    const dark = document.documentElement.dataset.theme ? document.documentElement.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const next = dark ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    try { localStorage.setItem("charles-theme", next); } catch (e) {}
+  };
+})();
+load();
+fetch("/kalshi/api/state", {cache: "no-store"}).then(r => { if (r.ok) document.querySelectorAll("[data-kalshi]").forEach(a => a.hidden = false); }).catch(() => {});   // Kalshi link only when the Kalshi bot is installed
+</script>
+</body>
+</html>

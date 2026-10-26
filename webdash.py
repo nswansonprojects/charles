@@ -1,8 +1,11 @@
 """
 webdash.py — Charles's mobile dashboard (port 8502): one page (web/index.html) + one JSON endpoint.
 
-Read-only: it reads the bot's data/ files, the Alpaca paper account and SPY closes, and never
-trades. Python stdlib server, a few MB of memory. Runs as its own service (charles-web) so it keeps
+Read-only for trading: it reads the bot's data/ files, the Alpaca paper account and SPY closes, and
+never trades or writes. The Accounts page shows which broker accounts are connected and the SSH
+steps to connect them (keys go in through the terminal, connections.py). It also shows the crypto
+book (/crypto/, crypto_paper.py's paper book).
+Python stdlib server, a few MB of memory. Runs as its own service (charles-web) so it keeps
 working while the bot restarts. The Kalshi bot's page is passed through under /kalshi/.
 
 Answers, in this order: how is my money doing (vs SPY), what is Charles doing and why (the plan),
@@ -19,15 +22,18 @@ from zoneinfo import ZoneInfo
 
 import allocator
 import config
+import connections
+import crypto_plan
 
 log = logging.getLogger(__name__)
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("WEBDASH_DATA") or os.path.join(ROOT, "data")     # the preview reads a copy
-PAGE = os.path.join(ROOT, "web", "index.html")
+PAGES = {"/": "index.html", "/index.html": "index.html", "/crypto/": "crypto.html", "/accounts": "accounts.html"}
+CRYPTO_BACKTEST = os.path.join(ROOT, "docs", "crypto_backtest.json")
 BACKTEST = os.path.join(ROOT, "docs", "backtest.json")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
-STATIC = {"/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
+STATIC = {"/style.css": "text/css; charset=utf-8", "/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
 MANIFEST = json.dumps({
     "name": "Charles", "short_name": "Charles", "start_url": "/", "scope": "/", "display": "standalone",
     "background_color": "#f4f4f2", "theme_color": "#2a78d6",
@@ -248,6 +254,79 @@ def hourly_closes(rows, now: datetime | None = None) -> list:
     return out
 
 
+def crypto_view(book: dict | None, prices: dict, now: datetime, bt: dict | None = None) -> dict:
+    """The crypto demo's paper book valued at live prices, each coin vs its trend line, the next
+    weekly check, and the backtest. Missing prices (feed down) fall back to the last fill price."""
+    s = crypto_plan.DEFAULTS
+    out = {"generated_at": now.isoformat(), "settings": {k: s[k] for k in ("WEIGHTS", "TREND_DAYS", "CHECK_DAYS", "FEE")},
+           "names": crypto_plan.NAMES, "backtest": bt, "book": None}
+    if not book:
+        return out
+    last = {t["product"]: t["price"] for t in book.get("trades", [])}
+    px = {p: prices.get(p) or last.get(p) or (book.get("coins", {}).get(p) or {}).get("price") for p in s["WEIGHTS"]}
+    qty = book.get("qty", {})
+    value = book["cash"] + sum(q * px[p] for p, q in qty.items() if q and px.get(p))
+    start = book.get("start_cash", 1000.0)
+    sp, btc = book.get("start_prices") or {}, px.get("BTC-USD")
+    coins = []
+    for p, w in s["WEIGHTS"].items():
+        c = (book.get("coins") or {}).get(p) or {}
+        avg = c.get("average")
+        held = qty.get(p, 0.0) * (px.get(p) or 0)
+        coins.append({"product": p, "name": crypto_plan.NAMES.get(p, p), "price": px.get(p), "average": avg,
+                      "gap_pct": round((px[p] / avg - 1) * 100, 1) if avg and px.get(p) else None,
+                      "holding": held > 1, "value": round(held, 2), "share_pct": round(held / value * 100, 1) if value else 0,
+                      "target_pct": round((book.get("targets") or {}).get(p, 0) * 100), "weight_pct": round(w * 100)})
+    nxt = progress = None
+    if book.get("last_check"):
+        lc = datetime.fromisoformat(book["last_check"])
+        nxt = lc + timedelta(days=s["CHECK_DAYS"])
+        progress = round(min(1.0, max(0.0, (now - lc).total_seconds() / (s["CHECK_DAYS"] * 86400))), 2)
+    curve = book.get("curve", [])[-2000:]
+    day_ago = (now - timedelta(days=1)).isoformat()
+    prior = [v for t, v in curve if t <= day_ago] or [start]
+    cost = cost_basis(book.get("trades", []))
+    for c in coins:
+        c["qty"] = qty.get(c["product"], 0.0)
+        c["cost"] = cost.get(c["product"])
+        c["gain"] = round(c["value"] - c["cost"], 2) if c["cost"] and c["holding"] else None
+        c["gain_pct"] = round((c["value"] / c["cost"] - 1) * 100, 2) if c["cost"] and c["holding"] else None
+    out["book"] = {
+        "started": book.get("started"), "start_cash": start, "value": round(value, 2), "cash": round(book["cash"], 2),
+        "return": round(value - start, 2), "return_pct": round((value / start - 1) * 100, 2),
+        "day_change": round(value - prior[-1], 2),
+        "btc_pct": round((btc / sp["BTC-USD"] - 1) * 100, 2) if btc and sp.get("BTC-USD") else None,
+        "coins": coins, "last_check": book.get("last_check"), "next_check": nxt.isoformat() if nxt else None,
+        "check_progress": progress, "curve": with_live_point(curve, value, now),
+        "trades": book.get("trades", [])[-40:][::-1],
+        "start_prices": book.get("start_prices") or {},
+    }
+    return out
+
+
+def cost_basis(trades: list) -> dict:
+    """{product: dollars paid for the coins still held}, fees included; a sell removes its share of the cost."""
+    held, cost = {}, {}
+    for t in trades:
+        p, q = t["product"], t["value"] / t["price"]
+        if t["side"] == "BUY":
+            held[p], cost[p] = held.get(p, 0.0) + q * (1 - (t["fee"] / t["value"] if t["value"] else 0)), cost.get(p, 0.0) + t["value"]
+        elif held.get(p):
+            frac = min(1.0, q / held[p])
+            held[p], cost[p] = held[p] * (1 - frac), cost[p] * (1 - frac)
+    return {p: round(c, 2) for p, c in cost.items() if held.get(p, 0) > 0}
+
+
+def crypto_backtest_view(bt: dict | None) -> dict | None:
+    if not bt or "runs" not in bt:
+        return None
+    return {"start": bt.get("start"), "end": bt.get("end"), "fee_pct": bt.get("fee_pct"),
+            "runs": {n: {"about": r["about"], "curve": r["curve"],
+                         "all": {k: r["stats"].get(k) for k in ("cagr_pct", "max_drawdown_pct", "final")},
+                         "since_2021": {k: (r.get("since_2021") or {}).get(k) for k in ("cagr_pct", "max_drawdown_pct")}}
+                     for n, r in bt["runs"].items()}}
+
+
 # ── Data sources (cached; any failure becomes a missing section, never a crash) ──
 
 _cache: dict = {}
@@ -331,6 +410,39 @@ def _bot_running() -> bool:
         return os.environ.get("WEBDASH_PREVIEW") == "1"
 
 
+def _crypto_prices() -> dict:
+    import crypto_market
+    return {p: crypto_market.spot(p) for p in crypto_plan.DEFAULTS["WEIGHTS"]}
+
+
+def build_crypto_state() -> dict:
+    book = _read("crypto_paper.json")
+    out = crypto_view(book, _cached("crypto_prices", 30, _crypto_prices) or {},
+                      datetime.now(timezone.utc), _cached("crypto_bt", 3600, lambda: crypto_backtest_view(_read(CRYPTO_BACKTEST))))
+    if book:          # bitcoin's hourly closes since the book started: the chart's "just hold bitcoin" line
+        import crypto_market
+        out["btc_hourly"] = _cached("btc_hourly", 900, lambda: crypto_market.hourly_closes("BTC-USD", book["started"])) or []
+    return out
+
+
+# A preview copy has no broker keys: it can show the live dashboard's stocks state instead.
+STATE_FROM = os.environ.get("WEBDASH_STATE_FROM")
+
+
+def _stocks_state() -> dict | None:
+    if not STATE_FROM:
+        return build_state()
+    import urllib.request
+    with urllib.request.urlopen(STATE_FROM + "/api/state", timeout=15) as r:
+        return json.loads(r.read())
+
+
+def accounts_state() -> dict:
+    acct = (_cached("state", 10, _stocks_state) or {}).get("account") if STATE_FROM else _cached("account", 20, _account)
+    acct_ok = bool((acct or {}).get("total_value"))
+    return {"bots": connections.public_status(_read("connections.json", {}, connections.DIR), server_alpaca=acct_ok)}
+
+
 def build_state() -> dict:
     now = datetime.now(timezone.utc)
     acct = _cached("account", 20, _account) or {}
@@ -373,20 +485,39 @@ def build_state() -> dict:
 # ── HTTP ──────────────────────────────────────────────────────────────────────
 
 # The Kalshi bot's dashboard (its own service, own env, port 8503) shown here under /kalshi/, so
-# stocks and Kalshi share one address. Only its page and its read-only state pass through.
+# stocks and Kalshi share one address. Only its page, its read-only state and the Evil Charles
+# switch (POST /kalshi/api/mode, owner 2026-10-26) pass through.
 KALSHI_URL = os.environ.get("KALSHI_URL", "http://127.0.0.1:8503")
 KALSHI_PATHS = {"/kalshi/": "/", "/kalshi/index.html": "/", "/kalshi/api/state": "/api/state"}
+KALSHI_PAGE = os.environ.get("KALSHI_PAGE")      # preview: a branch copy of the Kalshi page (its state stays live)
 
 
 def kalshi_proxy(path: str):
     """(status, body, content type) for a /kalshi/ path, fetched from the Kalshi dashboard."""
     import urllib.request
+    if KALSHI_PAGE and KALSHI_PATHS[path] == "/":
+        with open(KALSHI_PAGE, "rb") as f:
+            return 200, f.read(), "text/html; charset=utf-8"
     try:
         with urllib.request.urlopen(KALSHI_URL + KALSHI_PATHS[path], timeout=10) as r:
             return 200, r.read(), r.headers.get("Content-Type", "application/octet-stream")
     except Exception as e:
         msg = f"The Kalshi dashboard isn't answering ({type(e).__name__}). Is kalshi-web running?"
         return 502, msg.encode(), "text/plain; charset=utf-8"
+
+
+def kalshi_mode(body: bytes, ctype: str):
+    """Pass the Evil Charles switch to the Kalshi dashboard, which checks it and saves it."""
+    import urllib.error
+    import urllib.request
+    req = urllib.request.Request(KALSHI_URL + "/api/mode", data=body, method="POST", headers={"Content-Type": ctype})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, r.read(), "application/json"
+    except urllib.error.HTTPError as e:
+        return e.code, e.read(), "application/json"
+    except Exception as e:
+        return 502, json.dumps({"ok": False, "message": f"The Kalshi dashboard isn't answering ({type(e).__name__})."}).encode(), "application/json"
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -399,11 +530,22 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _json(self, code, obj):
+        self._send(code, json.dumps(json_safe(obj), default=str, allow_nan=False).encode(), "application/json")
+
     def do_GET(self):
         path = self.path.split("?")[0]
-        if path in ("/", "/index.html"):
-            with open(PAGE, "rb") as f:
+        if path in PAGES:
+            with open(os.path.join(ROOT, "web", PAGES[path]), "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
+        elif path in ("/crypto", "/accounts/"):
+            self.send_response(301)
+            self.send_header("Location", "/crypto/" if path == "/crypto" else "/accounts")
+            self.end_headers()
+        elif path == "/crypto/api/state":
+            self._json(200, _cached("crypto_state", 10, build_crypto_state) or {"error": "unavailable"})
+        elif path == "/api/accounts":
+            self._json(200, accounts_state())
         elif path == "/manifest.webmanifest":
             self._send(200, MANIFEST, "application/manifest+json")
         elif path in STATIC:
@@ -416,11 +558,22 @@ class Handler(BaseHTTPRequestHandler):
         elif path in KALSHI_PATHS:
             self._send(*kalshi_proxy(path))
         elif path == "/api/state":
-            body = json.dumps(json_safe(_cached("state", 10, build_state) or {"error": "unavailable"}),
+            body = json.dumps(json_safe(_cached("state", 10, _stocks_state) or {"error": "unavailable"}),
                               default=str, allow_nan=False).encode()
             self._send(200, body, "application/json")
         else:
             self._send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        if self.path.split("?")[0] != "/kalshi/api/mode":
+            return self._send(404, b"not found", "text/plain")
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if not 0 < n <= 256:
+            return self._send(413, b"too big", "text/plain")
+        self._send(*kalshi_mode(self.rfile.read(n), self.headers.get("Content-Type", "")))
 
     def log_message(self, *args):       # keep the journal quiet
         pass

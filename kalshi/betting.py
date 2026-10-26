@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import evaluate
 import forecasts
 import gates
+import mode
 import kalshi_api
 import predictions
 import strategies
@@ -219,6 +220,36 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
             "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(exp, 2)}
 
 
+def flip(fill: dict, book: dict) -> dict | None:
+    """Evil Charles: the same dollars as Charles's `fill`, on the other side. Walks that side's offers
+    (price_range, max_walk, fill_share as usual) but skips the edge and min_win_ratio checks: by
+    Charles's own numbers this bet is a loser, and that's the point. `fair` stays Charles's view."""
+    side = "no" if fill["side"] == "yes" else "yes"
+    levels = [(p, q) for p, q in evaluate.asks(book, side) if RULES["price_range"][0] <= p <= RULES["price_range"][1]]
+    if not levels:
+        return None
+    top = levels[0][0]
+    n, cost = 0, 0.0
+    for p, q in levels:
+        if p > top + RULES["max_walk"] + 1e-9:
+            break
+        take = int(min(q * RULES["fill_share"], (fill["cost"] - cost) / p))
+        if take <= 0:
+            break
+        n += take
+        cost += take * p
+    while n > 0 and cost + fee(n, cost / n) > fill["cost"]:
+        cost -= cost / n
+        n -= 1
+    if n <= 0:
+        return None
+    f = fee(n, cost / n)
+    fair = 1 - fill["fair"]
+    return {"side": side, "contracts": n, "avg_price": round(cost / n, 4), "fee": f, "cost": round(cost + f, 2),
+            "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(n * fair - cost - f, 2),
+            "evil": True, "charles_side": fill["side"]}
+
+
 def place(led: dict, pick: dict, fill: dict, m: dict, now: datetime, level: str = "normal") -> dict:
     yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
     rec = {**{k: pick[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source")}, "level": level,
@@ -269,12 +300,12 @@ def exits(led: dict, fair_now: dict, by_ticker: dict, now: datetime) -> list[dic
     """Sell a bet when the best bid, after the fee, beats today's fair value by exit_margin:
     the price has caught up with (or gone past) our model, so holding adds nothing. If the best
     bid can't take the whole bet (fill_share of its size), sell the part it can and keep the rest.
-    Longshot bets hold to settlement: their fair value comes from the price itself."""
+    Longshot and Evil Charles bets hold to settlement (an evil bet is already past Charles's fair value)."""
     sold = []
     for bet in list(led["open"]):
         fy = fair_now.get(bet["ticker"])
         m = by_ticker.get(bet["ticker"])
-        if bet["strategy"] == "longshot" or fy is None or m is None:
+        if bet["strategy"] == "longshot" or bet.get("evil") or fy is None or m is None:
             continue
         fair = fy if bet["side"] == "yes" else 1 - fy
         bid, depth = _f(m.get(f"{bet['side']}_bid_dollars")), _f(m.get(f"{bet['side']}_bid_size_fp"))
@@ -359,7 +390,8 @@ def gather(events: list, now: datetime) -> tuple[list, dict]:
 
 def signals_of(scored: list, by_ticker: dict) -> dict:
     """{ticker: shadow bet} for every pick the real rules would bet on now (edge >= min_edge at the best
-    offer, price allowed, pays enough). Cost per contract includes the fee as on a 100-contract order."""
+    offer, price allowed, pays enough). Cost per contract includes the fee as on a 100-contract order.
+    opp_cost: the same for the other side, so the dashboard can show how Evil Charles would have done."""
     out = {}
     for p in scored:
         if p["quick_edge"] < RULES["min_edge"][p["strategy"]]:
@@ -368,6 +400,9 @@ def signals_of(scored: list, by_ticker: dict) -> dict:
         fair = p["fair_yes"] if p["side"] == "yes" else 1 - p["fair_yes"]
         out[p["ticker"]] = {"side": p["side"], "ask": ask, "cost": round(ask + fee(100, ask) / 100, 4),
                             "edge": p["quick_edge"], "fair": round(fair, 4)}
+        opp = _f(by_ticker[p["ticker"]].get(f"{'no' if p['side'] == 'yes' else 'yes'}_ask_dollars"))
+        if 0 < opp < 1:
+            out[p["ticker"]]["opp_cost"] = round(opp + fee(100, opp) / 100, 4)
     return out
 
 
@@ -375,6 +410,7 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
         get_markets=None) -> dict:
     now = now or datetime.now(timezone.utc)
     apply_tuning()
+    evil = mode.is_evil()
     get_book = get_book or kalshi_api.orderbook
     get_market = get_market or kalshi_api.market
     get_markets = get_markets or kalshi_api.markets
@@ -447,6 +483,8 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
             log.warning(f"betting book {p['ticker']}: {e}")
             continue
         fill = size(p, p["side"], book, budget, bank)
+        if fill and evil:
+            fill = flip(fill, book)
         if not fill:
             continue
         rec = place(led, p, fill, by_ticker[p["ticker"]], now, lvl)
@@ -456,7 +494,7 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
         by_event[key] = by_event.get(key, 0) + rec["cost"]
         bets_in[key] = bets_in.get(key, 0) + 1
         by_strat[p["strategy"]] = by_strat.get(p["strategy"], 0) + rec["cost"]
-        log.info(f"BET {rec['strategy']} {rec['side'].upper()} {rec['ticker']} x{rec['contracts']} @ {rec['avg_price']} "
+        log.info(f"{'EVIL BET' if evil else 'BET'} {rec['strategy']} {rec['side'].upper()} {rec['ticker']} x{rec['contracts']} @ {rec['avg_price']} "
                  f"(fair {rec['fair']}, edge {rec['edge']}) cost ${rec['cost']} — {rec['source']}")
     for b in sold:
         log.info(f"SOLD {b['strategy']} {b['ticker']} @ {b['exit_bid']}: pnl ${b['pnl']:+.2f}")
@@ -470,7 +508,7 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
     for s in status:
         status[s]["edges"] = sum(1 for p in scored if p["strategy"] == s and p["quick_edge"] >= RULES["min_edge"][s])
     summary = {"ts": account["ts"], "picks": len(picks), "candidates": len(cands), "placed": len(placed),
-               "sold": len(sold), "settled": len(settled), "strategies": status, "levels": levels, "level_moves": moves,
+               "sold": len(sold), "settled": len(settled), "evil": evil, "strategies": status, "levels": levels, "level_moves": moves,
                "predictions_open": len(preds["open"]),
                "account_value": account["account_value"], "cash": led["cash"], "open_bets": len(led["open"])}
     top = [{k: p[k] for k in ("strategy", "ticker", "title", "sub", "side", "fair_yes", "model_yes", "quick_edge", "source")}
