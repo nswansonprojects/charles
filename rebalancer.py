@@ -20,6 +20,7 @@ from datetime import datetime, timezone, date, timedelta
 
 import allocator as al
 import config
+import control
 import state_io
 import timeofday
 
@@ -29,6 +30,7 @@ PLAN_FILE = os.path.join(ROOT, "data", "plan.json")
 RANKED_SHOWN = 15
 CASH_RESERVE = 0.002                # a few dollars never spent, so the last buy can't overdraw
 HISTORY_DAYS = "2y"                 # enough for 252-day momentum + 200-day average
+MAX_MISSING_WEEKDAYS = 2            # weekdays without a close before the prices count as stale
 
 
 def settings() -> dict:
@@ -112,7 +114,7 @@ def decide(today: str, closes: dict[str, list[float]], state: dict, s: dict, vet
 
 
 def reason(order: dict, d: dict, state: dict, s: dict, first_run: bool) -> str:
-    """Why this order, in one plain sentence (Activity tab, Telegram)."""
+    """Why this order, in one plain sentence (Activity tab, notices)."""
     sym, side = order["symbol"], order["side"]
     rank = {r["symbol"]: r for r in d["ranked"]}
     tw = round(d["targets"].get(sym, 0) * 100)
@@ -162,7 +164,10 @@ def reason(order: dict, d: dict, state: dict, s: dict, first_run: bool) -> str:
 
 
 def closes_for(symbols: list[str], today: str) -> tuple[dict[str, list[float]], str | None]:
-    """Daily dividend-adjusted closes before `today` (ET), so a partial day never counts."""
+    """Daily dividend-adjusted closes before `today` (ET), so a partial day never counts, and the date
+    of the latest close. A symbol missing its latest close keeps its previous one; if that happens to
+    the core fund, the date returned is the core's own latest close, so stale core prices can't pass
+    as fresh (prices_stale)."""
     import yfinance as yf
     df = yf.download(symbols, period=HISTORY_DAYS, auto_adjust=True, progress=False, threads=True)["Close"]
     df = df[[str(i.date()) < today for i in df.index]]
@@ -172,7 +177,24 @@ def closes_for(symbols: list[str], today: str) -> tuple[dict[str, list[float]], 
             col = [float(v) for v in df[sym].tolist() if v == v]
             if col:
                 out[sym] = col
-    return out, (str(df.index[-1].date()) if len(df.index) else None)
+    as_of = str(df.index[-1].date()) if len(df.index) else None
+    core = settings()["CORE"]
+    if as_of and core in df:
+        have = df[core].dropna()
+        as_of = min(as_of, str(have.index[-1].date())) if len(have) else None
+    return out, as_of
+
+
+def prices_stale(as_of: str | None, today: str) -> bool:
+    """True when the latest close is too old to trade on: more than MAX_MISSING_WEEKDAYS weekdays
+    between it and today had no close. Weekends never count, and an exchange holiday is normal."""
+    if not as_of:
+        return True
+    d, end, missing = date.fromisoformat(as_of) + timedelta(days=1), date.fromisoformat(today), 0
+    while d < end:
+        missing += d.weekday() < 5
+        d += timedelta(days=1)
+    return missing > MAX_MISSING_WEEKDAYS
 
 
 def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None = None,
@@ -198,15 +220,26 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
     if s["CORE"] not in closes or len(closes[s["CORE"]]) < s["TREND_DAYS"]:
         log.error(f"  ❌ No {s['CORE']} history — no rebalance")
         return {"skipped": "no price history"}
+    if prices_stale(as_of, today):
+        msg = f"No rebalance: the latest prices are from {as_of}, too old to trade on (the price feed may be down)."
+        log.error(f"  ❌ {msg}")
+        if not dry_run:
+            try:
+                import alerts
+                alerts.error_alert(msg)
+            except Exception:
+                pass
+        return {"skipped": "stale prices"}
     use_veto = (not dry_run) if use_veto is None else use_veto
     d = decide(today, closes, state, s, veto=news_veto.check if use_veto else None)
     held = {p["symbol"]: p["market_value"] for p in acct["positions"]}
     equity = acct["total_value"]
     todo = al.orders(d["targets"], held, equity, d["full"], s)
     if not dry_run:
-        rm.check_day_change(acct.get("day_change") or 0)
+        rm.check_day_change(acct.get("day_change") or 0, acct.get("total_value"))
+    pause = control.paused()                  # the owner's pause: no orders at all until resume
     halted = rm.is_trading_halted()
-    blocked = [o for o in todo if o["side"] == "buy"] if halted else []
+    blocked = list(todo) if pause else [o for o in todo if o["side"] == "buy"] if halted else []
     todo = [o for o in todo if o not in blocked]
     first = not state.get("mode")
     for o in todo + blocked:
@@ -223,8 +256,7 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
                 continue
             if not r:
                 continue
-            rm.record_daily_pnl(r["pnl"])
-            ex.log_trade({"symbol": o["symbol"], "action": "SELL", "value": r["value"], "price": r["price"],
+            _log_trade(ex, {"symbol": o["symbol"], "action": "SELL", "value": r["value"], "price": r["price"],
                           "qty": r["qty"], "pnl": r["pnl"], "pnl_pct": r["pnl_pct"], "order_id": r["order_id"],
                           "status": r["status"], "reasoning": o["reason"], "source": "rebalance"})
             done.append({**o, **r})
@@ -242,7 +274,7 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
                 log.error(f"  ❌ BUY {o['symbol']} failed: {e}")
                 continue
             spendable -= amt
-            ex.log_trade({"symbol": o["symbol"], "action": "BUY", "value": amt, "price": r["price"], "qty": r["qty"],
+            _log_trade(ex, {"symbol": o["symbol"], "action": "BUY", "value": amt, "price": r["price"], "qty": r["qty"],
                           "order_id": r["order_id"], "status": r["status"], "reasoning": o["reason"],
                           "source": "rebalance"})
             done.append({**o, **r, "amount": amt})
@@ -261,7 +293,8 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
         "started": state.get("started") or today,
         "last_orders": (done if not dry_run else todo) or state.get("last_orders", []),
         "last_orders_date": today if (done or dry_run) else state.get("last_orders_date"),
-        "halted_buys": bool(blocked),
+        "halted_buys": bool(blocked) and not pause,
+        "paused": pause,
         "settings": {k: s[k] for k in ("CORE", "SAFE", "CORE_PCT", "PICKS", "PICK_PCT", "TREND_DAYS",
                                        "SWITCH_CHECK", "SAFETY_SWITCH", "AGGRESSIVE", "AGG_CORE", "AGG_VOL_MAX",
                                        "AGG_VOL_EXIT", "VOL_DAYS") if k in s},
@@ -272,6 +305,21 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
     if done or d["switched"]:
         _tell(new_state, done, d, blocked)
     return {"state": new_state, "done": done, "blocked": blocked}
+
+
+def _log_trade(ex, record: dict):
+    """Log a placed order. A failed write (a full disk, say) must not stop the rest of the rebalance:
+    the order already went through, so say so and carry on."""
+    try:
+        ex.log_trade(record)
+    except Exception as e:
+        log.error(f"  ⚠️  {record['action']} {record['symbol']} was placed but the trade log failed: {e}")
+        try:
+            import alerts
+            alerts.error_alert(f"{record['action']} {record['symbol']} ${record['value']:,.2f} was placed, "
+                               f"but the trade log couldn't be written ({e}).")
+        except Exception:
+            pass
 
 
 def _tell(st: dict, done: list, d: dict, blocked: list):
@@ -285,7 +333,9 @@ def _tell(st: dict, done: list, d: dict, blocked: list):
         for o in done:
             pnl = f" ({'+' if o.get('pnl', 0) >= 0 else '−'}${abs(o['pnl']):.2f})" if o["side"] == "sell" and o.get("pnl") is not None else ""
             lines.append(f"{'Bought' if o['side'] == 'buy' else 'Sold'} {o['symbol']} ${o.get('value') or o['amount']:.2f}{pnl}")
-        if blocked:
+        if blocked and st.get("paused"):
+            lines.append(f"⏸ Paused: {len(blocked)} order{'' if len(blocked) == 1 else 's'} wait until you resume.")
+        elif blocked:
             lines.append("⏸ Buys wait until tomorrow: the daily loss limit was hit.")
         alerts.rebalanced(st["summary"], lines)
     except Exception as e:

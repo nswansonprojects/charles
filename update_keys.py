@@ -4,16 +4,17 @@ update_keys.py — interactive API key update, run by `charles-keys`.
 Shows the keys in .env (masked), lets you change them, then copies the new
 values into data/launch_authorized.json and restarts the service.
 
-That copy matters: main._apply_wizard_settings lets the Alpaca and Telegram
-keys stored in launch_authorized.json override .env, so updating .env alone
-would not take effect. Only the five credential fields are touched; sizing,
+That copy matters: main._apply_wizard_settings lets the Alpaca keys stored in
+launch_authorized.json override .env, so updating .env alone would not take
+effect. Only the three credential fields are touched; sizing,
 daily-loss and other settings in that file are left as they are.
 
 Cancelling changes nothing and leaves the running bot alone.
 
 Non-interactive: `update_keys.py --set GROQ_API_KEY` reads the new value from
 stdin, saves it to .env, copies it into launch_authorized.json and restarts.
-It never prints key values. Allowed keys: those in CRED_FIELDS.
+It never prints key values. Allowed keys: those in CRED_FIELDS, and ENV_ONLY, which
+only the chat reads (fresh each time), so saving one needs no restart.
 Replaces start_server.py (2026-10-01), which stopped the service, rewrote
 launch_authorized.json with old defaults and ran the bot outside systemd.
 """
@@ -23,6 +24,7 @@ import subprocess
 import sys
 
 import server_confirm
+import state_io
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FLAG = os.path.join(HERE, "data", "launch_authorized.json")
@@ -31,10 +33,9 @@ FLAG = os.path.join(HERE, "data", "launch_authorized.json")
 CRED_FIELDS = {
     "ALPACA_API_KEY":     "alpaca_key",
     "ALPACA_SECRET_KEY":  "alpaca_secret",
-    "TELEGRAM_BOT_TOKEN": "tg_token",
-    "TELEGRAM_CHAT_ID":   "tg_chat_id",
     "GROQ_API_KEY":       "groq_key",
 }
+ENV_ONLY = ("ANTHROPIC_API_KEY",)
 
 
 def sync_launch_flag(env_vals: dict, flag_path: str | None = None, only: str | None = None) -> list:
@@ -65,8 +66,8 @@ def sync_launch_flag(env_vals: dict, flag_path: str | None = None, only: str | N
 
 def set_key(env_key: str, value: str):
     """Non-interactive update of one key in .env (other entries kept)."""
-    if env_key not in CRED_FIELDS:
-        print(f"⛔ Unknown key {env_key}. Allowed: {', '.join(CRED_FIELDS)}")
+    if env_key not in CRED_FIELDS and env_key not in ENV_ONLY:
+        print(f"⛔ Unknown key {env_key}. Allowed: {', '.join((*CRED_FIELDS, *ENV_ONLY))}")
         sys.exit(2)
     if not value or any(c.isspace() for c in value):
         print("⛔ Empty value or value contains whitespace — nothing changed.")
@@ -78,6 +79,13 @@ def set_key(env_key: str, value: str):
 
 
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--set" and sys.argv[2] in ENV_ONLY:
+        print(f"Paste your {sys.argv[2]} and press Enter (it stays on this server):", file=sys.stderr)
+        set_key(sys.argv[2], sys.stdin.readline().strip())
+        return
+    if not os.path.exists(FLAG) and state_io.private_copy(HERE):
+        print(f"⛔ {FLAG} is missing — the bot can't start without it. Restore it from a backup first.")
+        sys.exit(1)
     only = None
     if len(sys.argv) == 3 and sys.argv[1] == "--set":
         only = sys.argv[2]
@@ -88,7 +96,7 @@ def main():
         sys.exit(2)
     elif not server_confirm.run_confirmation():
         sys.exit(0)
-    if os.path.exists(FLAG):   # only installs from the old setup wizard have this file
+    if os.path.exists(FLAG):        # a public install has no flag: .env is all there is
         changed = sync_launch_flag(server_confirm._load_env(), only=only)
         print(f"🔑 Updated in launch_authorized.json: {', '.join(changed)}" if changed
               else "🔑 launch_authorized.json already matches .env")

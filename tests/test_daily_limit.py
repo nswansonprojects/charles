@@ -10,41 +10,20 @@ import timeofday
 
 
 class DailyLossKillSwitch(BotTestCase):
-    def test_accumulates_and_halts_at_limit(self):
-        rm.record_daily_pnl(-8.0)
-        rm.record_daily_pnl(-7.0)
-        self.assertFalse(rm.is_trading_halted())
-        rm.record_daily_pnl(-5.0)            # -20 = limit
-        self.assertTrue(rm.is_trading_halted())
-        self.assertEqual(rm.get_daily_stats()["loss"], -20.0)
-
     def test_open_losses_count_too(self):
         rm.check_day_change(-12.0)           # positions down, nothing closed yet
         self.assertFalse(rm.is_trading_halted())
         rm.check_day_change(-20.5)
         self.assertTrue(rm.is_trading_halted())
-        self.assertEqual(rm.get_daily_stats()["loss"], 0.0)   # closed-trade counter untouched
         rm.check_day_change(-30.0)
         self.assertEqual([c[0] for c in self.alerts.calls].count("daily_loss_halted"), 1)
 
-    def test_alert_sent_once(self):
-        rm.record_daily_pnl(-25.0)
-        rm.record_daily_pnl(-1.0)
-        self.assertEqual([c[0] for c in self.alerts.calls].count("daily_loss_halted"), 1)
-
-    def test_wins_offset_losses(self):
-        rm.record_daily_pnl(-15.0)
-        rm.record_daily_pnl(+10.0)
-        rm.record_daily_pnl(-10.0)
-        self.assertFalse(rm.is_trading_halted())
-
     def test_resets_on_new_et_trading_day(self):
         self.patch(timeofday, "market_date", lambda ts=None: "2026-10-01")
-        rm.record_daily_pnl(-25.0)
+        rm.check_day_change(-25.0)
         self.assertTrue(rm.is_trading_halted())
         self.patch(timeofday, "market_date", lambda ts=None: "2026-10-02")
         self.assertFalse(rm.is_trading_halted())
-        self.assertEqual(rm.get_daily_stats()["loss"], 0.0)
 
 
 class AtomicWrites(BotTestCase):

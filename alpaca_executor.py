@@ -14,6 +14,7 @@ import time
 from datetime import datetime, timezone
 
 import config
+import equity_tracker
 import state_io
 import credential_manager as sec
 
@@ -52,7 +53,7 @@ def get_account_summary() -> dict:
         account = c.get_account()
         positions = _stock_positions(c)
         total_val = float(account.portfolio_value)
-        start = config.VIRTUAL_CASH
+        start = equity_tracker.start_cash()
         pos_list = [{
             "symbol":         p.symbol,
             "shares":         float(p.qty),
@@ -90,6 +91,15 @@ def _wait_final(c, order_id, timeout: float) -> object | None:
             break
         time.sleep(0.5)
     return o
+
+
+def _filled(o) -> float | None:
+    """Shares filled so far, or None. Alpaca reports "0" (a non-empty string) for an unfilled order."""
+    try:
+        q = float(getattr(o, "filled_qty", None) or 0)
+    except (TypeError, ValueError):
+        return None
+    return q if q > 0 else None
 
 
 def _cancel_old_stops(c, symbol: str):
@@ -133,7 +143,7 @@ def sell(c, symbol: str, amount: float | None) -> dict | None:
     o = _wait_final(c, order.id, 30) or order
     status = str(getattr(o.status, "value", o.status))
     price = float(o.filled_avg_price) if getattr(o, "filled_avg_price", None) else float(pos.current_price)
-    qty = float(o.filled_qty) if getattr(o, "filled_qty", None) else qty_held * frac
+    qty = _filled(o) or qty_held * frac            # not filled yet: log the size that was asked for
     entry = float(pos.avg_entry_price)
     return {"order_id": str(order.id), "status": status, "value": round(price * qty, 2), "price": round(price, 4),
             "qty": qty, "pnl": round((price - entry) * qty, 2), "pnl_pct": round((price / entry - 1) * 100, 2)}
@@ -149,7 +159,7 @@ def buy(c, symbol: str, amount: float) -> dict | None:
     status = str(getattr(o.status, "value", o.status))
     price = float(o.filled_avg_price) if getattr(o, "filled_avg_price", None) else None
     return {"order_id": str(order.id), "status": status, "value": round(amount, 2), "price": price,
-            "qty": float(o.filled_qty) if getattr(o, "filled_qty", None) else None}
+            "qty": _filled(o)}
 
 
 # ── Trade log (data/trades.json; the dashboard's Activity tab) ────────────────

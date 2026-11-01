@@ -98,10 +98,10 @@ class PlanLines(BotTestCase):
     def test_report_message_includes_the_lines(self):
         self.write("plan.json", {"started": "2026-10-19", "mode": "invest", "picks": ["NVDA"]})
         stats = {"period": "monthly", "label": "October 2026", "plan_lines": self.lines()}
-        rpt.send_report_telegram(stats)
+        rpt.post_report(stats)
         (name, args, _), = self.alerts.calls
-        self.assertEqual(name, "_send")
-        self.assertIn("─\nPlan since Oct 19, 2026: not enough history yet\nPicks now:    NVDA", args[0])
+        self.assertEqual(name, "report")
+        self.assertIn("─\nPlan since Oct 19, 2026: not enough history yet\nPicks now:    NVDA", args[1])
 
 
 class SpyEndDate(BotTestCase):

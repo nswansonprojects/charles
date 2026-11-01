@@ -1,0 +1,18 @@
+{
+ "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
+ "releases": [
+  {
+   "version": "v1.0.0",
+   "date": "2026-11-01",
+   "kind": "fix",
+   "notes": [
+    "The first official release. From here on, updates and Restore work by version.",
+    "New dashboard: one Home for every bot, with sliders and Copy on the Plan tab, a side feed, alerts and a short tour.",
+    "The dashboard is private with a one-time login link, served over HTTPS on a fresh install.",
+    "Pause and Resume, the leaderboard and monthly challenges, and an optional chat on your own Anthropic key.",
+    "A new install runs stocks only. Crypto and Kalshi are add-ons.",
+    "Notices now appear on the dashboard."
+   ]
+  }
+ ]
+}

@@ -1,0 +1,593 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131311" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Charles">
+<title>Stocks · Charles</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%232a78d6'/><path d='M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z' fill='%23fff' stroke='%23fff' stroke-width='2.6' stroke-linejoin='round'/><path d='M9.2 10.4 L9.8 7.3 L11.8 8.8 Z M22.8 10.4 L22.2 7.3 L20.2 8.8 Z' fill='%23f2b8c0' stroke='%23f2b8c0' stroke-width='.6' stroke-linejoin='round'/><path d='M16 7.4c3.2 0 5.6 1 7.4 3.2c1.6 1.9 2.3 4.3 2.1 6.9l1.4 1.6l-1.9.4c-.5 2.6-2 4.8-4 6.2l.4 1.9l-1.8-.9l-.6 2l-1.4-1.4l-1.6 1.8l-1.6-1.8l-1.4 1.4l-.6-2l-1.8.9l.4-1.9c-2-1.4-3.5-3.6-4-6.2l-1.9-.4l1.4-1.6c-.2-2.6.5-5 2.1-6.9C10.4 8.4 12.8 7.4 16 7.4Z' fill='%23fff'/><ellipse cx='16' cy='21' rx='5.6' ry='3.9' fill='%23edf1f6'/><path d='M10.4 13.1l1.2-.9l1 .6l1-.6l.9.7M21.6 13.1l-1.2-.9l-1 .6l-1-.6l-.9.7' stroke='%23c3cedb' stroke-width='1' fill='none' stroke-linecap='round' stroke-linejoin='round'/><circle cx='12.6' cy='15.5' r='1.3' fill='%231f2937'/><circle cx='19.4' cy='15.5' r='1.3' fill='%231f2937'/><circle cx='13' cy='15.1' r='.4' fill='%23fff'/><circle cx='19.8' cy='15.1' r='.4' fill='%23fff'/><path d='M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z' fill='%23fff' stroke='%23d3dbe5' stroke-width='.45' stroke-linejoin='round'/><path d='M14.8 21.4q-2 .7-3.4 2.4M17.2 21.4q2 .7 3.4 2.4' stroke='%23d3dbe5' stroke-width='.5' fill='none' stroke-linecap='round'/><path d='M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3' stroke='%23fff' stroke-width='.6' fill='none' stroke-linecap='round'/><ellipse cx='16' cy='18.7' rx='2' ry='1.4' fill='%231f2937'/></svg>">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/style.css">
+<script src="/viz.js"></script>
+</head>
+<body class="loading">
+<header></header>
+<main>
+  <div class="seg" id="seg" role="group" aria-label="Stocks sections"></div>
+
+  <section class="view on" id="v-home">
+   <div class="feed-page">
+    <div class="feed-main">
+      <div class="card ink" id="t-hero">
+        <div class="hero-head"><div class="eyebrow">Stocks earned so far</div><button class="chip practice" type="button" data-open="lesson" data-k="paper" title="What practice money means">Practice money</button></div>
+        <div class="big num" id="value">$0.00</div>
+        <div class="sub num" id="ret">&nbsp;</div>
+        <div id="halt"></div>
+        <div class="chart hero-chart" id="chart"></div>
+        <div class="chart-foot"><div class="tabs" id="range" role="group" aria-label="Time range"></div><div class="legend" id="legend"></div></div>
+        <div class="hero-acts"><a class="btn small primary" href="/leaderboard">Try someone else's settings</a><button class="btn small" type="button" id="go-plan">Change settings</button></div>
+      </div>
+      <div class="card" id="holds">
+        <div class="card-head"><h2>What it holds</h2><button class="chip" type="button" id="mode-chip" hidden></button><span class="aside" id="pos-count"></span></div>
+        <div class="alloc" id="alloc-now" role="img"></div>
+        <div class="alloc-keys" id="alloc-keys"></div>
+        <div id="positions"></div>
+        <p class="note" id="alloc-note" hidden></p>
+      </div>
+    </div>
+    <aside class="card feed-col" id="feed" data-bot="stocks" aria-label="Feed"></aside>
+   </div>
+  </section>
+
+  <section class="view" id="v-plan">
+    <div class="tab-stack">
+      <div class="card ink">
+        <div class="hero-head"><div class="eyebrow">The plan right now</div><span class="chip practice" id="plan-mode"></span></div>
+        <div class="ink-title" id="plan-title"></div>
+        <div class="planmap" id="planmap"></div>
+        <div class="plan-next" id="plan-next"></div>
+      </div>
+      <div class="two even tune-row">
+        <div class="card tune" id="tune" data-bot="stocks"></div>
+        <div class="card tune-copy" id="tune-copy" hidden></div>
+      </div>
+      <div class="two even">
+        <button class="card tap-card dial-card" id="dial-safety" type="button"></button>
+        <button class="card tap-card dial-card" id="dial-calm" type="button"></button>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>This plan since 2007</h2><span class="aside">Simulated, $1,000 start</span></div>
+        <div class="bt-big num" id="bt-big"></div>
+        <div class="chart" id="bt-chart"></div>
+        <div class="years" id="bt-years"></div>
+        <div class="caveat" id="bt-caveat"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="view" id="v-tune">
+    <div class="tab-stack">
+      <div class="card ink">
+        <div class="hero-head"><div class="eyebrow">The monthly rule check</div><span class="chip practice" id="tune-when" hidden></span></div>
+        <div class="ink-title" id="tune-title"></div>
+        <div class="sub" id="tune-sub"></div>
+        <div class="label tests-label" id="tests-label" hidden>What each change did in its worst test, per year</div>
+        <div class="tests" id="tests"></div>
+      </div>
+      <div class="card span" id="cl-card">
+        <div class="card-head"><h2>What Claude found</h2><span class="aside" id="cl-when"></span><button class="link-btn" id="cl-full" type="button" hidden>Full report</button></div>
+        <div id="findings" data-bot="stocks"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>What's coming</h2></div>
+        <div class="rings" id="miles"></div>
+        <p class="note" id="rules-note"></p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
+  <div class="grab" id="grab"></div>
+  <button class="icon sh-close" id="sh-close" aria-label="Close">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+  <div id="sheet-body"></div>
+</div>
+
+<script>
+"use strict";
+window.SHEETS_LESSONS = true;      // the sliders (tune.js) can open a lesson on this page
+const TABS = [["home", "Overview"], ["plan", "Plan"], ["tune", "Self-Tune"]];
+const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["Plan", "plan"], ["All", 1e5]];   // "Plan": since data/plan.json "started"
+const ROLE = {core: ["Whole market", "--core"], pick: ["Momentum picks", "--pick"], safety: ["T-bills (safety)", "--safe"],
+              leaving: ["Being sold", "--leaving"], cash: ["Cash", "--cash"]};
+let S = null, tab = "home", range = "All", NEWS = null, newsAt = 0, chartShown = false;
+try { range = localStorage.getItem("stocks-range") || range; } catch (e) {}
+// Always opens on Overview, with nothing remembered (owner 2026-10-31). A link can ask for a tab once: /stocks#plan.
+const asked = location.hash.slice(1);
+if (asked) { tab = asked; history.replaceState(null, "", location.pathname + location.search); }
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const usd = (v, d = 2) => v == null ? "—" : (v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgnUsd = v => v == null ? "—" : (v > 0 ? "+" : "") + usd(v);
+const pct = (v, d = 2) => v == null ? "—" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(d) + "%";
+const cls = v => v == null ? "" : v > 0.004 ? "up" : v < -0.004 ? "down" : "flat";
+const arrow = v => v == null ? "" : v > 0.004 ? "▲ " : v < -0.004 ? "▼ " : "";
+const ago = iso => { if (!iso) return "—"; const s = (Date.now() - new Date(iso)) / 1000;
+  return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
+const dayFmt = (iso, o = {weekday: "short", month: "short", day: "numeric"}) => new Date(iso.length === 10 ? iso + "T12:00:00" : iso).toLocaleDateString("en-US", o);
+// The record's once-a-day rows are stamped midnight UTC. They belong to that date wherever you are, not the evening before.
+const dayRow = iso => /T00:00:00(\.\d+)?\+00:00$/.test(iso) ? iso.slice(0, 10) + "T12:00:00" : iso;
+const dayFmtOf = iso => iso.includes("+") && dayRow(iso) === iso
+  ? new Date(iso).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})
+  : new Date(dayRow(iso)).toLocaleDateString("en-US", {month: "short", day: "numeric"});
+const nameOf = sym => (S && S.names && S.names[sym]) || "";
+const NS = "http://www.w3.org/2000/svg";
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const IC = {
+  up: '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>', down: '<path d="M4 10l6 6 4-4 6 6M14 18h6v-6"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>', alert: '<path d="M12 4l9 16H3zM12 10v4M12 17v.5"/>',
+  check: '<path d="M5 12l5 5 9-10"/>', spark: '<path d="M12 3v6M12 15v6M3 12h6M15 12h6"/>', dot: '<circle cx="12" cy="12" r="3"/>',
+  shield: '<path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z"/>',
+  book: '<path d="M3 5h6a3 3 0 0 1 3 3v12a2 2 0 0 0-2-2H3zM21 5h-6a3 3 0 0 0-3 3v12a2 2 0 0 1 2-2h7z"/>',
+  rocket: '<path d="M5 15c-1.5 1.5-2 5-2 5s3.5-.5 5-2M9 15l-2.5-2.5C8 8 12 3 20 4c1 8-4 12-8.5 13.5z"/><circle cx="14.5" cy="9.5" r="1.5"/>', cal: '<rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/>',
+};
+const svgI = (d, c = "") => `<svg class="${c}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
+const CHEV = svgI('<path d="M9 6l6 6-6 6"/>', "chev");
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function countUp(el, to, fmt) {
+  if (REDUCED || el.dataset.counted) { el.textContent = fmt(to); return; }
+  el.dataset.counted = 1;
+  const from = to * 0.985, t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / 700), e = 1 - Math.pow(1 - k, 3);
+    el.textContent = fmt(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+/* A big number shrinks to fit its box instead of overflowing it: long totals and small phones. */
+function fitText(el) {
+  if (!el) return;
+  el.style.fontSize = "";
+  const k = el.clientWidth / el.scrollWidth;
+  if (el.clientWidth && k < 1) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * k * .99).toFixed(1) + "px";
+}
+
+/* detail sheet: slides up on phones, a centred card on desktop */
+let sheetFrom = null;
+function openSheet(html, from) {
+  if (!(from && $("sheet").contains(from))) sheetFrom = from || document.activeElement;
+  $("sheet-body").innerHTML = html;
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = sc.hidden = false; sh.style.transform = ""; sh.scrollTop = 0;
+  document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  if (sh.hidden) return;
+  sh.classList.remove("on"); sc.classList.remove("on"); sh.style.transform = "";
+  document.body.style.overflow = "";
+  setTimeout(() => { sh.hidden = sc.hidden = true; }, REDUCED ? 0 : 320);
+  if (sheetFrom && sheetFrom.focus) sheetFrom.focus();
+}
+const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c]) => `<div><span class="l">${l}</span><b class="num ${c || ""}">${v}</b></div>`).join("")}</div>`;
+(function () {
+  $("scrim").onclick = closeSheet; $("sh-close").onclick = closeSheet;
+  document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+  const g = $("grab"), sh = $("sheet"); let y0 = null, dy = 0;
+  g.onpointerdown = e => { y0 = e.clientY; dy = 0; g.setPointerCapture(e.pointerId); sh.style.transition = "none"; };
+  g.onpointermove = e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); sh.style.transform = `translateY(${dy}px)`; };
+  g.onpointerup = g.onpointercancel = () => { if (y0 == null) return; y0 = null; sh.style.transition = ""; if (dy > 90) closeSheet(); else sh.style.transform = ""; };
+  const open = el => { const fn = SHEETS[el.dataset.open]; const html = fn && fn(el.dataset.k); if (html) openSheet(html, el); };
+  document.addEventListener("click", e => { const el = e.target.closest("[data-open]"); if (el && !e.target.closest("a,button:not([data-open])")) open(el); });
+  document.addEventListener("keydown", e => { const el = e.target.closest && e.target.closest("[data-open]");
+    if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); open(el); } });
+})();
+const tapAttrs = (kind, key) => `data-open="${kind}" data-k="${esc(key)}" tabindex="0" role="button"`;
+const newsRow = n => { const inner = `<span class="tag">${esc(n.symbol)}</span><span class="news-t">${esc(n.title)}</span>
+    <span class="news-m">${esc(n.source)}${n.published ? `${n.source ? " · " : ""}${ago(n.published)}` : ""}</span>`;
+  return n.link ? `<a class="news" href="${esc(n.link)}" target="_blank" rel="noopener noreferrer">${inner}</a>` : `<div class="news">${inner}</div>`; };
+const learnLink = id => { const l = (S.lessons || []).find(x => x.id === id);
+  return l ? `<div class="sh-h">Good to know</div><div class="lesson tap" ${tapAttrs("lesson", l.id)}><span class="bi info">${svgI(IC.book)}</span><b>${esc(l.title)}</b>${CHEV}</div>` : ""; };
+/* plain words for the plan */
+const P = () => S.plan || {};
+const SET = () => P().settings || {CORE: "SPY", SAFE: "SGOV", CORE_PCT: .8, PICKS: 4, PICK_PCT: .05, TREND_DAYS: 200};
+function modeInfo() {
+  const p = P(), t = p.trend;
+  if (!p.mode) return {icon: "clock", tone: "info", title: "Getting ready", text: "Charles sets up the plan at its first check (10:00 AM ET on a weekday)."};
+  const g = t ? t.gap_pct : null;
+  const v = p.vol, lim = SET().AGG_VOL_MAX || .2;
+  if (p.mode === "aggressive") return {icon: "rocket", tone: "up", title: "Aggressive mode",
+    text: `The market is rising calmly (swings ${v != null ? (v * 100).toFixed(0) + "%" : "low"} a year), so the core sits in a 2× S&P 500 fund. Charles drops back to plain SPY on any day the swings pass ${Math.round((SET().AGG_VOL_EXIT || .25) * 100)}% or SPY falls below its 200-day average.`};
+  if (p.mode === "safety") return {icon: "shield", tone: "warn", title: "Safety mode",
+    text: `SPY ended the month below its 200-day average, so the money waits in T-bills. ${g != null ? `SPY is ${Math.abs(g).toFixed(1)}% ${g >= 0 ? "above" : "below"} that line now. ` : ""}Charles looks again on ${dayFmt(p.next_rebalance)}.`};
+  if (g != null && g >= 0 && SET().AGGRESSIVE && v != null) return {icon: "up", tone: "up", title: "Invest mode",
+    text: `SPY is ${g.toFixed(1)}% above its 200-day average. ${v < lim ? "The market is calm enough for aggressive mode; Charles can switch it on at the next monthly check." : `Swings are ${(v * 100).toFixed(0)}% a year, above the ${Math.round(lim * 100)}% limit for aggressive mode, so the core stays plain SPY.`}`};
+  return {icon: "up", tone: "up", title: "Invest mode",
+    text: g == null ? "The market is above its long-term trend." :
+      g >= 0 ? `SPY is ${g.toFixed(1)}% above its 200-day average. If a month ends below it, Charles moves everything to T-bills until it recovers.`
+             : `SPY has dipped ${Math.abs(g).toFixed(1)}% below its 200-day average. Charles only acts on it if the month ends there (next check ${dayFmt(p.next_rebalance)}).`};
+}
+
+/* what a tapped row opens */
+const SHEETS = {
+  pos(sym) {
+    const h = S.positions.find(x => x.symbol === sym);
+    if (!h) return "";
+    const buy = S.trades.find(t => t.symbol === sym && (t.action || "").startsWith("BUY"));
+    const role = ROLE[h.role][0];
+    const why = h.why ? esc(h.why) : {core: h.symbol === SET().AGG_CORE ? "Aggressive mode's core: a fund that moves twice as much as the S&P 500 each day, up and down. Charles holds it only while the market is calm and rising, and swaps back to plain SPY on any choppy day." : "This is the core of the plan: an index fund that owns the 500 biggest US companies. It's never traded except to keep it near its target share.",
+      pick: `One of this month's ${SET().PICKS} momentum picks${h.rank ? `: ranked ${h.rank} of ${P().universe_n || 100} by its past-year gain` : ""}. Charles keeps it until the next monthly re-pick, then keeps it only if it still ranks near the top and stays above its 200-day average.`,
+      safety: "T-bills are short US government loans: steady, about 4% a year. Charles parks money here in safety mode, or when no stock qualifies for a pick slot.",
+      leaving: "Bought by Charles's old trading rules. It isn't part of the new plan, so Charles sells it at its next check."}[h.role];
+    return `<div class="sh-title" id="sh-title">${esc(h.symbol)} <span class="tag ${h.role === "pick" ? "pick" : h.role === "leaving" ? "old" : ""}">${role}</span></div>
+      <div class="sh-sub">${esc(nameOf(h.symbol))}</div>
+      <div class="sh-hero num">${usd(h.market_value)}</div>
+      <div class="sh-line num ${cls(h.unrealized_pnl)}">${arrow(h.unrealized_pnl)}${sgnUsd(h.unrealized_pnl)} (${pct(h.unrealized_pct, 1)}) since bought</div>
+      ${facts([["Share of account", (h.actual_pct ?? 0).toFixed(1) + "%"], ["Plan's share", h.target_pct != null ? h.target_pct.toFixed(0) + "%" : "—"],
+        ["Bought at", usd(h.avg_price)], ["Price now", usd(h.current_price)],
+        h.momentum != null && ["Past-year gain", pct(h.momentum, 0), cls(h.momentum)], h.day_change != null && ["Today", sgnUsd(h.day_change), cls(h.day_change)]])}
+      <div class="sh-h">Why Charles holds it</div><p class="sh-p">${why}</p>
+      ${buy && buy.source === "rebalance" ? `<div class="sh-h">At the last buy · ${dayFmt(buy.timestamp)}</div><p class="sh-p">${esc(buy.reasoning)}</p>` : ""}
+      ${learnLink({core: h.symbol === SET().AGG_CORE ? "aggressive" : "index-fund", pick: "momentum", safety: "tbills"}[h.role])}
+      ${(((NEWS || {}).by_symbol || {})[sym] || []).length ? `<div class="sh-h">In the news · not advice</div>${NEWS.by_symbol[sym].map(newsRow).join("")}` : ""}`;
+  },
+  lesson(id) {
+    const l = (S.lessons || []).find(x => x.id === id);
+    if (!l) return "";
+    return `<div class="sh-title" id="sh-title">${esc(l.title)}</div>
+      ${l.why ? `<div class="sh-sub">${esc(l.why)}</div>` : ""}
+      <p class="sh-p" style="margin-top:14px">${esc(l.body)}</p>
+      <p class="note">How Charles works, not advice about what to buy.</p>`;
+  },
+  test(i) {
+    const t = TESTS[+i];
+    if (!t) return "";
+    const f = v => t.setting === "CORE_PCT" || t.setting === "AGG_VOL_MAX" ? Math.round(v * 100) + "%" : typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+    return `<div class="sh-title" id="sh-title">${esc(t.label)}</div><div class="sh-sub">${esc(f(t.from))} → ${esc(f(t.to))}</div>
+      <div class="sh-line ${t.passes ? "up" : "down"}" style="margin-top:12px">${t.passes ? "Won every test" : "Didn't win every test, so nothing changes"}</div>
+      <p class="sh-p" style="margin-top:6px">${esc(t.why || "")}</p>
+      <p class="note">Simulated on past prices, not a promise.</p>`;
+  },
+  mode() {
+    const m = modeInfo(), t = P().trend || {};
+    return `<div class="sh-title" id="sh-title">The safety switch</div>
+      <div class="sh-sub">${m.title}</div>
+      <p class="sh-p" style="margin-top:10px">${esc(m.text)}</p>
+      ${facts([["SPY now (last close)", usd(t.price)], ["200-day average", usd(t.average)], ["Gap", pct(t.gap_pct, 1), cls(t.gap_pct)], ["Market swings", P().vol != null ? (P().vol * 100).toFixed(0) + "% a year" : "—"]])}
+      <div class="sh-h">How it works</div>
+      <p class="sh-p">The 200-day average is SPY's typical price over the last ~10 months. Long falls in the market, like 2008 or 2022, start with the price dropping below it and staying there. So on the first trading day of each month Charles looks: if SPY ended the month below the line, everything moves to T-bills; once a month ends back above it, Charles invests again.</p>
+      <div class="sh-h">The trade-off</div>
+      <p class="sh-p">It's insurance. In the 2007–2026 simulation it roughly halved the worst drop, but it also sat out some rallies, so in strong years it can trail the market. The monthly rule check re-tests it on 19 years of history; see Self-Tune.</p>`;
+  },
+};
+
+function buildTabs() {
+  $("seg").innerHTML = TABS.map(([k, l]) => `<button type="button" data-t="${k}">${l}</button>`).join("");
+  document.querySelectorAll("[data-t]").forEach(b => b.onclick = () => setTab(b.dataset.t));
+  $("range").innerHTML = RANGES.map(([k, d]) => `<button type="button" data-r="${k}"${d === "plan" ? ` title="Since the new plan started" aria-label="Since the new plan" hidden` : ""}>${k}</button>`).join("");
+  document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r; try { localStorage.setItem("stocks-range", range); } catch (e) {} renderChart(); });
+  $("legend").innerHTML = `<span class="key">${TWO_TONE}Charles</span><span class="key">${keySvg("--ref", true)}SPY</span>`;
+  $("mode-chip").onclick = e => openSheet(SHEETS.mode(), e.currentTarget);
+  $("go-plan").onclick = () => setTab("plan");
+  $("dial-safety").onclick = e => openSheet(SHEETS.mode(), e.currentTarget);
+  $("dial-calm").onclick = e => openSheet(SHEETS.lesson("aggressive") || SHEETS.mode(), e.currentTarget);
+  setTab(tab);
+}
+const TWO_TONE = `<svg width="18" height="6"><line x1="1" x2="9" y1="3" y2="3" stroke="var(--good)" stroke-width="2.4" stroke-linecap="round"/><line x1="9" x2="17" y1="3" y2="3" stroke="var(--critical)" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+function keySvg(color, dashed) {
+  return `<svg width="18" height="6"><line x1="1" x2="17" y1="3" y2="3" stroke="var(${color})" stroke-width="2" stroke-linecap="round"${dashed ? ' stroke-dasharray="4 3"' : ""}/></svg>`;
+}
+function setTab(t) {
+  tab = TABS.some(x => x[0] === t) ? t : "home";
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "v-" + tab));
+  document.querySelectorAll("[data-t]").forEach(b => b.classList.toggle("on", b.dataset.t === tab));
+  window.scrollTo(0, 0);
+  if (S && tab === "home") renderChart();
+  if (S && tab === "plan") renderBacktest();
+}
+
+/* minimal Markdown for Claude's notes: headings, - bullets, **bold**, `code`, paragraphs (escaped first) */
+function md(text) {
+  const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+  let html = "", list = false, para = [];
+  const flush = () => { if (para.length) { html += `<p>${inline(para.join(" "))}</p>`; para = []; } };
+  const close = () => { if (list) { html += "</ul>"; list = false; } };
+  for (const raw of String(text).split("\n")) {
+    const line = raw.trimEnd(); let m;
+    if (!line.trim()) { flush(); close(); }
+    else if ((m = line.match(/^(#{1,4})\s+(.*)$/))) { flush(); close(); if (m[1].length > 1) html += `<${m[1].length <= 2 ? "h3" : "h4"}>${inline(m[2])}</${m[1].length <= 2 ? "h3" : "h4"}>`; }
+    else if ((m = line.match(/^\s*[-*]\s+(.*)$/))) { flush(); if (!list) { html += "<ul>"; list = true; } html += `<li>${inline(m[1])}</li>`; }
+    else if (list && /^\s+/.test(line)) { html = html.replace(/<\/li>$/, " " + inline(line.trim()) + "</li>"); }
+    else { close(); para.push(line.trim()); }
+  }
+  flush(); close();
+  return html;
+}
+
+// Market-time helpers (ET). Holidays aren't known here, so they count as trading days.
+const etFmt = new Intl.DateTimeFormat("en-US", {timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "numeric", day: "numeric", hour: "numeric", minute: "numeric", second: "numeric"});
+function etParts(ms) { const o = {}; for (const x of etFmt.formatToParts(ms)) o[x.type] = +x.value; return o; }
+function etAt(y, m, d, hh, mm) { const guess = Date.UTC(y, m - 1, d, hh, mm), p = etParts(guess); return guess - (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - guess); }
+const isWeekday = (y, m, d) => { const w = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); return w > 0 && w < 6; };
+function marketMs(a, b) {
+  let total = 0, p = etParts(a), day = Date.UTC(p.year, p.month - 1, p.day);
+  for (;;) {
+    const q = new Date(day), y = q.getUTCFullYear(), m = q.getUTCMonth() + 1, d = q.getUTCDate();
+    const open = etAt(y, m, d, 9, 30), close = etAt(y, m, d, 16, 0);
+    if (open > b) break;
+    if (isWeekday(y, m, d)) total += Math.max(0, Math.min(b, close) - Math.max(a, open));
+    day += 864e5;
+  }
+  return total;
+}
+function rangeStart(days) {
+  const p = etParts(Date.now() - days * 864e5);
+  let day = Date.UTC(p.year, p.month - 1, p.day);
+  do { day -= 864e5; } while (![1, 2, 3, 4, 5].includes(new Date(day).getUTCDay()));
+  const q = new Date(day);
+  return etAt(q.getUTCFullYear(), q.getUTCMonth() + 1, q.getUTCDate(), 16, 0);
+}
+const planStart = () => S && !S.preview && P().started || null;   // the "Plan" range exists only once the plan has started
+function series() {
+  const days = (RANGES.find(r => r[0] === range) || RANGES.at(-1))[1];
+  let from;
+  if (days === "plan") {   // start at the last point before the plan's first day, so the first move counts
+    const st = planStart(), i = st ? S.equity.findIndex(p => timeofday(p[0]) >= st.slice(0, 10)) : 0;
+    from = i < 0 ? S.equity.length : Math.max(0, i - 1);
+  } else {
+    const cut = days >= 1e5 ? "" : new Date(rangeStart(days)).toISOString();
+    from = S.equity.findIndex(p => p[0] >= cut);
+  }
+  if (from < 0 || S.equity.length - from < 2) from = Math.max(0, S.equity.length - 2);
+  const pts = S.equity.slice(from);
+  const hourly = (S.spy_hourly || []).map(([t, v]) => [+new Date(t), v]);
+  const daily = S.spy.map(([d, v]) => [+new Date(d + "T20:00:00Z"), v]);
+  const ref = hourly.length ? hourly : daily;
+  const spyAt = t => { let c = null; for (const [ts, v] of ref) { if (ts <= t) c = v; else break; } return c; };
+  const first = S.equity[0], base = spyAt(+new Date(first[0]));
+  const spyVals = base ? pts.map(p => first[1] * (spyAt(+new Date(p[0])) ?? base) / base) : null;
+  const xs = [0];
+  for (let i = 1; i < pts.length; i++) xs.push(xs[i - 1] + Math.max(marketMs(+new Date(pts[i - 1][0]), +new Date(pts[i][0])), 15 * 6e4));
+  return {pts, spyVals, xs};
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo || 1, mag = Math.pow(10, Math.floor(Math.log10(span / n)));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag;
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(6));
+  return out;
+}
+
+/* the main chart: Charles vs SPY in market time, with the day the new plan started marked */
+function renderChart() {
+  const hasPlan = !!planStart();
+  if (S && !hasPlan && range === "Plan") range = "All";
+  document.querySelectorAll("[data-r]").forEach(b => { b.classList.toggle("on", b.dataset.r === range); if (b.dataset.r === "Plan") b.hidden = !hasPlan; });
+  const box = $("chart");
+  if (!S || S.equity.length < 2) { box.innerHTML = `<div class="empty">The chart starts after the first check.</div>`; return; }
+  if (!box.clientWidth) return;
+  const {pts, spyVals, xs} = series(), base = S.start_cash ?? S.equity[0][1];
+  const raw = pts.map(p => p[1]), vals = raw.map(v => v - base), spy = spyVals ? spyVals.map(v => v - base) : null;
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 54, r: 10, t: 14, b: 24};
+  const all = vals.concat(spy || [], 0);
+  let lo = Math.min(...all), hi = Math.max(...all);
+  const padv = Math.max((hi - lo) * 0.1, 1); lo -= padv; hi += padv;
+  const xEnd = xs.at(-1) || 1;
+  const X = i => m.l + xs[i] * (W - m.l - m.r) / xEnd;
+  const nearest = x => { let a = 0, b = xs.length - 1; while (b - a > 1) { const mid = (a + b) >> 1; if (xs[mid] <= x) a = mid; else b = mid; } return x - xs[a] <= xs[b] - x ? a : b; };
+  const Y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
+  const line = arr => arr.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
+  const span = new Date(pts.at(-1)[0]) - new Date(pts[0][0]);
+  const fmtX = d => d.toLocaleString("en-US", span < 2 * 864e5 ? {hour: "numeric"} : {month: "short", day: "numeric"});
+  const money0 = v => (v > 0 ? "+$" : v < 0 ? "−$" : "$") + Math.abs(v).toLocaleString("en-US", {maximumFractionDigits: v % 1 ? 2 : 0});
+  let grid = "";
+  for (const v of niceTicks(lo, hi, 5)) if (v) grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
+    `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${money0(v)}</text>`;
+  grid += `<text x="${m.l - 8}" y="${Y(0) + 4}" text-anchor="end">$0</text>`;
+  const nt = Math.max(1, Math.min(5, Math.floor((W - m.l - m.r) / 100)));
+  for (let k = 0; k <= nt; k++) { const i = nearest(k * xEnd / nt);
+    grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(dayRow(pts[i][0])))}</text>`; }
+  // the new plan's first day, if it's inside this range
+  let mark = "";
+  const st = P().started;
+  if (st && !S.preview) {
+    const i = pts.findIndex(p => timeofday(p[0]) >= st);
+    if (i > 0) mark = `<g class="mark"><line x1="${X(i)}" x2="${X(i)}" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-dasharray="2 3" opacity=".6"/><text x="${X(i) > W - 80 ? X(i) - 4 : X(i) + 4}" y="${m.t + 2}" text-anchor="${X(i) > W - 80 ? "end" : "start"}">New plan</text></g>`;
+  }
+  const y0 = Y(0), cut = (y0 / H * 100).toFixed(2) + "%", first = !chartShown;
+  chartShown = true;
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="What Charles has earned vs SPY. Arrow keys read values.">
+    <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="${H}"><stop offset="${cut}" stop-color="var(--good)"/><stop offset="${cut}" stop-color="var(--critical)"/></linearGradient></defs>
+    <g class="axis">${grid}</g>${mark}
+    <line x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}" stroke="var(--ref)" stroke-width="1"/>
+    <g${first ? ' class="plot-in"' : ""}><path d="${line(vals)}L${X(vals.length - 1)},${y0}L${X(0)},${y0}Z" fill="url(#g)" style="opacity:var(--chart-fill, .17)"/>
+    ${spy ? `<path d="${line(spy)}" fill="none" stroke="var(--ref)" stroke-width="2" stroke-dasharray="5 4" stroke-linejoin="round"/>` : ""}
+    <path d="${line(vals)}" fill="none" stroke="url(#g)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/></g>
+    <line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
+    ${spy ? `<circle id="sdot" r="4.5" fill="var(--ref)" stroke="var(--surface)" stroke-width="2" opacity="0"/>` : ""}
+    <circle id="cdot" r="4.5" fill="var(--text)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
+  </svg><div class="tip" id="tip"></div>`;
+  hover(box, pts.length, X, i => [[Y(vals[i]), "#cdot"], spy && [Y(spy[i]), "#sdot"]],
+    i => `<div class="t">${dayFmtOf(pts[i][0])}</div>
+      <div class="r">${TWO_TONE}<span>Charles</span><b class="num ${cls(vals[i])}">${sgnUsd(vals[i])}</b></div>
+      ${spy ? `<div class="r">${keySvg("--ref", true)}<span>SPY, same start</span><b class="num">${sgnUsd(spy[i])}</b></div>` : ""}`,
+    x => nearest((x - m.l) / (W - m.l - m.r) * xEnd));
+}
+const timeofday = iso => new Date(iso).toLocaleDateString("en-CA", {timeZone: "America/New_York"});
+
+/* crosshair + tooltip shared by both charts */
+function hover(box, n, X, dots, tipHtml, idxAt) {
+  const svg = box.querySelector("svg"), tip = box.querySelector(".tip"), cross = box.querySelector("#cross");
+  const W = box.clientWidth; let cur = -1;
+  const show = i => {
+    cur = Math.max(0, Math.min(n - 1, i)); const xi = X(cur);
+    cross.setAttribute("x1", xi); cross.setAttribute("x2", xi); cross.setAttribute("opacity", .5);
+    for (const d of dots(cur).filter(Boolean)) { const el = box.querySelector(d[1]); if (el) { el.setAttribute("cx", xi); el.setAttribute("cy", d[0]); el.setAttribute("opacity", 1); } }
+    tip.innerHTML = tipHtml(cur); tip.style.display = "block";
+    const tw = tip.offsetWidth; tip.style.left = (xi + 12 + tw > W ? Math.max(0, xi - tw - 12) : xi + 12) + "px";
+  };
+  const hide = () => { tip.style.display = "none"; cross.setAttribute("opacity", 0); box.querySelectorAll("circle").forEach(c => c.setAttribute("opacity", 0)); };
+  const at = ev => { const r = svg.getBoundingClientRect(); show(idxAt(ev.clientX - r.left)); };
+  svg.onpointermove = at; svg.onpointerdown = at; svg.onpointerleave = hide; svg.onblur = hide;
+  svg.onpointerup = ev => { if (ev.pointerType !== "mouse") setTimeout(hide, 1500); };
+  svg.onkeydown = ev => { if (ev.key === "ArrowLeft") { show(cur < 0 ? n - 1 : cur - 1); ev.preventDefault(); }
+    if (ev.key === "ArrowRight") { show(cur < 0 ? 0 : cur + 1); ev.preventDefault(); } };
+}
+
+/* the backtest chart: $1,000 since 2007, the plan vs SPY (log scale so 2008 and 2024 both read) */
+const BT = [["charles", "--series-1", false, "Charles's plan"], ["charles_sectors", "--pick", false, "Same plan, sector funds"], ["spy", "--ref", true, "SPY (buy and hold)"]];
+function renderBacktest() {
+  const B = S && S.backtest, box = $("bt-chart");
+  if (!B) { box.innerHTML = `<div class="empty">No simulation file yet.</div>`; return; }
+  const runs = BT.filter(([k]) => B.runs[k]);
+  const base = B.runs[runs[0][0]].curve, n = base.length;
+  if (!box.clientWidth || n < 2) return;
+  const W = box.clientWidth, H = box.clientHeight, m = {l: 54, r: 10, t: 10, b: 24};
+  const all = runs.flatMap(([k]) => B.runs[k].curve.map(p => p[1]));
+  const lo = Math.log(Math.min(...all) * 0.92), hi = Math.log(Math.max(...all) * 1.06);
+  const X = i => m.l + i * (W - m.l - m.r) / (n - 1), Y = v => m.t + (hi - Math.log(v)) / (hi - lo) * (H - m.t - m.b);
+  let grid = "";
+  for (const v of [500, 1000, 2000, 5000, 10000, 20000, 50000].filter(v => Math.log(v) > lo && Math.log(v) < hi))
+    grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/><text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">$${v >= 1000 ? v / 1000 + "k" : v}</text>`;
+  const years = [...new Set(base.map(p => p[0].slice(0, 4)))].filter((y, i, a) => i % Math.ceil(a.length / Math.max(2, Math.floor((W - 70) / 60))) === 0);
+  for (const y of years) { const i = base.findIndex(p => p[0].startsWith(y)); if (i >= 0) grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle">${y}</text>`; }
+  const paths = runs.map(([k, c, d]) => `<path d="${B.runs[k].curve.map((p, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(p[1]).toFixed(1)).join("")}" fill="none" stroke="var(${c})" stroke-width="${k === "charles" ? 2.2 : 1.6}"${d ? ' stroke-dasharray="5 4"' : ""} stroke-linejoin="round"/>`).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="Simulated growth of $1,000 since 2007: the plan vs SPY"><g class="axis">${grid}</g>${paths}
+    <line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
+    ${runs.map(([k, c], j) => `<circle id="bd${j}" r="4" fill="var(${c})" stroke="var(--surface)" stroke-width="2" opacity="0"/>`).join("")}</svg><div class="tip"></div>`;
+  hover(box, n, X, i => runs.map(([k], j) => [Y(B.runs[k].curve[Math.min(i, B.runs[k].curve.length - 1)][1]), "#bd" + j]),
+    i => `<div class="t">${dayFmt(base[i][0], {month: "short", year: "numeric"})}</div>` + runs.map(([k, c, d, l]) =>
+      `<div class="r">${keySvg(c, d)}<span>${l}</span><b class="num">${usd(B.runs[k].curve[Math.min(i, B.runs[k].curve.length - 1)][1], 0)}</b></div>`).join(""),
+    x => Math.round((x - m.l) / (W - m.l - m.r) * (n - 1)));
+  $("bt-big").innerHTML = runs.map(([k, c, d, l]) => { const r = B.runs[k]; return `<div class="bt-run"><span class="bt-l"><span class="sw" style="background:var(${c})"></span>${l}</span><b class="${cls(r.cagr_pct)}">${pct(r.cagr_pct, 1)}</b><span class="bt-s">a year · worst drop <span class="down">${pct(r.max_drawdown_pct, 0)}</span></span></div>`; }).join("");
+  $("bt-years").innerHTML = yearBars((B.runs.charles_sectors || B.runs.charles || {}).yearly || {}, "Year by year, the plan on sector funds", pct);
+  $("bt-caveat").innerHTML = `Simulated on past prices, not real results. <details style="margin-top:4px"><summary>Read this with care</summary>The past doesn't promise the future. The stock list is today's 100 big names, so it already contains past winners: that flatters the blue line. The purple line runs the same plan on sector funds, which has no such head start; the truth for the future is likely somewhere between the two. What held up in every version: the safety switch kept the worst drop well below SPY's (2008: SPY fell over 50%), even with aggressive mode's 2× core in calm stretches.</details>`;
+}
+
+/* The Plan tab's picture: the money as blocks, the safety switch and the calm meter as dials. Everything is tappable. */
+let TESTS = [];
+function renderPlanPicture(p, s) {
+  const core = (S.positions || []).find(h => h.role === "core"), safe = p.mode === "safety";
+  const names = {aggressive: "Aggressive mode", invest: "Invest mode", safety: "Safety mode"};
+  $("plan-mode").hidden = !p.mode; $("plan-mode").textContent = names[p.mode] || "";
+  const corePct = Math.round(s.CORE_PCT * 100), pickPct = +(s.PICK_PCT * 100).toFixed(1);
+  $("plan-title").textContent = safe ? "Waiting in T-bills until the trend recovers." : p.mode ? `${corePct}% the whole market, ${s.PICKS} picks at ${pickPct}% each.` : "It starts at the first check.";
+  const holding = sym => (S.positions || []).some(h => h.symbol === sym);
+  const tile = (sym, pc, cls_, sub) => holding(sym) ? `<button class="pm ${cls_}" type="button" ${tapAttrs("pos", sym)}><b class="num">${pc}%</b><span>${esc(sym)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</button>`
+    : `<div class="pm ${cls_}"><b class="num">${pc}%</b><span>${esc(sym)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+  $("planmap").innerHTML = !p.mode ? "" : safe ? `<div class="pm-all">${tile(s.SAFE, 100, "pm-safe", "T-bills: short US government loans")}</div>`
+    : `${tile(core ? core.symbol : s.CORE, corePct, "pm-core", p.mode === "aggressive" ? "A 2× S&P 500 fund, while it's calm" : "An S&P 500 fund: 500 big US companies")}<div class="pm-picks">${(p.picks || []).map(k => tile(k, pickPct, "pm-pick", nameOf(k))).join("") || `<div class="pm pm-safe"><b>T-bills</b><small>No stock qualified this month</small></div>`}</div>`;
+  $("plan-next").innerHTML = [["Checks", "Weekdays, 10 AM ET"], ["Next re-pick", p.next_rebalance ? dayFmt(p.next_rebalance, {month: "short", day: "numeric"}) : "—"], ["Safety switch", !p.mode ? "—" : s.SAFETY_SWITCH === false ? "Turned off" : safe ? "Tripped" : "Not tripped"]]
+    .map(([l, v]) => `<div><span>${l}</span><b>${v}</b></div>`).join("");
+  const t = p.trend || {}, g = t.gap_pct, v = p.vol, lim = s.AGG_VOL_MAX || .2, exit = s.AGG_VOL_EXIT || .25;
+  $("dial-safety").innerHTML = `<div class="card-head"><h2>Safety switch</h2><span class="aside">${g == null ? "" : s.SAFETY_SWITCH === false ? "Turned off" : safe ? "Tripped" : g >= 0 ? "Not tripped" : "Watching"}</span></div>` +
+    dial({min: -20, max: 20, value: g, zones: [[-20, 0, "var(--critical)"], [0, 20, "var(--good)"]], big: g == null ? "—" : pct(g, 1), tone: cls(g),
+      sub: g == null ? "After the first check" : `SPY vs its ${s.TREND_DAYS}-day line. Below it at a month's end, Charles moves to T-bills.`});
+  $("dial-calm").hidden = !s.AGGRESSIVE;
+  $("dial-safety").parentElement.hidden = g == null && v == null;       // nothing to read before the first check
+  $("dial-calm").innerHTML = `<div class="card-head"><h2>Calm meter</h2><span class="aside">${p.mode === "aggressive" ? "2× on" : "2× off"}</span></div>` +
+    dial({min: 0, max: 40, value: v == null ? null : v * 100, zones: [[0, lim * 100, "var(--good)"], [lim * 100, exit * 100, "var(--warn)"], [exit * 100, 40, "var(--critical)"]],
+      big: v == null ? "—" : (v * 100).toFixed(0) + "%", tone: v == null ? "" : v < lim ? "up" : v < exit ? "" : "down", sub: `How much the market swings in a year. Aggressive mode needs under ${Math.round(lim * 100)}%.`});
+}
+
+function render() {
+  const a = S.account, p = P(), s = SET();
+
+  // portfolio
+  if (a) {
+    const earned = a.total_return;
+    $("value").className = "big num " + cls(earned);
+    $("value").textContent = sgnUsd(earned);
+    fitText($("value"));
+    countUp($("value"), earned, sgnUsd);
+    const ss = S.since_start || {}, beat = ss.spy_pct == null ? null : a.total_return_pct - ss.spy_pct;
+    $("ret").innerHTML = `<b class="${cls(a.day_change)}">${sgnUsd(a.day_change)}</b> today · ${usd(a.total_value)} in all` +
+      (beat == null ? "" : ` · <b class="${cls(beat)}">${beat >= 0 ? "ahead of" : "behind"} SPY by ${Math.abs(beat).toFixed(2)} pts</b>`);
+  } else if (!S.equity.length) {       // a new install: nothing's wrong, it just has no keys yet
+    $("value").className = "big num"; $("value").textContent = usd(0);
+    $("ret").innerHTML = `Not started. <a href="/settings#keys">Connect your keys</a> and it starts at the next check.`;
+  } else { $("value").textContent = "—"; $("ret").textContent = "The account can't be reached right now."; }
+  $("halt").innerHTML = (S.paused ? `<a class="banner" href="/#t-run">Paused${S.paused.since ? ` since ${dayFmt(S.paused.since, {month: "short", day: "numeric"})}` : ""}. No new orders until you resume.</a>` : "") +
+    (S.today.halted ? `<button class="banner" type="button" id="halt-why">Buys are off today: down more than the ${usd(S.today.limit, 0)} daily limit.</button>` : "");
+  if (S.today.halted && (S.lessons || []).some(l => l.id === "loss-limit")) $("halt-why").onclick = e => openSheet(SHEETS.lesson("loss-limit"), e.currentTarget);
+
+  // the market mode: a chip on What it holds, and a tap explains it
+  const NAMES = {aggressive: "Aggressive mode", invest: "Invest mode", safety: "Safety mode"};
+  $("mode-chip").hidden = !p.mode; $("mode-chip").textContent = NAMES[p.mode] || "";
+  renderChart();
+
+  // holdings
+  const H = S.positions, total = a ? a.total_value : 0;
+  $("pos-count").textContent = H.length ? `${H.length} holding${H.length === 1 ? "" : "s"}` : "";
+  const sum = role => H.filter(h => h.role === role).reduce((x, h) => x + h.market_value, 0);
+  const now = ["core", "pick", "safety", "leaving"].map(r => [r, sum(r)]).concat([["cash", a ? Math.max(0, a.cash) : 0]]);
+  const tg = p.targets || {}, planParts = [["core", (tg[s.CORE] || 0) + (tg[s.AGG_CORE] || 0)], ["pick", (p.picks || []).reduce((x, k) => x + (tg[k] || 0), 0)], ["safety", tg[s.SAFE] || 0]];
+  const bar = (parts, tot) => parts.filter(([, v]) => v > 0).map(([r, v]) => `<i style="width:${v / tot * 100}%;background:var(${ROLE[r][1]})" title="${ROLE[r][0]} ${(v / tot * 100).toFixed(0)}%"></i>`).join("");
+  $("alloc-now").innerHTML = total ? bar(now, total) : "";
+  $("alloc-now").setAttribute("aria-label", "Now: " + now.filter(([, v]) => v > 0).map(([r, v]) => `${ROLE[r][0]} ${(v / total * 100).toFixed(0)}%`).join(", "));
+  $("alloc-keys").innerHTML = ["core", "pick", "safety", "leaving", "cash"].filter(r => now.find(x => x[0] === r)[1] > 0 || planParts.find(x => x[0] === r)?.[1] > 0)
+    .map(r => `<span><span class="sw" style="background:var(${ROLE[r][1]})"></span>${ROLE[r][0]} <b class="num">${total ? (now.find(x => x[0] === r)[1] / total * 100).toFixed(0) : 0}%</b>${planParts.find(x => x[0] === r) ? ` <span class="muted">/ ${(planParts.find(x => x[0] === r)[1] * 100).toFixed(0)}%</span>` : ""}</span>`).join("");
+  $("alloc-note").hidden = !sum("leaving");
+  $("alloc-note").textContent = "\"Being sold\" are stocks from Charles's old rules. They go at the next check.";
+  $("positions").innerHTML = H.length ? ["core", "pick", "safety", "leaving"].flatMap(r => H.filter(h => h.role === r).map(h => `<div class="row-i tap" ${tapAttrs("pos", h.symbol)}>
+      <div style="min-width:0"><span class="sw" style="background:var(${ROLE[r][1]})"></span><span class="sym">${esc(h.symbol)}</span></div>
+      <b class="right num" style="font-weight:500">${usd(h.market_value)}</b>
+      <div class="nm">${esc(nameOf(h.symbol))}</div>
+      <div class="right small num ${cls(h.unrealized_pnl)}">${sgnUsd(h.unrealized_pnl)}</div></div>`)).join("") : `<div class="empty">${a || S.equity.length ? "Nothing held right now. It's all cash." : "Nothing yet. It buys at its first check."}</div>`;
+
+  renderPlanPicture(p, s);
+  if (tab === "plan") renderBacktest();
+
+  // Self-Tune: the verdict and what was tried, Claude's findings, what's coming
+  const E = S.evaluation, C = S.claude || {};
+  const cand = E && E.candidate, fmtRule = (k, v) => k === "CORE_PCT" || k === "AGG_VOL_MAX" ? Math.round(v * 100) + "%" : typeof v === "boolean" ? (v ? "on" : "off") : String(v);
+  $("tune-title").textContent = !E ? "The first rule check is coming" : cand ? `Considering: ${cand.label.toLowerCase()} ${fmtRule(cand.setting, cand.from)} → ${fmtRule(cand.setting, cand.to)}` : "No change needed";
+  $("tune-sub").textContent = !E ? "It tests small changes to the plan's numbers on 19 years of history." : cand ? cand.why
+    : `${E.passing || 0} of ${E.tested} alternatives beat the current rules in every test.`;
+  $("tune-when").hidden = !E; if (E) $("tune-when").textContent = `Checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}`;
+  TESTS = (E && E.tests) || [];
+  $("tests-label").hidden = !TESTS.length;
+  $("tests").innerHTML = TESTS.map((t, i) => `<button class="test ${t.passes ? "pass" : t.worst < 0 ? "fail" : ""}" type="button" data-open="test" data-k="${i}" aria-label="${esc(t.label)}, ${t.passes ? "won every test" : "did not win every test"}">
+      <b class="num ${t.worst == null ? "" : cls(t.worst)}">${t.worst == null ? "—" : pct(t.worst, 1)}</b><span class="test-t"><b>${esc(t.label)}</b><span class="num">${esc(fmtRule(t.setting, t.from))} → ${esc(fmtRule(t.setting, t.to))}</span></span></button>`).join("");
+  $("miles").closest(".card").hidden = !(S.milestones || []).length;
+  $("miles").innerHTML = (S.milestones || []).map(m => ring(m.progress, m.detail.replace(/^in /, "").replace(" to go", ""), m.name, m.needs)).join("");
+  $("rules-note").textContent = (C.checkup ? "Claude may change one number a quarter, only when the change wins every test."
+    : "A change that wins every test shows up here. Nothing changes on its own.") +
+    ((S.rules || {}).last_change ? ` Last change: ${S.rules.last_change.split(":")[0]}.` : "");
+  $("cl-card").hidden = !C.checkup && !C.report;
+
+  document.body.classList.remove("loading");
+}
+
+async function load() {
+  try {
+    const r = await fetch("api/state", {cache: "no-store"});
+    S = await r.json();
+    if (S.error) throw new Error(S.error);
+    render();
+    loadNews();
+  } catch (e) { document.body.classList.remove("loading"); }
+}
+// The holdings' news, for a holding's sheet. The feed beside the page has its own (feed.js).
+async function loadNews() {
+  if (Date.now() - newsAt < 6e5) return;
+  newsAt = Date.now();
+  try { NEWS = await (await fetch("api/news", {cache: "no-store"})).json(); } catch (e) {}
+}
+buildTabs(); load();
+setInterval(() => { if (!document.hidden) load(); }, 30000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (S) { fitText($("value")); renderChart(); renderBacktest(); } }, 120); });
+</script>
+<script src="/tune.js"></script>
+</body>
+</html>

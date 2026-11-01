@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131311" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<title>Leaderboard · Charles</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header></header>
+<main>
+  <h1 class="page-title">Leaderboard <span class="chip" id="test-chip" hidden>Test data</span></h1>
+  <p class="page-sub">Everyone's settings, run on the same public prices. Copy what works.</p>
+  <div class="lb-controls">
+    <div class="seg" id="bots" role="group" aria-label="Which bot"><button type="button" data-bot="stocks">Stocks</button><button type="button" data-bot="crypto">Crypto</button></div>
+    <div class="ranges" id="ranges" role="group" aria-label="Time range"><button type="button" data-range="week">Week</button><button type="button" data-range="month">Month</button><button type="button" data-range="all">All</button></div>
+  </div>
+  <div class="card lb-me" id="me"><div class="muted">Loading…</div></div>
+  <div class="card">
+    <div class="lb-sum num" id="sum" hidden></div>
+    <ul class="lb-list" id="list"></ul>
+  </div>
+  <details class="card lb-fold" id="warm-box" hidden><summary id="warm-sum">Warming up</summary><div id="warm"></div></details>
+  <details class="card lb-fold" id="ch-box" hidden><summary id="ch-sum">This month's challenge</summary><div id="ch"></div></details>
+  <p class="note" id="foot"></p>
+</main>
+<dialog class="lb-dialog" id="dlg"></dialog>
+<script src="/common.js"></script>
+<script src="/board.js"></script>
+</body>
+</html>

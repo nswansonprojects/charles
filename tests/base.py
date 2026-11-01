@@ -1,5 +1,5 @@
 """
-Shared test setup: every state file is redirected to a temp folder, Telegram
+Shared test setup: every state file is redirected to a temp folder, notices
 and the network are stubbed, and a guard makes any attempt to open a real
 data/, logs/ or .env file fail the test instead of touching it.
 """
@@ -16,6 +16,7 @@ if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
 import config            # noqa: E402
+import control           # noqa: E402
 import equity_tracker    # noqa: E402
 import risk_manager      # noqa: E402
 
@@ -58,7 +59,7 @@ class FakeAlerts(types.ModuleType):
         return lambda *a, **k: self.calls.append((name, a, k))
 
 
-_CONFIG_KEYS = ("MAX_DAILY_LOSS", "VIRTUAL_CASH")
+_CONFIG_KEYS = ("MAX_DAILY_LOSS", "MAX_DAILY_LOSS_PCT", "VIRTUAL_CASH")
 
 
 class BotTestCase(unittest.TestCase):
@@ -80,13 +81,18 @@ class BotTestCase(unittest.TestCase):
         patch(risk_manager, "DAILY_LOSS_FILE", os.path.join(self.tmp, "daily_loss.json"))
         patch(equity_tracker, "EQUITY_FILE", os.path.join(self.tmp, "equity_curve.json"))
         patch(equity_tracker, "PEAK_FILE", os.path.join(self.tmp, "peak_equity.json"))
-        # no Telegram
+        patch(equity_tracker, "START_FILE", os.path.join(self.tmp, "start.json"))
+        patch(control, "REQ_DIR", os.path.join(self.tmp, "requests"))
+        patch(control, "PAUSE_FILE", os.path.join(self.tmp, "paused.json"))
+        patch(control, "LOG_FILE", os.path.join(self.tmp, "control.jsonl"))
+        # no real notices
         self.alerts = FakeAlerts()
         self._saved_alerts = sys.modules.get("alerts")
         sys.modules["alerts"] = self.alerts
         # known config values
         self._config = {k: getattr(config, k) for k in _CONFIG_KEYS if hasattr(config, k)}
         config.MAX_DAILY_LOSS = 20.0
+        config.MAX_DAILY_LOSS_PCT = 2.0
         config.VIRTUAL_CASH = 1000.0
 
     def tearDown(self):

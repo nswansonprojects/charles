@@ -41,9 +41,10 @@ Answer with JSON only: {{"veto": true or false, "reason": "one short plain-Engli
 RSS = "https://feeds.finance.yahoo.com/rss/2.0/headline?s={symbol}&region=US&lang=en-US"
 
 
-def headlines(symbol: str, now: datetime | None = None, fetch=None) -> list[str]:
-    """Recent headlines for one stock, newest first: Yahoo Finance's per-stock RSS feed
-    (yfinance's .news came back empty from this server in Oct 2026). `fetch(url) -> bytes` is for tests."""
+def items(symbol: str, now: datetime | None = None, fetch=None) -> list[dict]:
+    """Recent news for one stock, newest first: [{"title", "link", "published"}] (published: a datetime
+    or None). From Yahoo Finance's per-stock RSS feed (yfinance's .news came back empty from this server
+    in Oct 2026). The dashboard's news (news_feed.py) uses it too. `fetch(url) -> bytes` is for tests."""
     import feedparser
     from email.utils import parsedate_to_datetime
     now = now or datetime.now(timezone.utc)
@@ -57,10 +58,18 @@ def headlines(symbol: str, now: datetime | None = None, fetch=None) -> list[str]
             ts = parsedate_to_datetime(e.get("published", ""))
         except (TypeError, ValueError):
             ts = None
+        if ts is not None and ts.tzinfo is None:
+            ts = ts.replace(tzinfo=timezone.utc)          # a "-0000" date parses without a zone
         if title and (ts is None or now - ts <= timedelta(days=NEWS_DAYS)):
-            rows.append((ts, title))
-    rows.sort(key=lambda r: r[0] or now, reverse=True)
-    return [f"- {ts:%b %d}: {t}" if ts else f"- {t}" for ts, t in rows[:MAX_HEADLINES]]
+            rows.append({"title": title, "link": (e.get("link") or "").strip(), "published": ts})
+    rows.sort(key=lambda r: r["published"] or now, reverse=True)
+    return rows[:MAX_HEADLINES]
+
+
+def headlines(symbol: str, now: datetime | None = None, fetch=None) -> list[str]:
+    """The same news as lines for the AI's prompt: "- Oct 15: title"."""
+    return [f"- {r['published']:%b %d}: {r['title']}" if r["published"] else f"- {r['title']}"
+            for r in items(symbol, now, fetch)]
 
 
 def parse(text: str) -> dict | None:

@@ -45,3 +45,22 @@ class NewsVeto(BotTestCase):
         </channel></rss>"""
         got = nv.headlines("MU", now=datetime(2026, 10, 16, tzinfo=timezone.utc), fetch=lambda url: rss)
         self.assertEqual(got, ["- Oct 15: Latest", "- Oct 13: Earlier"])
+
+    def test_items_keep_the_link_and_time(self):
+        from datetime import datetime, timezone
+        rss = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+          <item><title>Undated</title><link>https://example.com/u</link></item>
+          <item><title>Latest</title><link>https://example.com/a</link><pubDate>Thu, 15 Oct 2026 10:00:00 GMT</pubDate></item>
+        </channel></rss>"""
+        got = nv.items("MU", now=datetime(2026, 10, 16, tzinfo=timezone.utc), fetch=lambda url: rss)
+        self.assertEqual([(r["title"], r["link"]) for r in got], [("Undated", "https://example.com/u"), ("Latest", "https://example.com/a")])
+        self.assertEqual(got[1]["published"], datetime(2026, 10, 15, 10, tzinfo=timezone.utc))
+        self.assertIsNone(got[0]["published"])
+
+    def test_a_date_without_a_zone_counts_as_utc(self):
+        from datetime import datetime, timezone
+        rss = b"""<?xml version="1.0"?><rss version="2.0"><channel>
+          <item><title>No zone</title><pubDate>Thu, 15 Oct 2026 10:00:00 -0000</pubDate></item>
+        </channel></rss>"""
+        got = nv.headlines("MU", now=datetime(2026, 10, 16, tzinfo=timezone.utc), fetch=lambda url: rss)
+        self.assertEqual(got, ["- Oct 15: No zone"])

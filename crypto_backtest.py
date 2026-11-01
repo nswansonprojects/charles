@@ -19,19 +19,22 @@ START_CASH = 1000.0
 
 
 def simulate(days: list, closes: dict, settings: dict | None = None, hold: str | None = None) -> list:
-    """[[day, value]] for the plan (or buy-and-hold `hold` from the first day). The plan needs
-    TREND_DAYS of history before its first decision, so `days` should start after that."""
+    """[[day, value]] for the plan (or buy-and-hold `hold` from the first day). `days` must be days every
+    coin has a close for. The plan needs TREND_DAYS of history before its first decision, so `days`
+    should start after that."""
     s = {**crypto_plan.DEFAULTS, **(settings or {})}
-    first = {p: next(i for i, d in enumerate(closes[p]["days"]) if d >= days[0]) for p in closes}
+    # each coin's own row for a day: their histories can have gaps (ether skips two days in May 2016)
+    row = {p: {d: i for i, d in enumerate(closes[p]["days"])} for p in closes}
     qty, cash, out = {}, START_CASH, []
     for n, day in enumerate(days):
-        prices = {p: closes[p]["close"][first[p] + n] for p in closes}
+        at = {p: row[p][day] for p in closes}
+        prices = {p: closes[p]["close"][at[p]] for p in closes}
         if hold:
             if n == 0:
                 qty, cash = crypto_plan.apply({}, cash, prices, [{"product": hold, "side": "BUY", "value": cash,
                                                                    "qty": cash / prices[hold]}], s["FEE"])
         elif n % s["CHECK_DAYS"] == 0:
-            hist = {p: closes[p]["close"][:first[p] + n + 1] for p in closes}
+            hist = {p: closes[p]["close"][:at[p] + 1] for p in closes}
             d = crypto_plan.decide(hist, s)
             qty, cash = crypto_plan.apply(qty, cash, prices, crypto_plan.orders(qty, prices, cash, d["targets"], s), s["FEE"])
         out.append([day, round(crypto_plan.weights_now(qty, prices, cash)[0], 2)])

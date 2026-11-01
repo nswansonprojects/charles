@@ -4,7 +4,7 @@ Runs under systemd (service `charles`) in the conda env `tradingbot`.
 
 One job does the trading: rebalancer.run() at 10:00 ET on weekdays (and 14:00 as a retry, which
 normally finds nothing to do). The rest is reporting: equity snapshots for the chart, the daily
-summary, the hourly heartbeat and the weekly/monthly/yearly reports on Telegram.
+summary, the hourly log line and the weekly/monthly/yearly reports, all shown on the dashboard.
 """
 
 import json, logging, os, sys, time
@@ -29,6 +29,7 @@ import requests
 
 import config
 import credential_manager as sec
+import state_io
 import alpaca_executor as alpaca
 import alerts
 import reports as rpt
@@ -115,21 +116,13 @@ def _record_equity_in_hours():
         _record_equity()
 
 
-def _send_heartbeat():
-    """Hourly status ping to Telegram."""
+def _heartbeat():
+    """An hourly line in bot.log: the daily check-up takes a log silent for 90 minutes to mean the bot is stuck."""
     try:
         summary = alpaca.get_account_summary()
-        total_value = summary.get("total_value", config.VIRTUAL_CASH)
-        plan = rebalancer.load_state()
-        alerts.heartbeat({
-            "halted": rm.is_trading_halted(),
-            "day_change": summary.get("day_change", 0.0),
-            "total_value": round(total_value, 2),
-            "open_positions": summary.get("open_positions", 0),
-            "mode": plan.get("mode"),
-            "summary": plan.get("summary"),
-            "next_rebalance": plan.get("next_rebalance"),
-        })
+        log.info(f"💓 Running: value ${summary.get('total_value', config.VIRTUAL_CASH):,.2f}, "
+                 f"{summary.get('open_positions', 0)} holdings"
+                 f"{', buys paused today' if rm.is_trading_halted() else ''}")
     except Exception as e:
         log.warning(f"Heartbeat failed: {e}")
 
@@ -143,21 +136,21 @@ def _daily_summary():
 
 def _weekly_report():
     try:
-        rpt.send_report_telegram(rpt.generate_report("weekly"))
+        rpt.post_report(rpt.generate_report("weekly"))
     except Exception as e:
         log.warning(f"Weekly report failed: {e}")
 
 
 def _monthly_report():
     try:
-        rpt.send_report_telegram(rpt.generate_report("monthly", previous=True))
+        rpt.post_report(rpt.generate_report("monthly", previous=True))
     except Exception as e:
         log.warning(f"Monthly report failed: {e}")
 
 
 def _yearly_report():
     try:
-        rpt.send_report_telegram(rpt.generate_report("yearly", previous=True))
+        rpt.post_report(rpt.generate_report("yearly", previous=True))
     except Exception as e:
         log.warning(f"Yearly report failed: {e}")
 
@@ -169,7 +162,7 @@ def start_scheduler():
     sched.add_job(_rebalance, "cron", hour=14, minute=0, day_of_week="mon-fri", id="rebalance_retry")
     sched.add_job(_record_equity_in_hours, "cron", hour="9-15", minute="*/30", day_of_week="mon-fri", id="equity")
     sched.add_job(_daily_summary, "cron", hour=16, minute=30, day_of_week="mon-fri", id="summary")
-    sched.add_job(_send_heartbeat, "cron", minute=0, id="heartbeat")
+    sched.add_job(_heartbeat, "cron", minute=0, id="heartbeat")
     sched.add_job(_weekly_report, "cron", day_of_week="sun", hour=18, minute=0, id="weekly_report")
     sched.add_job(_monthly_report, "cron", day=1, hour=19, minute=0, id="monthly_report")
     sched.add_job(_yearly_report, "cron", month=1, day=1, hour=20, minute=0, id="yearly_report")
@@ -184,15 +177,16 @@ def start_scheduler():
 
 
 # ── Launch flag ───────────────────────────────────────────────────────────────
-# Optional. Written by the old setup wizard; when present it overrides the daily-loss limit and
-# credential settings (see _apply_wizard_settings).
+# Written by the old desktop setup wizard; still the live source of the daily-loss limit and
+# the Alpaca credentials (see _apply_wizard_settings).
 _LAUNCH_FLAG = os.path.join(os.path.dirname(__file__), "data", "launch_authorized.json")
 
 
 def _apply_wizard_settings():
-    """Apply settings from the launch flag to config at runtime."""
+    """Apply settings from the launch flag to config at runtime. Returns the flag's starting balance
+    (None without one)."""
     if not os.path.exists(_LAUNCH_FLAG):
-        return
+        return None
     try:
         with open(_LAUNCH_FLAG) as f:
             data = json.load(f)
@@ -209,11 +203,11 @@ def _apply_wizard_settings():
             os.environ.setdefault("GROQ_API_KEY", data["groq_key"])
         if data.get("alpaca_key"):       os.environ["ALPACA_API_KEY"]     = data["alpaca_key"]
         if data.get("alpaca_secret"):    os.environ["ALPACA_SECRET_KEY"]  = data["alpaca_secret"]
-        if data.get("tg_token"):         os.environ["TELEGRAM_BOT_TOKEN"] = data["tg_token"]
-        if data.get("tg_chat_id"):       os.environ["TELEGRAM_CHAT_ID"]   = data["tg_chat_id"]
         log.info("✅ Wizard settings applied to runtime config")
+        return data.get("balance")
     except Exception as e:
         log.warning(f"Could not apply wizard settings: {e}")
+        return None
 
 
 def _catch_up():
@@ -226,10 +220,13 @@ def _catch_up():
 
 
 if __name__ == "__main__":
-    if os.path.exists(_LAUNCH_FLAG):
-        _apply_wizard_settings()
-    else:
-        log.info("No data/launch_authorized.json — using keys from .env and settings from config.py")
+    if not os.path.exists(_LAUNCH_FLAG):
+        if state_io.private_copy(os.path.dirname(os.path.abspath(__file__))):
+            log.error(f"⛔ {_LAUNCH_FLAG} is missing — it holds the daily-loss and credential "
+                      f"settings. Restore it from a backup; not starting.")
+            sys.exit(1)
+        log.info("No data/launch_authorized.json: using the keys in .env and the default settings")
+    balance = _apply_wizard_settings()
     strategy_settings.apply()
 
     print("\n" + "=" * 60)
@@ -241,12 +238,12 @@ if __name__ == "__main__":
         print("\n⛔ Alpaca connection failed. Re-run main.py and check your keys.\n")
         sys.exit(1)
 
-    if alerts.test_telegram():
-        alerts.bot_started()
-        log.info("✅ Telegram alerts active")
-    else:
-        log.warning("⚠️  Telegram not working — check TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID "
-                    "(.env, overridden by tg_token / tg_chat_id in data/launch_authorized.json)")
+    # What returns are measured from, fixed at the first start (data/start.json): the launch flag's
+    # balance on older installs, else the account's value now (a new Alpaca paper account holds $100,000).
+    start = equity_tracker.ensure_start((alpaca.get_account_summary() or {}).get("total_value"), balance)
+    log.info(f"📏 Returns are measured from ${start:,.2f}")
+
+    alerts.bot_started()
 
     _record_equity()
     sched = start_scheduler()
@@ -254,7 +251,8 @@ if __name__ == "__main__":
     # The dashboard is its own service (charles-web, webdash.py). This line marks the end of
     # startup for ops/restart-and-verify.
     log.info("🌐 Dashboard → http://localhost:8502 (service charles-web)")
-    print(f"🚨 Daily loss limit: no buys after a ${config.MAX_DAILY_LOSS:,.0f} loss in a day")
+    lim = f"${config.MAX_DAILY_LOSS:,.0f}" if config.MAX_DAILY_LOSS else f"{config.MAX_DAILY_LOSS_PCT:g}% of the account"
+    print(f"🚨 Daily loss limit: no buys after a {lim} loss in a day")
     print("   Press Ctrl+C to stop.\n")
 
     try:

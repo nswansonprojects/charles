@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#131311" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Charles">
+<title>Charles</title>
+<link rel="icon" href="/icon-192.png">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="loading">
+<header></header>
+<main>
+  <div class="card attention" id="attention" hidden></div>
+  <section class="card setup" id="t-setup" aria-label="Get started" hidden></section>
+  <div class="home">
+    <section class="card ink home-hero" id="t-earn" aria-label="What your bots have earned">
+      <div class="hero-head"><div class="eyebrow">Earned so far</div><span class="chip practice" title="Paper accounts: no real dollars move">Practice money</span></div>
+      <div class="big num" id="earned">$0.00</div>
+      <div class="sub num" id="earned-sub">&nbsp;</div>
+      <div class="chart hero-chart" id="chart"></div>
+      <div class="chart-foot"><div class="tabs" id="range" role="group" aria-label="Time range"></div></div>
+    </section>
+    <section class="card home-run" id="t-run" aria-label="Run Charles"><div class="run" id="run"></div></section>
+    <section class="card home-board" id="t-board" aria-label="Leaderboard">
+      <div class="card-head"><h2>Leaderboard</h2><span class="chip" id="board-test" hidden>Test data</span><a class="aside" href="/leaderboard">See all</a></div>
+      <ul class="mini" id="board"></ul>
+      <p class="board-me" id="board-me" hidden></p>
+    </section>
+    <section class="bots home-bots" id="t-bots" aria-label="Your bots"></section>
+  </div>
+</main>
+<script src="/common.js"></script>
+<script>
+"use strict";
+const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["All", 1e5]];
+let D = null, range = "All", armed = false, busy = false;
+try { range = localStorage.getItem("home-range") || range; } catch (e) {}
+
+const histDays = () => { const s = D && D.series; return s && s.length > 1 ? (new Date(s.at(-1)[0]) - new Date(s[0][0])) / 864e5 : 0; };
+const shownRange = () => { const r = RANGES.find(x => x[0] === range) || RANGES[3]; return r[1] < 1e5 && histDays() < r[1] ? "All" : r[0]; };
+function renderChart() {
+  const shown = shownRange(), days = RANGES.find(x => x[0] === shown)[1], hd = histDays();
+  $("range").innerHTML = RANGES.map(([k, d]) => `<button type="button" data-r="${k}" class="${k === shown ? "on" : ""}"${d < 1e5 && hd < d ? " disabled" : ""}>${k}</button>`).join("");
+  document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r; try { localStorage.setItem("home-range", range); } catch (e) {} renderChart(); });
+  const all = D.series, cut = days >= 1e5 ? "" : new Date(Date.now() - days * 864e5).toISOString();
+  const rows = days >= 1e5 ? all : all.filter(r => new Date(r[0]).toISOString() >= cut);
+  zeroChart($("chart"), rows.length > 1 ? rows : all, {axis: true, reveal: !$("earned").dataset.counted, label: "What your bots have earned together", empty: "The chart starts after the first check."});
+}
+
+function renderHero() {
+  const t = D.total, el = $("earned");
+  el.textContent = sgnUsd(t.earned);
+  el.className = "big num " + cls(t.earned);
+  fitText(el);
+  $("earned-sub").innerHTML = `<b class="${cls(t.today)}">${sgnUsd(t.today)}</b> today · ${usd(t.value)} in all`;
+  renderChart();
+  countUp(el, t.earned, sgnUsd);                         // the first look; it marks the element, so the chart's reveal is once too
+}
+
+const WHEN = "Checks weekdays at 10:00 AM ET";
+function renderRun() {
+  const box = $("run"), repick = D.next_repick ? ` · re-picks ${dayFmt(D.next_repick)}` : "", waiting = D.setup && !D.setup.keys;
+  $("t-run").classList.toggle("stopped", !D.running && !waiting);
+  $("t-run").classList.toggle("paused", !!D.running && !!D.paused);
+  if (waiting) {
+    box.innerHTML = `<div class="run-state"><span class="dot"></span><div><b>Not started</b><div class="small muted">It starts once your keys are in</div></div></div>`;
+  } else if (!D.running) {
+    box.innerHTML = `<div class="run-state"><span class="dot bad"></span><div><b>Stopped</b><div class="small muted">Over SSH, run <code>charles-start</code></div></div></div>
+      <button class="btn small" type="button" data-copy="charles-start">Copy</button>`;
+  } else if (D.paused) {
+    const since = D.paused.since ? `Since ${dayFmt(D.paused.since)}. ` : "";
+    box.innerHTML = `<div class="run-state"><span class="dot warn"></span><div><b>Paused</b><div class="small muted">${since}No new orders until you resume</div></div></div>
+      <button class="btn primary" type="button" id="run-btn">Resume</button><div class="run-msg" id="run-msg" role="status"></div>`;
+  } else {
+    box.innerHTML = `<div class="run-state"><span class="dot good"></span><div><b>Running</b><div class="small muted">${D.halted ? "Buys are off today: daily loss limit hit" : WHEN + repick}</div></div></div>
+      <button class="btn" type="button" id="run-btn">Pause</button><div class="run-msg" id="run-msg" role="status"></div>`;
+  }
+  const c = box.querySelector("[data-copy]");
+  if (c) c.onclick = () => { try { navigator.clipboard.writeText(c.dataset.copy); } catch (e) {} c.textContent = "Copied"; setTimeout(() => { c.textContent = "Copy"; }, 1400); };
+  const b = $("run-btn");
+  if (b) b.onclick = () => pauseClick(b, D.paused ? "resume" : "pause");
+}
+async function pauseClick(btn, action) {
+  const say = (t, bad) => { const m = $("run-msg"); if (m) { m.textContent = t; m.className = "run-msg " + (bad ? "down" : "muted"); } };
+  if (action === "pause" && !armed) {                     // two taps: a pause shouldn't happen by accident
+    armed = true; btn.textContent = "Tap again"; say("Pausing never sells anything.");
+    setTimeout(() => { armed = false; if (btn.isConnected && !busy) { btn.textContent = "Pause"; say(""); } }, 4000);
+    return;
+  }
+  armed = false; busy = true; btn.disabled = true; btn.textContent = "Asking…"; say("");
+  try {
+    const r = await fetch("/api/control", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({action})});
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || r.status);
+    for (let i = 0; i < 14; i++) {                         // the root service carries it out within seconds
+      await new Promise(ok => setTimeout(ok, 1500));
+      await load();
+      if (!!D.paused === (action === "pause")) { busy = false; renderRun(); if (window.refreshStatus) refreshStatus(); return; }
+    }
+    busy = false; say("Asked. It takes effect within a minute.");
+  } catch (e) {
+    busy = false; btn.disabled = false; btn.textContent = action === "pause" ? "Pause" : "Resume"; say(e.message, true);
+  }
+}
+
+// A new install's first steps: keys, then a plan, then maybe another bot. Hide puts it away in this browser, but only once the keys are in.
+const SETUP_OFF = "charles-setup-off";
+const setupOff = () => { try { return !!localStorage.getItem(SETUP_OFF); } catch (e) { return false; } };
+const setupShown = () => !!D.setup && !(D.setup.keys && setupOff());
+const CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"/></svg>';
+function renderSetup() {
+  const box = $("t-setup"), s = D.setup;
+  box.hidden = !setupShown();
+  if (box.hidden) return;
+  const row = (done, n, title, about, acts) => `<div class="setup-row${done ? " done" : ""}"><div class="setup-n">${done ? CHECK : n}</div><span><b>${title}</b><span>${about}</span></span><div class="setup-acts">${acts}</div></div>`;
+  const add = D.can_add || [];
+  box.innerHTML = `<div class="card-head"><h2>Get started</h2>${s.keys ? `<button class="link-btn" id="setup-hide" type="button" style="margin-left:auto">Hide</button>` : ""}</div>` +
+    row(s.keys, 1, "Connect your Alpaca keys", s.keys ? "Connected. It trades with practice money." : "A free paper account is all Charles needs.", s.keys ? "" : `<a class="btn small primary" href="/settings#keys">Connect</a>`) +
+    row(s.plan, 2, "Choose your plan", s.plan ? "Saved. Change it whenever." : "Keep the default, set it yourself, or copy someone.",
+      `<a class="btn small${s.keys && !s.plan ? " primary" : ""}" href="/stocks#plan">Set it yourself</a><a class="btn small" href="/leaderboard">Copy someone</a>`) +
+    (add.length ? row(false, 3, "Add another bot", "Optional, and practice money too.", add.map(a => `<a class="btn small" href="/settings#addon-${esc(a.id)}">${esc(a.name)}</a>`).join("")) : "");
+  const hide = $("setup-hide");
+  if (hide) hide.onclick = () => { try { localStorage.setItem(SETUP_OFF, "1"); } catch (e) {} renderSetup(); renderBots(); };
+}
+
+// A new install runs stocks only. Crypto and Kalshi are one command away, whenever someone wants them.
+function addTile() {
+  const add = setupShown() ? [] : D.can_add || [];
+  return add.length ? `<div class="card add-bot"><h2>Add a bot</h2>${add.map(a => `<a class="add-row" href="/settings#addon-${esc(a.id)}"><span><b>${esc(a.name)}</b><span>${esc(a.about)}</span></span><span class="btn small">Add</span></a>`).join("")}</div>` : "";
+}
+function renderBots() {
+  $("t-bots").innerHTML = D.bots.map(b => `<a class="card bot" href="${esc(b.href)}">
+      <div class="bot-name">${esc(b.name)}${b.late ? ' <span class="chip">Needs a look</span>' : ""}</div>
+      <div class="bot-earned ${cls(b.earned)}">${b.earned == null ? "—" : sgnUsd(b.earned)}</div>
+      <div class="bot-line num">${b.value == null ? "Not started" : `${usd(b.value)} · <span class="${cls(b.today)}">${sgnUsd(b.today)}</span> today`}</div>
+      <div class="bot-note">${esc(b.note)}</div>
+      <div class="bot-chart" data-bot="${esc(b.id)}"></div></a>`).join("") + addTile();
+  document.querySelectorAll(".bot-earned").forEach(fitText);
+  drawBots();
+}
+function drawBots() {
+  for (const b of D.bots) {
+    const el = document.querySelector(`.bot-chart[data-bot="${b.id}"]`);
+    if (el) zeroChart(el, b.curve.map(r => [r[0], r[1] - b.start]), {label: b.name + " earnings", empty: "Soon"});
+  }
+}
+
+// Anything wrong shows here for 48 hours, or until "Got it".
+const NOTICE_SEEN = "charles-notice-seen";
+function renderAttention() {
+  let seen = "";
+  try { seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch (e) {}
+  const hot = (D.notices || []).filter(n => n.level === "error" && Date.now() - new Date(n.ts) < 48 * 36e5 && n.ts > seen), box = $("attention");
+  box.hidden = !hot.length;
+  box.innerHTML = hot.length ? `<div class="card-head"><h2>Needs a look</h2><button class="got" id="notice-got" type="button">Got it</button></div>${hot.map(n =>
+    `<div class="notice"><div class="row-t"><b>${esc(n.title)}</b><span class="small muted">${ago(n.ts)}</span></div>${n.message ? `<div class="small muted">${esc(n.message)}</div>` : ""}</div>`).join("")}` : "";
+  if (hot.length) $("notice-got").onclick = () => { try { localStorage.setItem(NOTICE_SEEN, hot[0].ts); } catch (e) {} box.hidden = true; };
+}
+
+// A card going away (no leaderboard to show) widens the panel after its chart was drawn.
+if (window.ResizeObserver) { let w = 0; new ResizeObserver(es => { const n = Math.round(es[0].contentRect.width), was = w; w = n; if (was && n !== was && D) renderChart(); }).observe($("chart")); }
+
+async function loadBoard() {
+  let B, M;
+  try { [B, M] = await Promise.all([getJSON("/api/board?bot=stocks&range=all"), getJSON("/api/leaderboard/mine?bot=stocks").catch(() => null)]); }
+  catch (e) { B = {ok: false}; }
+  if (!B.ok) { $("t-board").hidden = true; return; }      // nothing to show, so no card saying so
+  $("board-test").hidden = !B.test_mode;
+  const top = (B.ranked || []).slice(0, 8);               // a phone shows three of them (style.css)
+  $("board").innerHTML = top.length ? top.map(r => `<li>
+      <span class="rk">${r.rank}</span><a class="nm" href="/leaderboard?bot=stocks&amp;copy=${esc(r.id)}">${esc(r.name)}</a>
+      <span>${spark(r.spark, r.return_pct)}</span><span class="ret ${cls(r.return_pct)}">${pct(r.return_pct, 1)}</span>
+      <a class="btn small" href="/leaderboard?bot=stocks&amp;copy=${esc(r.id)}" aria-label="Copy ${esc(r.name)}">Copy</a></li>`).join("")
+    : `<li class="muted" style="display:block">Nobody has enough days to rank yet.</li>`;
+  const mine = M && (M.entries || []).find(x => x.status === "active");
+  const me = $("board-me");
+  me.hidden = !M || !M.ok;
+  me.innerHTML = mine ? `You're on it as <a href="/leaderboard">${esc(mine.name || "Anonymous")}</a>` : `You're not on it yet. <a href="/leaderboard">Share your settings</a>`;
+}
+
+async function load() {
+  try {
+    D = await getJSON("/api/home");
+    document.body.classList.remove("loading");
+    renderHero();
+    if (!busy) renderRun();
+    renderSetup();
+    renderBots();
+    renderAttention();
+    if (!window.homeReady) { window.homeReady = true; dispatchEvent(new Event("charles:home-ready")); }
+  } catch (e) {
+    $("earned-sub").textContent = "The dashboard isn't answering. Refresh in a moment.";
+    document.body.classList.remove("loading");
+  }
+}
+load();
+loadBoard();
+setInterval(() => { if (!document.hidden && !busy) load(); }, 60000);
+let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (D) { fitText($("earned")); document.querySelectorAll(".bot-earned").forEach(fitText); renderChart(); drawBots(); } }, 120); });
+</script>
+</body>
+</html>

@@ -7,6 +7,7 @@ from base import BotTestCase
 
 import allocator as al
 import alpaca_executor as ex
+import control
 import news_veto
 import rebalancer as rb
 import risk_manager as rm
@@ -104,6 +105,32 @@ class NextRebalance(BotTestCase):
         self.assertEqual(rb.next_rebalance("2027-01-04"), "2027-02-01")
 
 
+class StalePrices(BotTestCase):
+    def test_weekends_and_one_holiday_are_normal(self):
+        for as_of, today, stale in (("2026-10-16", "2026-10-19", False),    # Friday's close on Monday
+                                    ("2026-10-16", "2026-10-20", False),    # a Monday holiday
+                                    ("2026-10-15", "2026-10-20", False),    # a rare double holiday
+                                    ("2026-10-09", "2026-10-19", True),     # a week old
+                                    (None, "2026-10-19", True)):
+            with self.subTest(as_of=as_of, today=today):
+                self.assertEqual(rb.prices_stale(as_of, today), stale)
+
+    def test_a_missing_core_close_dates_the_prices_to_its_last_close(self):
+        import sys
+        import pandas as pd
+        days = pd.to_datetime(["2026-10-14", "2026-10-15", "2026-10-16"])
+        frame = pd.DataFrame({"SPY": [700.0, 701.0, float("nan")], "NVDA": [190.0, 191.0, 192.0]}, index=days)
+        fake = type(sys)("yfinance")
+        fake.download = lambda *a, **k: {"Close": frame}
+        real = sys.modules.get("yfinance")
+        sys.modules["yfinance"] = fake
+        self.addCleanup(lambda: sys.modules.__setitem__("yfinance", real) if real else sys.modules.pop("yfinance"))
+        self.patch(rb, "settings", lambda: dict(S))
+        closes, as_of = rb.closes_for(["NVDA", "SPY"], "2026-10-19")
+        self.assertEqual(as_of, "2026-10-15")
+        self.assertEqual(closes["SPY"], [700.0, 701.0])
+
+
 class FakeClient:
     pass
 
@@ -172,6 +199,34 @@ class Run(BotTestCase):
         rb.run(plan_path=self.plan, now=now.replace(hour=18))
         self.assertEqual(len(self.calls), n)
 
+    def test_stale_prices_skip_the_rebalance(self):
+        self.patch(rb, "closes_for", lambda syms, today: (market(), "2026-10-09"))
+        res = rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
+        self.assertEqual(res, {"skipped": "stale prices"})
+        self.assertEqual(self.calls, [])
+        self.assertFalse(os.path.exists(self.plan))
+        self.assertIn("error_alert", [c[0] for c in self.alerts.calls])
+
+    def test_a_trade_log_failure_does_not_stop_the_rebalance(self):
+        # e.g. a full disk: the orders after it must still go, and the plan must still be saved
+        def broken(record):
+            raise OSError(28, "No space left on device")
+        self.patch(ex, "log_trade", broken)
+        rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
+        self.assertEqual(len(self.calls), 7)
+        self.assertTrue(os.path.exists(self.plan))
+        self.assertIn("error_alert", [c[0] for c in self.alerts.calls])
+
+    def test_a_losing_sale_is_not_a_loss_today(self):
+        # A pick sold at the monthly re-pick may have lost $25 over the month. That loss was already in
+        # earlier days' account values, so it must not trip TODAY's limit (it used to, with a false alert).
+        sell = ex.sell
+        self.patch(ex, "sell", lambda c, sym, amount: {**sell(c, sym, amount), "pnl": -25.0, "pnl_pct": -20.0})
+        rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
+        self.assertFalse(rm.is_trading_halted())
+        self.assertNotIn("daily_loss_halted", [c[0] for c in self.alerts.calls])
+        self.assertIn("buy", [c[0] for c in self.calls])
+
     def test_loss_limit_blocks_buys_and_retries_tomorrow(self):
         self.patch(rm, "is_trading_halted", lambda: True)
         rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
@@ -180,6 +235,23 @@ class Run(BotTestCase):
             st = json.load(f)
         self.assertTrue(st["pending"])
         self.assertIsNone(st["last_rebalance"])
+
+    def test_pause_holds_every_order_and_the_plan_finishes_after_resume(self):
+        control.apply("pause", "the dashboard")
+        rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
+        self.assertEqual(self.calls, [])                                     # no sells either
+        with open(self.plan) as f:
+            st = json.load(f)
+        self.assertTrue(st["pending"])
+        self.assertEqual(st["paused"]["by"], "the dashboard")
+        self.assertFalse(st["halted_buys"])
+        control.apply("resume", "SSH")
+        rb.run(plan_path=self.plan, now=datetime(2026, 10, 20, 14, 0, tzinfo=timezone.utc))
+        self.assertEqual([c[0] for c in self.calls].count("sell"), 2)
+        with open(self.plan) as f:
+            st = json.load(f)
+        self.assertFalse(st["pending"])
+        self.assertIsNone(st["paused"])
 
     def test_market_closed_does_nothing(self):
         self.patch(ex, "market_open", lambda c=None: False)

@@ -1,0 +1,2 @@
+# The leaderboard server's public key. charles-copy accepts only configs signed by its private half.
+oTKz+YwwWflXJ7eaPmi39h/SwTbR9lKWvwbewQi3yOw=

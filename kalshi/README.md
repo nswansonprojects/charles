@@ -45,8 +45,8 @@ guaranteed sets (`network.py`, `evaluate.py`, `maker.py`). These are rare.
 
 ## Run it
 
-**With the installer** (https://charles-bot.xyz/install.sh): nothing to do — it sets up this bot's
-own Python env, a 15-minute timer (`kalshi-net.timer`) and its dashboard (`kalshi-web`), and
+**With the installer** (https://charles-bot.xyz/install.sh): it's an add-on, off by default. `charles-addon on kalshi`
+sets up this bot's own Python env, a 15-minute timer (`kalshi-net.timer`) and its dashboard (`kalshi-web`), and
 `charles-update` keeps it current. Log: `kalshi-logs`.
 
 **By hand:** Python 3.11+ in its own virtual environment (not Charles's):

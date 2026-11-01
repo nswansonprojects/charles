@@ -58,6 +58,11 @@ def simulate(dates: list[str], opens: dict[str, list], closes: dict[str, list], 
         need = syms if (reb or not state or state.get("pending")) else [core]
         hist = {k: clean[k][: upto[k][prev]] for k in need}
         d = rebalancer.decide(day, hist, state, s, universe=universe, rank_always=False)
+        if len(need) < len(syms) and d["switched"] and al.SAFETY in (d["prev"], d["mode"]):
+            # a mid-month switch into or out of safety re-picks the stocks (SWITCH_CHECK "daily"),
+            # which needs every symbol's history, as the live bot has
+            hist = {k: clean[k][: upto[k][prev]] for k in syms}
+            d = rebalancer.decide(day, hist, state, s, universe=universe, rank_always=False)
         if d["switched"]:
             switches += 1
         if d["full"]:

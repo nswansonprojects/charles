@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="referrer" content="no-referrer">
+<title>Settings · Charles</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="icon" href="/icon-192.png">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header></header>
+<main class="narrow">
+  <h1 class="page-title">Settings</h1>
+  <h2 class="set-group" style="margin-top:6px">Your bots</h2>
+  <div class="card" id="bots"><div class="empty">Loading…</div></div>
+  <h2 class="set-group">Updates</h2>
+  <div class="card" id="updates"></div>
+  <h2 class="set-group">This device</h2>
+  <div class="card">
+    <div class="set-row"><div><h3>Appearance</h3></div><div class="tabs" id="theme-set" role="group" aria-label="Appearance"><button type="button" data-th="">Auto</button><button type="button" data-th="light">Light</button><button type="button" data-th="dark">Dark</button></div></div>
+    <div class="set-row"><div><h3>Dashboard tour</h3></div><div class="acts"><button class="btn small" type="button" id="tour-again">Show it again</button></div></div>
+    <div class="set-row" id="logout-row" hidden><div><h3>Logged in</h3></div><div class="acts"><a class="btn small" href="/logout">Log out</a></div></div>
+  </div>
+</main>
+
+<div class="scrim" id="scrim" hidden></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sh-title" tabindex="-1" hidden>
+  <div class="grab"></div>
+  <button class="icon sh-close" id="sh-close" aria-label="Close">
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>
+  <div id="sheet-body"></div>
+</div>
+
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let A = null;
+
+function openSheet(html) {
+  $("sheet-body").innerHTML = html;
+  const sh = $("sheet"), sc = $("scrim");
+  sh.hidden = sc.hidden = false; sh.scrollTop = 0; document.body.style.overflow = "hidden";
+  requestAnimationFrame(() => requestAnimationFrame(() => { sh.classList.add("on"); sc.classList.add("on"); sh.focus(); }));
+}
+function closeSheet() {
+  const sh = $("sheet"), sc = $("scrim");
+  if (sh.hidden) return;
+  sh.classList.remove("on"); sc.classList.remove("on"); document.body.style.overflow = "";
+  setTimeout(() => { sh.hidden = sc.hidden = true; $("sheet-body").innerHTML = ""; }, REDUCED ? 0 : 320);
+}
+$("scrim").onclick = closeSheet; $("sh-close").onclick = closeSheet;
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSheet(); });
+
+// The ssh login for this server; on a tunnel (localhost) the real address isn't known here.
+const HOST = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(location.hostname) ? "your-server-ip" : location.hostname;
+const cmd = c => `<div class="cmd"><code>${esc(c)}</code><button class="btn small" type="button" data-copy="${esc(c)}">Copy</button></div>`;
+
+let shownAsked = false;
+// One list: the stock bot and its keys, then the bots that can be added. Kalshi and the crypto book need no account, so there's nothing to connect
+// for them; keys someone already saved for them (connections.py) still show, so they can be replaced.
+function render() {
+  const row = (name, sub, dot, state, btn) => `<div class="set-row"><div style="min-width:0"><h3>${esc(name)} <span class="muted small" style="font-weight:400">${esc(sub)}</span></h3>
+      <div class="s"><span class="dot ${dot}"></span>${state}</div></div><div class="acts">${btn}</div></div>`;
+  const account = b => row(b.id === "charles" ? "Stocks" : b.name + " account", `${b.broker} · ${b.mode}`, b.connected ? (b.check_ok === false ? "warn" : "good") : "",
+    b.connected ? `Connected${b.tail ? " · key …" + esc(b.tail) : ""}${b.check_ok === false && b.check_msg ? ". " + esc(b.check_msg) : ""}` : "Not connected",
+    `<button class="btn small${b.connected ? "" : " primary"}" type="button" data-steps="${esc(b.id)}">${b.connected ? "Replace keys" : "Connect keys"}</button>`);
+  const stocks = A.bots.filter(b => b.id === "charles"), others = A.bots.filter(b => b.id !== "charles" && b.connected);
+  const ads = (A.addons || []).map(a => row(a.short, a.on ? "" : a.pitch || "", a.on ? "good" : "", a.on ? "On" : "Not added",
+    `<button class="btn small" type="button" data-addon="${esc(a.id)}">${a.on ? "Turn off" : "Add"}</button>`));
+  $("bots").innerHTML = stocks.map(account).join("") + ads.join("") + others.map(account).join("");
+  document.querySelectorAll("[data-steps]").forEach(el => el.onclick = () => stepsSheet(el.dataset.steps));
+  document.querySelectorAll("[data-addon]").forEach(el => el.onclick = () => addonSheet(el.dataset.addon));
+  const asked = /^#addon-(\w+)$/.exec(location.hash);          // Home's first steps come straight to the steps
+  if (!shownAsked) {
+    if (asked && (A.addons || []).some(x => x.id === asked[1] && !x.on)) { shownAsked = true; addonSheet(asked[1]); }
+    if (location.hash === "#keys" && stocks.length) { shownAsked = true; stepsSheet("charles"); }
+  }
+  $("logout-row").hidden = !SESSION.logged_in;
+}
+
+let SESSION = {};
+
+// Updates, version history and Restore (updates.py): the same login as Pause. A rule change needs the box ticked.
+let U = null, polling = false;
+const fmtDay = d => d ? new Date(d.length > 10 ? d : d + "T12:00:00").toLocaleDateString("en-US", {month: "short", day: "numeric", year: "numeric"}) : "";
+const canChange = () => !(U || {}).preview && SESSION.access && SESSION.access !== "open" && SESSION.logged_in;
+const whyNot = () => (U || {}).preview ? "This is a preview with sample releases. It can't change the live bot."
+  : !SESSION.access || SESSION.access === "open" ? "Changing the version here needs the dashboard login. Turn it on over SSH: <code>charles-login</code>"
+  : !SESSION.logged_in ? "Log in to change the version: run <code>charles-login</code> on your server and open its link." : "";
+function renderUpdates() {
+  if (!U) return;
+  const j = U.job || {}, busy = j.status === "queued" || j.status === "running";
+  const cur = U.current ? " · " + esc(U.current) : "";
+  const head = busy ? [`${j.action === "restore" ? "Going back to" : "Updating to"} ${esc(j.version || "")}…`, "warn"]
+    : U.state === "available" ? [`Update available: ${esc(U.summary)}`, "info"]
+    : U.state === "up_to_date" ? [`Up to date${cur}`, ""]
+    : U.state === "unmanaged" ? ["Updates through git", ""]
+    : U.state === "no_releases" ? ["No releases yet", ""] : ["Not checked yet", ""];
+  const about = busy && (j.action === "update" || j.action === "restore") ? "A minute or two. The dashboard restarts and comes back by itself. If anything goes wrong, Charles goes back."
+    : U.state === "unmanaged" ? "This copy didn't come from the public release repo, so it's updated with git."
+    : "Never updates by itself." + (U.checked ? ` Last checked ${fmtDay(U.checked)}.` : "");
+  const done = !busy && j.result && j.status !== "done" ? `<div class="small" style="margin-top:8px;color:var(--critical-ink)">${esc(j.result)}</div>`
+    : !busy && j.result && (j.action === "update" || j.action === "restore") ? `<div class="small muted" style="margin-top:8px">${esc(j.result)}</div>` : "";
+  const others = (U.versions || []).filter(v => v.version !== U.current);
+  const hist = (U.versions || []).length ? `<details class="versions"><summary>Version history</summary>${(U.versions).map(v => `<div class="vrow"><div><b>${esc(v.version)}</b>${v.version === U.current ? '<span class="vtag">this one</span>' : ""}${v.kind === "fix" ? '<span class="vtag">fix</span>' : '<span class="vtag vrule">rule change</span>'}<div class="small muted">${esc(fmtDay(v.date))}${v.date ? " · " : ""}${esc(v.notes[0])}</div></div>${v.version === U.current ? "" : `<button class="btn" data-version="${esc(v.version)}">${(U.pending || []).some(p => p.version === v.version) ? "Details" : "Restore"}</button>`}</div>`).join("")}${(U.history || []).length ? `<div class="small muted" style="padding-top:10px;border-top:1px solid var(--border)">Last change: ${esc(U.history[0].result)}</div>` : ""}</details>` : "";
+  $("updates").innerHTML = `<div class="set-row stack"><div style="min-width:0"><h3>${head[0]}</h3><div class="small muted">${about}</div></div>
+      <div class="acts">${U.state === "available" && !busy ? `<button class="btn primary small" type="button" data-version="${esc(U.latest)}">See what's new</button>` : ""}
+        ${U.managed && !busy ? `<button class="btn small" type="button" id="check-btn"${canChange() ? "" : " disabled"}>Check now</button>` : ""}</div>
+      ${U.managed && whyNot() ? `<div class="full">${whyNot()}</div>` : ""}${done ? `<div class="full">${done}</div>` : ""}${hist}</div>`;
+  document.querySelectorAll("[data-version]").forEach(el => el.onclick = () => versionSheet(el.dataset.version));
+  if ($("check-btn")) $("check-btn").onclick = e => { e.currentTarget.disabled = true; e.currentTarget.textContent = "Checking…"; ask({action: "check-updates"}); };
+}
+const pct = v => v == null ? "" : (+v).toFixed(1) + "%";
+function versionSheet(version) {
+  const v = U.versions.find(x => x.version === version), forward = (U.pending || []).some(p => p.version === version);
+  const crossed = forward ? U.versions.filter(x => (U.pending || []).some(p => p.version === x.version)) : [v];
+  const d = v.diff || {};
+  const val = (c, v) => /_PCT$/.test(c.name) && typeof v === "number" ? +(v * 100).toFixed(1) + "%" : v === true ? "On" : v === false ? "Off" : v;
+  const rules = (d.settings || []).map(c => `<div class="chg"><span>${esc(c.label)}</span><b class="num">${esc(val(c, c.old))} → ${esc(val(c, c.new))}</b></div>`).join("");
+  const bt = d.backtest ? `<div class="chg"><span>Backtest: a year</span><b class="num">${pct(d.backtest.old.cagr_pct)} → ${pct(d.backtest.new.cagr_pct)}</b></div><div class="chg"><span>Backtest: worst fall</span><b class="num">${pct(d.backtest.old.max_drawdown_pct)} → ${pct(d.backtest.new.max_drawdown_pct)}</b></div>` : "";
+  const files = (d.files || []).length ? `<p class="small muted" style="margin:10px 0 0">Trading code that changes: ${d.files.map(esc).join(", ")}</p>` : "";
+  const need = !!v.needs_confirm;
+  openSheet(`<h2 class="sh-title" id="sh-title">${forward ? "Update to" : "Go back to"} ${esc(version)}</h2>
+    <div class="sh-sub">${forward ? "What's new" : "What this version was"}. Your data isn't touched${(U.local_settings || []).length ? ", and the settings you changed stay as they are" : ""}.</div>
+    ${crossed.map(x => `<div class="rel"><h3>${esc(x.version)}${x.kind === "fix" ? '<span class="vtag">fix</span>' : '<span class="vtag vrule">rule change</span>'}</h3><ul>${x.notes.map(n => `<li>${esc(n)}</li>`).join("")}</ul></div>`).join("")}
+    ${need ? `<div class="rel" style="border-color:var(--critical-ink)"><h3>This changes how Charles trades</h3>${rules}${bt}${files}${rules || bt || files ? "" : '<p class="small muted" style="margin:0">Its notes are all there is to go on: see above.</p>'}<p class="small muted" style="margin:10px 0 0">Backtests are past results, not a promise.</p></div>
+      <label class="tick"><input type="checkbox" id="tick"> I understand this changes how Charles trades</label>` : ""}
+    <div class="lb-btns" style="margin-top:14px"><button class="btn primary" id="go"${need || !canChange() ? " disabled" : ""}>${forward ? "Update" : "Restore"} to ${esc(version)}</button></div>
+    ${whyNot() ? `<p class="small muted" style="margin:10px 0 0">${whyNot()}</p>` : ""}
+    <p class="small muted" style="margin:10px 0 0">Charles installs it, runs its tests and restarts. If it isn't healthy within 2 minutes, it goes back by itself.</p>`);
+  if ($("tick")) $("tick").onchange = e => { $("go").disabled = !e.target.checked || !canChange(); };
+  $("go").onclick = () => { closeSheet(); ask({action: forward ? "update" : "restore", version, confirm: $("tick") ? $("tick").checked : false}); };
+}
+async function ask(body) {
+  try {
+    const r = await fetch("api/control", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)});
+    const res = await r.json();
+    if (!r.ok) throw new Error(res.error || r.status);
+    U = {...U, job: {action: body.action, version: body.version, status: "queued"}};
+    renderUpdates(); pollUpdates();
+  } catch (e) { U = {...U, job: {status: "failed", result: e.message}}; renderUpdates(); }
+}
+async function loadUpdates() {
+  try { U = await (await fetch("api/updates", {cache: "no-store"})).json(); renderUpdates(); } catch (e) {}
+}
+async function pollUpdates() {
+  if (polling) return;
+  polling = true;
+  for (let i = 0; i < 120; i++) {                       // the dashboard restarts during an update: a failed look just tries again
+    await new Promise(ok => setTimeout(ok, 3000));
+    await loadUpdates();
+    const st = (U.job || {}).status;
+    if (st !== "queued" && st !== "running") break;
+  }
+  polling = false;
+}
+
+function addonSheet(id) {
+  const a = A.addons.find(x => x.id === id);
+  openSheet(`<h2 class="sh-title" id="sh-title">Turn ${esc(a.name)} ${a.on ? "off" : "on"}</h2><div class="sh-sub">${esc(a.about)}</div>
+    <ol class="stepsl">
+      <li><b>Open a terminal</b> on your computer.<div class="muted">Mac: the Terminal app. Windows: PowerShell. Phone: an SSH app such as Termius.</div></li>
+      <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}</li>
+      <li><b>Run:</b>${cmd(a.command)}<div class="muted">${a.on ? "It stops, and its data is kept for when you turn it back on." : "It installs what it needs (Kalshi takes a few minutes) and starts."}</div></li>
+      <li><b>Come back here and refresh.</b><div class="muted">${a.on ? "Its tab disappears." : "Its tab appears."}</div></li>
+    </ol>`);
+}
+
+function stepsSheet(id) {
+  const b = A.bots.find(x => x.id === id);
+  const keys = b.id === "charles"
+    ? `<li><b>Run the key tool:</b>${cmd(b.command)}<div class="muted">Choose <b>2</b> (Update a key), pick <b>Alpaca API Key</b> and paste it; do the same for <b>Alpaca Secret</b>. Then choose <b>1</b> to save. Charles restarts with the new keys.</div></li>`
+    : `<li><b>Run the connect tool:</b>${cmd(b.command)}<div class="muted">Paste the ${esc(b.fields[0].label)} and press Enter. Then paste the whole private key, from <code>-----BEGIN</code> to <code>-----END</code>, and press Enter. It stays hidden while you paste. The tool checks the keys and saves them on the server.</div></li>`;
+  const after = b.id === "charles" ? "" :
+    `<p class="sh-p muted" style="margin-top:4px">To remove these keys later: ${cmd(b.command + " --remove")}</p>`;
+  openSheet(`<h2 class="sh-title" id="sh-title">Connect ${esc(b.broker)}</h2><div class="sh-sub">for ${esc(b.name)} · ${esc(b.what)}</div>
+    <ol class="stepsl">
+      <li><b>Get your keys from ${esc(b.broker)}.</b><div class="muted">${esc(b.help)} <a href="${esc(b.url)}" target="_blank" rel="noopener noreferrer">Open ${esc(b.broker)}</a></div></li>
+      <li><b>Open a terminal</b> on your computer.<div class="muted">Mac: the Terminal app. Windows: PowerShell. Phone: an SSH app such as Termius.</div></li>
+      <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}<div class="muted">Use your server password or SSH key, the same way you log in to manage Charles.</div></li>
+      ${keys}
+      <li><b>Come back here and refresh.</b><div class="muted">This page then shows ${esc(b.name)} as connected${b.id === "charles" ? "" : ", with the last 4 characters of the key"}.</div></li>
+    </ol>${after}`);
+}
+
+async function copy(text, btn) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {          // http pages have no clipboard API
+    const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    try { document.execCommand("copy"); } catch (e2) {}
+    t.remove();
+  }
+  btn.textContent = "Copied"; setTimeout(() => { btn.textContent = "Copy"; }, 1400);
+}
+document.addEventListener("click", e => { const c = e.target.closest("[data-copy]"); if (c) copy(c.dataset.copy, c); });
+
+async function load() {
+  try {
+    [A, SESSION] = await Promise.all(["api/accounts", "api/session"].map(async u => (await fetch(u, {cache: "no-store"})).json()));
+    render();
+    await loadUpdates();
+    const st = ((U || {}).job || {}).status;
+    if (st === "queued" || st === "running") pollUpdates();
+  }
+  catch (e) { $("bots").innerHTML = `<div class="card"><div class="empty">Couldn't load. Is the dashboard running?</div></div>`; }
+}
+(function () {
+  const show = () => { let t = ""; try { t = localStorage.getItem("charles-theme") || ""; } catch (e) {}
+    document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("on", b.dataset.th === t)); };
+  document.querySelectorAll("[data-th]").forEach(b => b.onclick = () => {
+    const t = b.dataset.th;
+    try { if (t) localStorage.setItem("charles-theme", t); else localStorage.removeItem("charles-theme"); } catch (e) {}
+    if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme;
+    show();
+  });
+  show();
+  $("tour-again").onclick = () => { try { localStorage.removeItem("charles-tour-v2"); } catch (e) {} location.href = "/"; };
+})();
+load();
+</script>
+</body>
+</html>

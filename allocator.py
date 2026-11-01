@@ -186,7 +186,7 @@ def orders(target: dict[str, float], held: dict[str, float], equity: float, full
 
 
 def describe(mode_info: dict | None, picks: list[str], s: dict = DEFAULTS) -> str:
-    """One plain sentence for the dashboard and Telegram."""
+    """One plain sentence for the dashboard."""
     if not mode_info:
         return "Waiting for enough price history to decide."
     if mode_info["mode"] == SAFETY:

@@ -11,6 +11,12 @@ import os
 import tempfile
 
 
+def private_copy(root: str) -> bool:
+    """Is this the owner's own copy, not a public install? Only that one has ops/ (the public snapshot drops it), and only
+    that one holds settings in data/launch_authorized.json, so losing the file has to stop it."""
+    return os.path.isdir(os.path.join(root, "ops"))
+
+
 def write_json(path: str, data, **dump_kwargs) -> None:
     """Atomically replace `path` with `data` as JSON. dump_kwargs go to json.dump (e.g. indent=2)."""
     folder = os.path.dirname(os.path.abspath(path))
@@ -23,6 +29,29 @@ def write_json(path: str, data, **dump_kwargs) -> None:
     try:
         with os.fdopen(fd, "w") as f:
             json.dump(data, f, **dump_kwargs)
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def write_text(path: str, text: str) -> None:
+    """Atomically replace `path` with `text`, the same way."""
+    folder = os.path.dirname(os.path.abspath(path))
+    try:
+        mode = os.stat(path).st_mode & 0o777
+    except FileNotFoundError:
+        mode = 0o644
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=f".{os.path.basename(path)}.", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(text)
             f.flush()
             os.fsync(f.fileno())
         os.chmod(tmp, mode)

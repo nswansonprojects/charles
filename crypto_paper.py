@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 import crypto_market
 import crypto_plan
+import crypto_settings
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("CRYPTO_DATA") or os.path.join(ROOT, "data")
@@ -65,7 +66,7 @@ def run(force: bool = False, path: str = PATH) -> dict:
     closes = {p: [c for _, c in crypto_market.daily_closes(p)] for p in products}
     prices = {p: crypto_market.spot(p) for p in products}
     book = load(path) or new_book(now.isoformat(timespec="seconds"))
-    book = step(book, closes, prices, now, force=force)
+    book = step(book, closes, prices, now, settings=crypto_settings.load(), force=force)
     save(book, path)
     return book
 

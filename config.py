@@ -10,10 +10,6 @@ ALPACA_API_KEY    = ""
 ALPACA_SECRET_KEY = ""
 # Paper trading is fixed in alpaca_executor._client() (paper=True); there is no switch here.
 
-# --- Telegram alerts ← YOUR KEYS GO IN .env FILE -----------
-TELEGRAM_BOT_TOKEN = ""
-TELEGRAM_CHAT_ID   = ""
-
 # --- AI (the news veto only) ---------------------------------
 # Free key at console.groq.com, set as GROQ_API_KEY in .env. Without it Charles runs the plan
 # with no news veto.
@@ -21,8 +17,11 @@ GROQ_API_KEY = ""
 GROQ_MODEL   = "openai/gpt-oss-20b"
 
 # --- Account ----------------------------------------------------
-VIRTUAL_CASH   = 1_000.0   # the starting balance returns are measured from
-MAX_DAILY_LOSS = 20.0      # no buys for the rest of the day after this loss (owner's setting;
-                           # data/launch_authorized.json "daily_loss" overrides it)
+VIRTUAL_CASH   = 1_000.0   # fallback starting balance: returns are measured from data/start.json, written at the
+                           # bot's first start from the account's value (equity_tracker.ensure_start)
+MAX_DAILY_LOSS = None      # $: no buys for the rest of the day after this loss. None = MAX_DAILY_LOSS_PCT below.
+                           # data/launch_authorized.json "daily_loss" overrides it (the owner's $20)
+MAX_DAILY_LOSS_PCT = 2.0   # % of the account at yesterday's close, used when MAX_DAILY_LOSS is None, so the
+                           # limit fits any account size ($20 was 0.02% of a new $100,000 paper account)
 
 LOG_LEVEL = "INFO"

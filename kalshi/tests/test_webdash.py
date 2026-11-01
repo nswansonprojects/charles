@@ -40,3 +40,70 @@ def test_evil_record_compares_charles_with_the_opposite_bets():
     assert (r["bets"], r["events"], r["estimated"]) == (3, 2, 1)       # the September one is too old
     assert r["charles"]["won"] == 1 and r["evil"]["won"] == 2
     assert r["charles"]["roi_pct"] < 0 < r["evil"]["roi_pct"]
+
+
+def test_evil_card_keeps_its_own_class():
+    # 2026-10-26 the Charles vs Evil Charles card reused class "vs" as a two-column grid, which also split
+    # each Return / Worst drop box under the Home chart into two columns: 483px wide on a 390px phone.
+    import os
+    with open(os.path.join(os.path.dirname(wd.__file__), "web", "index.html")) as f:
+        page = f.read()
+    assert 'class="duel" id="evil-vs"' in page and 'class="vs" id="evil-vs"' not in page
+
+
+def test_page_works_alone_and_inside_charles():
+    # Inside Charles's dashboard (/kalshi/) webdash swaps in the shared header, which has no theme button:
+    # the page must not need one, and its sections stay in one row of its own.
+    import os
+    with open(os.path.join(os.path.dirname(wd.__file__), "web", "index.html")) as f:
+        page = f.read()
+    assert 'if (!$("theme")) return;' in page and 'id="seg"' in page
+    assert 'id="tabs"' not in page and "appswitch" not in page
+
+
+def _fresh_cache(monkeypatch):
+    monkeypatch.setattr(wd, "_state_body", None)
+    monkeypatch.setattr(wd, "_state_at", 0.0)
+
+
+def test_state_is_built_once_however_many_pages_ask_at_the_same_time(monkeypatch):
+    """Found 2026-10-31: each look re-read a 42 MB file, so a few at once filled the service's memory cap and it stopped answering."""
+    import threading
+    import time as t
+    _fresh_cache(monkeypatch)
+    builds = []
+
+    def slow():
+        builds.append(1)
+        t.sleep(.15)
+        return {"n": len(builds)}
+    monkeypatch.setattr(wd, "state", slow)
+    got = []
+    threads = [threading.Thread(target=lambda: got.append(wd.state_json())) for _ in range(8)]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    assert len(builds) == 1 and got == [b'{"n": 1}'] * 8
+
+
+def test_a_look_during_a_rebuild_gets_the_last_state_rather_than_waiting(monkeypatch):
+    _fresh_cache(monkeypatch)
+    monkeypatch.setattr(wd, "state", lambda: {"v": 1})
+    assert wd.state_json() == b'{"v": 1}'
+    wd.state_changed()
+    assert wd._state_lock.acquire(blocking=False)
+    try:
+        assert wd.state_json() == b'{"v": 1}'        # another thread "is building": no second build, no wait
+    finally:
+        wd._state_lock.release()
+
+
+def test_flipping_the_switch_shows_at_the_next_look(monkeypatch):
+    _fresh_cache(monkeypatch)
+    monkeypatch.setattr(wd, "state", lambda: {"v": 1})
+    wd.state_json()
+    monkeypatch.setattr(wd, "state", lambda: {"v": 2})
+    assert wd.state_json() == b'{"v": 1}'            # still fresh
+    wd.state_changed()
+    assert wd.state_json() == b'{"v": 2}'

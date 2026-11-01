@@ -6,7 +6,7 @@ connections.py — the bots' broker accounts, connected from a terminal over SSH
   Charles Crypto    → Coinbase       Advanced Trade API key name + EC private key
 
 Keys are typed into the terminal (hidden), checked, and written to data/accounts/connections.json
-(mode 600). The dashboard's Accounts page only reads the status (connected, last 4 characters of the
+(mode 600). The dashboard's Settings page only reads the status (connected, last 4 characters of the
 key ID, last check) and shows the SSH steps for each account; it never receives keys.
 
   charles-connect kalshi            connect (or replace) the Kalshi keys

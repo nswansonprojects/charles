@@ -7,6 +7,8 @@ switch (POST /api/mode, mode.py), which anyone who can open the dashboard may fl
 """
 import json
 import os
+import threading
+import time
 from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from zoneinfo import ZoneInfo
@@ -306,6 +308,35 @@ def state(now: datetime | None = None) -> dict:
     }
 
 
+# state() re-reads every data file, predictions_graded.jsonl (42 MB and growing) included, so a few pages open at once used to
+# fill this service's 300 MB cap and stall it (found 2026-10-31: the /kalshi/ tab stopped answering). One build at a time;
+# everyone else gets the last one, and only the very first look waits.
+STATE_TTL = 30
+_state_lock = threading.Lock()
+_state_body: bytes | None = None
+_state_at = 0.0
+
+
+def state_json() -> bytes:
+    global _state_body, _state_at
+    if _state_body is not None and time.monotonic() - _state_at < STATE_TTL:
+        return _state_body
+    if not _state_lock.acquire(blocking=_state_body is None):
+        return _state_body                     # someone is building a new one: this one will do until then
+    try:
+        if _state_body is None or time.monotonic() - _state_at >= STATE_TTL:
+            _state_body, _state_at = json.dumps(state()).encode(), time.monotonic()
+        return _state_body
+    finally:
+        _state_lock.release()
+
+
+def state_changed():
+    """The switch was flipped: the next look builds a new state instead of showing the old switch."""
+    global _state_at
+    _state_at = 0.0
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send(self, code: int, body: bytes, ctype: str):
         self.send_response(code)
@@ -318,7 +349,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         path = self.path.split("?")[0]
         if path == "/api/state":
-            self._send(200, json.dumps(state()).encode(), "application/json")
+            self._send(200, state_json(), "application/json")
         elif path in ("/", "/index.html"):
             with open(PAGE, "rb") as f:
                 self._send(200, f.read(), "text/html; charset=utf-8")
@@ -340,6 +371,7 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(want, bool):
                 return self._send(400, b'{"ok": false, "message": "evil must be true or false."}', "application/json")
             st = mode.set_evil(want)
+            state_changed()
             self._send(200, json.dumps({"ok": True, "evil": st["evil"], "since": st["since"]}).encode(), "application/json")
         except (ValueError, AttributeError):
             self._send(400, b'{"ok": false, "message": "Couldn\'t read that request."}', "application/json")
@@ -351,4 +383,5 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    threading.Thread(target=state_json, daemon=True).start()       # the first look doesn't wait for it
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

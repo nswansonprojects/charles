@@ -71,3 +71,23 @@ class Stats(BotTestCase):
         pts = bc.weekly([str(i) for i in range(12)], list(range(12)))
         self.assertEqual(pts[-1], ["11", 11])
         self.assertEqual(len(pts), 4)
+
+
+class DailySwitchCheck(BotTestCase):
+    """SWITCH_CHECK 'daily': a mid-month return from safety re-picks the stocks, as the live bot does
+    (the backtest used to give decide() only SPY's history on such a day, so no stock qualified)."""
+    def test_mid_month_return_from_safety_picks_stocks(self):
+        d = days(120, start=date(2021, 1, 4))
+        start = 50
+        first = next(i for i in range(start + 1, len(d)) if d[i][:7] != d[i - 1][:7])   # a month's first day
+        spy = [100.0 + i for i in range(len(d))]
+        for i in (first + 5, first + 6, first + 7):
+            spy[i] = 50.0                                   # three closes far below the 20-day average
+        closes = {"SPY": spy, "BIL": [100.0] * len(d), "AAA": [50 + 0.5 * i for i in range(len(d))]}
+        opens = {k: list(v) for k, v in closes.items()}
+        s = dict(al.DEFAULTS, SAFE="BIL", AGGRESSIVE=False, SWITCH_CHECK="daily", TREND_DAYS=20,
+                 MOM_DAYS=40, MOM_SKIP=5, PICKS=1, PICK_PCT=0.2)
+        r = bc.simulate(d, opens, closes, s, start=d[start], universe=["AAA"])
+        log = {day: (mode, picks) for day, mode, picks in r["picks_log"]}
+        self.assertEqual(log[d[first + 6]], ("safety", []))
+        self.assertEqual(log[d[first + 9]], ("invest", ["AAA"]))       # was ("invest", []): 20% idle in T-bills

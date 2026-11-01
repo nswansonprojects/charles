@@ -135,3 +135,32 @@ class LiveChartData(BotTestCase):
                           ["2026-10-25T06:00:00+00:00", 1008.0]], "trades": []}
         v = wd.crypto_view(book, {}, now)["book"]
         self.assertEqual(v["day_change"], 6.0)
+
+    def test_all_range_keeps_the_start_of_a_long_book(self):
+        # Hourly points for 125 days: "All" must still begin at the start (it used to keep only the last
+        # 2,000 points, about 83 days); points older than a month are thinned to one a day.
+        from datetime import timedelta
+        start = datetime(2026, 10, 24, 6, tzinfo=timezone.utc)
+        curve = [[(start + timedelta(hours=h)).isoformat(), 1000.0 + h] for h in range(125 * 24)]
+        now = start + timedelta(hours=125 * 24)
+        book = {"started": start.isoformat(), "start_cash": 1000.0, "cash": 1000.0 + 125 * 24, "qty": {},
+                "curve": curve, "trades": []}
+        v = wd.crypto_view(book, {}, now)["book"]
+        self.assertEqual(v["curve"][0], curve[0])
+        self.assertLess(len(v["curve"]), 1000)
+        month = [p for p in v["curve"] if p[0] >= (now - timedelta(days=30)).isoformat()]
+        self.assertGreaterEqual(len(month), 30 * 24)                   # the last month stays hourly
+        self.assertEqual(v["day_change"], 24.0)
+
+
+class BacktestAlignment(BotTestCase):
+    def test_a_missing_day_for_one_coin_does_not_shift_the_other(self):
+        # Coinbase has gaps (ETH-USD skips 2016-05-21/22). Each coin's price must come from its own row for
+        # that day, not from "first row + n", which shifts every coin that has no gap.
+        days = [f"2026-01-{k:02d}" for k in range(1, 11)]
+        closes = {"BTC-USD": {"days": days, "close": [100.0 + k for k in range(10)]},
+                  "ETH-USD": {"days": days[:3] + days[4:], "close": [10.0 + k for k in range(10) if k != 3]}}
+        common = [d for d in days if d != days[3]]
+        curve = crypto_backtest.simulate(common, closes, hold="BTC-USD")
+        qty = 1000.0 * (1 - 0.006) / 100.0                               # the default 0.6% fee
+        self.assertEqual(curve[-1], [days[9], round(qty * 109.0, 2)])

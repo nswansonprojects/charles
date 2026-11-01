@@ -80,10 +80,8 @@ def run_confirmation() -> bool:
     keys_to_show = [
         ("ALPACA_API_KEY",      "Alpaca API Key",    "required"),
         ("ALPACA_SECRET_KEY",   "Alpaca Secret",     "required"),
-        ("TELEGRAM_BOT_TOKEN",  "Telegram Token",    "optional"),
-        ("TELEGRAM_CHAT_ID",    "Telegram Chat ID",  "optional"),
         ("GROQ_API_KEY",        "Groq API Key",      "optional"),
-        ("DASHBOARD_PASSWORD",  "Dashboard Password","optional"),
+        ("ANTHROPIC_API_KEY",   "Anthropic (chat)",  "optional"),
     ]
 
     print(f"{BOLD}Current API Keys:{RESET}")

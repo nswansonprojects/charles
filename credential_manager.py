@@ -10,8 +10,6 @@ Setup (one time):
   2. Add your keys:
        ALPACA_API_KEY=your_key_here
        ALPACA_SECRET_KEY=your_secret_here
-       TELEGRAM_BOT_TOKEN=your_token_here
-       TELEGRAM_CHAT_ID=your_chat_id_here
        DASHBOARD_PASSWORD=choose_a_password
   3. The bot reads from .env automatically on startup
   4. Never share or commit the .env file
@@ -66,12 +64,6 @@ def alpaca_key() -> str:
 def alpaca_secret() -> str:
     return get("ALPACA_SECRET_KEY")
 
-def telegram_token() -> str:
-    return get("TELEGRAM_BOT_TOKEN")
-
-def telegram_chat_id() -> str:
-    return get("TELEGRAM_CHAT_ID")
-
 def groq_api_key() -> str:
     """Get Groq API key from env or config."""
     return get("GROQ_API_KEY", "")
@@ -86,7 +78,6 @@ def validate() -> dict[str, bool]:
     """Check which credentials are configured."""
     return {
         "alpaca":   bool(alpaca_key() and alpaca_key() != "YOUR_ALPACA_API_KEY_HERE"),
-        "telegram": bool(telegram_token()),
         "password": bool(dashboard_password()),
     }
 
@@ -105,10 +96,6 @@ def create_env_template():
 # Alpaca Paper Trading (get from alpaca.markets)
 ALPACA_API_KEY=your_alpaca_key_here
 ALPACA_SECRET_KEY=your_alpaca_secret_here
-
-# Telegram Bot (get from @BotFather)
-TELEGRAM_BOT_TOKEN=your_telegram_token_here
-TELEGRAM_CHAT_ID=your_telegram_chat_id_here
 
 # Dashboard password (choose any password you want)
 # Leave empty to disable password protection

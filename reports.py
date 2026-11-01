@@ -1,6 +1,6 @@
 """
 reports.py — Weekly, monthly, and yearly report generator.
-Produces formatted summaries sent via Telegram and saved as CSV files.
+Produces formatted summaries, shown on the dashboard and saved as CSV files.
 Compares performance against SPY buy-and-hold benchmark.
 """
 
@@ -338,10 +338,10 @@ def _save_summary_csv(stats: dict, fname: str):
     log.info(f"  💾 Summary CSV: {path}")
 
 
-# ── Telegram report sender ────────────────────────────────────────────────────
+# ── Report notice ─────────────────────────────────────────────────────────────
 
-def send_report_telegram(stats: dict):
-    """Send a formatted report to Telegram."""
+def post_report(stats: dict):
+    """Post a report as a notice on the dashboard."""
     try:
         import alerts
         period  = stats.get("period","").capitalize()
@@ -371,10 +371,10 @@ def send_report_telegram(stats: dict):
         )
         if stats.get("plan_lines"):
             msg += f"\n{'─'*30}\n" + "\n".join(stats["plan_lines"])
-        alerts._send(msg)
-        log.info(f"📱 {period} report sent to Telegram")
+        alerts.report(f"{period} report: {label}", msg)
+        log.info(f"📄 {period} report posted to the dashboard")
     except Exception as e:
-        log.warning(f"Report Telegram send failed: {e}")
+        log.warning(f"Report notice failed: {e}")
 
 
 # ── Sample data generators ────────────────────────────────────────────────────
