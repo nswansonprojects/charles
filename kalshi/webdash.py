@@ -97,6 +97,7 @@ def bot_view(bot: str) -> dict:
     return {"name": BOT_NAMES[bot], "started": led.get("started"), "start_cash": start, "account_value": round(value, 2),
             "earned": round(value - start, 2), "earned_pct": round((value / start - 1) * 100, 2) if start else None,
             "placed": len(led["open"]) + len(closed), "open": len(led["open"]),
+            "wins": sum(b["pnl"] > 0 for b in closed if b["how"] != "void"), "finished": sum(b["how"] != "void" for b in closed),
             "won": sum(b["how"] == "won" for b in closed), "lost": sum(b["how"] == "lost" for b in closed),
             "sold": sum(b["how"] == "sold" for b in closed), "realised_pnl": round(sum(b["pnl"] for b in closed), 2),
             "by_strategy": by}
@@ -137,9 +138,14 @@ def test_milestones(bots: dict, test: dict) -> list:
 
 
 def tagged_equity(eq: list, st: dict) -> list:
-    """[[ts, account value, "charles" | "evil"], ...]: who the account was following at each point. Points from before
-    2026-11-03 carry no tag, so the saved flips say."""
-    return [[e["ts"], e["account_value"], e.get("mode") or mode.followed_at(e["ts"], st)] for e in eq]
+    """[[ts, account value, following, color], ...]: following is who the account followed at that point ("charles" | "evil";
+    points from before 2026-11-03 carry no tag, so the saved flips say). color is whose bet moved the line there: the bot
+    whose bets paid out in that scan (a Charles bet's payout rises in blue even while Evil Charles is followed), else following."""
+    out = []
+    for e in eq:
+        follow = e.get("mode") or mode.followed_at(e["ts"], st)
+        out.append([e["ts"], e["account_value"], follow, e.get("by") or follow])
+    return out
 
 
 # Levels (gates.py, owner 2026-10-15): what each strategy may bet, and what it shows on the Self-Tune tab
@@ -286,6 +292,10 @@ def betting_state(now: datetime) -> dict:
                     "realised_pnl": round(sum(b["pnl"] for b in closed), 2),
                     "unrealised_pnl": round(acct["positions_value"] - at_cost, 2),
                     "placed": len(led["open"]) + len(closed),
+                    # Win rate (owner 2026-11-03): bets that made money out of the bets that finished (won, lost or sold; a
+                    # refunded market isn't one), so a bet still open never counts as a loss.
+                    "wins": sum(b["pnl"] > 0 for b in closed if b["how"] != "void"),
+                    "finished": sum(b["how"] != "void" for b in closed),
                     "won": sum(b["how"] == "won" for b in closed), "lost": sum(b["how"] == "lost" for b in closed),
                     "sold": sum(b["how"] == "sold" for b in closed)},
         "equity": tagged_equity(eq[-3000:], switch),

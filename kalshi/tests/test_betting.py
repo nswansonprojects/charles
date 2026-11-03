@@ -345,7 +345,7 @@ def test_evil_charles_bets_the_other_side_with_the_same_dollars(tmp_path, monkey
     evil = _run_with(tmp_path / "e", monkeypatch, picks, markets)["open"][0]
     assert charles["side"] == "no" and evil["side"] == "yes"
     assert evil["evil"] and evil["charles_side"] == "no"
-    assert evil["cost"] <= charles["cost"] and evil["cost"] > charles["cost"] - 1
+    assert abs(evil["cost"] - charles["cost"]) <= 0.5 * evil["avg_price"] + 0.02     # the closest whole number of contracts
     assert evil["fair"] == round(1 - charles["fair"], 4)     # Charles's own view of the evil side
 
 
@@ -396,7 +396,7 @@ def test_both_bots_bet_every_scan_in_their_own_books(tmp_path, monkeypatch):
     assert [(b["side"], b["bot"]) for b in acct["open"]] == [("no", "charles")]          # the account copies the selected bot
     assert summary["selected"] == "charles" and summary["books"]["evil"]["placed"] == 1
     assert _eq(betting.EQUITY)[-1]["mode"] == "charles"
-    assert len(_eq(betting.bot_paths("charles")[1])) == len(_eq(betting.bot_paths("evil")[1])) == 1
+    assert len(_eq(betting.bot_paths("charles")[1])) == len(_eq(betting.bot_paths("evil")[1])) == 2     # the start, then the scan
 
 
 def test_the_account_follows_the_switch_and_keeps_what_it_holds(tmp_path, monkeypatch):
@@ -408,7 +408,7 @@ def test_the_account_follows_the_switch_and_keeps_what_it_holds(tmp_path, monkey
     _scan(tmp_path, monkeypatch, [dict(PICK, ticker=f"{b}-BOS", event=b, fair_yes=0.30)], markets, NOW + timedelta(minutes=15))
     acct = betting.load()
     assert [(x["ticker"], x["side"], x["bot"]) for x in acct["open"]] == [(f"{a}-GSW", "no", "charles"), (f"{b}-BOS", "yes", "evil")]
-    assert [e["mode"] for e in _eq(betting.EQUITY)] == ["charles", "evil"]
+    assert [e["mode"] for e in _eq(betting.EQUITY)] == ["charles", "charles", "evil"]                 # the start, then each scan
     for bot, side in (("charles", "no"), ("evil", "yes")):                    # each bot's book never saw the switch
         assert [(x["side"], x["bot"]) for x in betting.load(betting.bot_paths(bot)[0])["open"]] == [(side, bot)] * 2
 
@@ -475,7 +475,7 @@ def test_evil_charles_bets_against_exactly_what_charles_placed(tmp_path, monkeyp
     assert sorted(b["ticker"] for b in evil) == sorted(b["ticker"] for b in charles)
     for c in charles:
         e = next(b for b in evil if b["ticker"] == c["ticker"])
-        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and c["cost"] - 1 < e["cost"] <= c["cost"]
+        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and abs(e["cost"] - c["cost"]) <= 0.5 * e["avg_price"] + 0.02
 
 
 def test_the_account_scales_the_bots_bets_to_its_own_money(tmp_path, monkeypatch):
@@ -486,3 +486,43 @@ def test_the_account_scales_the_bots_bets_to_its_own_money(tmp_path, monkeypatch
     _scan(tmp_path, monkeypatch, [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)], {f"{ev}-GSW": _mkt(0.55, 0.45)})
     mine, his = betting.load()["open"][0], betting.load(betting.bot_paths("charles")[0])["open"][0]
     assert mine["side"] == his["side"] and abs(mine["cost"] - his["cost"] / 2) < 1
+
+
+def test_a_copied_bet_costs_closest_to_the_original_without_passing_the_cap():
+    book = {"no": [(0.10, 1000)]}                                                       # YES offered at 0.90
+    under = betting.take("yes", book, 18.70)                                            # at most: 20 for $18.13
+    near = betting.take("yes", book, 18.70, cap=100)                                    # closest: 21 for $19.04
+    assert (under["contracts"], under["cost"]) == (20, 18.13)
+    assert (near["contracts"], near["cost"]) == (21, 19.04)
+    assert betting.take("yes", book, 18.70, cap=18.9)["contracts"] == 20                # 21 would pass the cap
+
+
+def test_value_is_cash_so_a_bet_takes_its_whole_cost_and_a_payout_puts_it_back():
+    led = {"cash": 980.0, "open": [{"ticker": "T", "side": "yes", "contracts": 100, "avg_price": 0.2, "cost": 20.0}], "closed": []}
+    acct = betting.mark(led, {"T": {"yes_bid_dollars": "0.19"}}, {}, NOW)
+    assert acct["account_value"] == 980.0 and acct["positions_value"] == 19.0
+
+
+def test_a_payout_is_tagged_with_the_bot_whose_bet_it_was(tmp_path, monkeypatch):
+    import mode
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)]
+    markets = {f"{ev}-GSW": _mkt(0.55, 0.45)}
+    _run_with(tmp_path, monkeypatch, picks, markets)                                    # the account copies a Charles bet
+    mode.set_evil(True, NOW)
+    done = dict(markets[f"{ev}-GSW"], status="settled", result="no")                   # Charles took NO: it won
+    led = betting.load(str(tmp_path / "b.json"))
+    assert led["open"] and led["open"][0]["bot"] == "charles" and led["open"][0]["side"] == "no"
+    before = led["cash"]
+    out = betting.run_book("account", str(tmp_path / "b.json"), str(tmp_path / "e.jsonl"), lambda led: [], {}, {},
+                           lambda t: done, NOW, tag="evil")
+    assert out["settled"] and out["account"]["mode"] == "evil" and out["account"]["by"] == "charles"
+    assert out["account"]["account_value"] == round(before + out["settled"][0]["contracts"], 2)   # the stake and the profit come back
+
+
+def test_a_new_books_line_starts_at_its_starting_money(tmp_path, monkeypatch):
+    import json
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    _run_with(tmp_path, monkeypatch, [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)], {f"{ev}-GSW": _mkt(0.55, 0.45)})
+    pts = [json.loads(x) for x in (tmp_path / "e.jsonl").read_text().splitlines()]
+    assert pts[0]["account_value"] == 1000.0 and pts[0]["ts"] < pts[1]["ts"] and pts[1]["account_value"] < 1000.0

@@ -117,6 +117,8 @@ def test_each_account_point_says_who_it_followed():
           {"ts": "2026-11-03T02:00:00+00:00", "account_value": 554.0, "mode": "charles"}]  # tagged by the scan itself
     assert [r[2] for r in wd.tagged_equity(eq, st)] == ["charles", "evil", "charles"]
     assert wd.tagged_equity(eq, st)[0][:2] == ["2026-10-27T00:00:00+00:00", 560.0]        # Charles's Home still reads [ts, value]
+    paid = eq + [{"ts": "2026-11-04T02:00:00+00:00", "account_value": 600.0, "mode": "evil", "by": "charles"}]
+    assert wd.tagged_equity(paid, st)[-1][2:] == ["evil", "charles"]                    # a Charles bet paid out: a blue rise
 
 
 def test_bot_view_keeps_each_bots_record_apart():

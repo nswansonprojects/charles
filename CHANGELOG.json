@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.2.1",
+   "date": "2026-11-03",
+   "kind": "rule",
+   "notes": [
+    "Kalshi: bets count at what they cost. A $20 bet takes $20 off your account, and a win puts back the stake plus the profit.",
+    "Kalshi: when Evil Charles takes the other side, he spends as close to Charles's stake as whole contracts allow, so both bots' values match until bets finish.",
+    "Kalshi: each part of the graph's line is blue or red by whose bet moved it. A win from a Charles bet rises in blue even while you follow Evil Charles.",
+    "Kalshi: the graph starts at your $1,000, and the win rate counts bets won out of bets finished."
+   ]
+  },
+  {
    "version": "v1.2.0",
    "date": "2026-11-03",
    "kind": "rule",

@@ -13,7 +13,7 @@ import json
 import logging
 import math
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import evaluate
 import forecasts
@@ -235,35 +235,43 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
             "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(exp, 2)}
 
 
-def take(side: str, book: dict, dollars: float) -> dict | None:
-    """Buy `side` for at most `dollars` (fee included), walking its offers (price_range, max_walk, fill_share as usual) with
-    no edge or payout checks: the bet was already decided. Returns {side, contracts, avg_price, fee, cost} or None."""
+def take(side: str, book: dict, dollars: float, cap: float | None = None) -> dict | None:
+    """Buy `side` for `dollars` (fee included), walking its offers (price_range, max_walk, fill_share as usual) with no edge
+    or payout checks: the bet was already decided. At most `dollars`; with `cap`, the whole number of contracts whose cost is
+    closest to `dollars` without passing `cap` (a copied bet costs the same as the one it copies, owner 2026-11-03).
+    Returns {side, contracts, avg_price, fee, cost} or None."""
     levels = [(p, q) for p, q in evaluate.asks(book, side) if RULES["price_range"][0] <= p <= RULES["price_range"][1]]
     if not levels:
         return None
-    top = levels[0][0]
-    n, cost = 0, 0.0
+    top, limit = levels[0][0], max(dollars, cap if cap is not None else dollars)
+    prices = []                                    # the price of each contract on offer, cheapest first
     for p, q in levels:
-        if p > top + RULES["max_walk"] + 1e-9:
+        if p > top + RULES["max_walk"] + 1e-9 or len(prices) * p > limit:
             break
-        k = int(min(q * RULES["fill_share"], (dollars - cost) / p))
-        if k <= 0:
-            break
-        n += k
-        cost += k * p
-    while n > 0 and cost + fee(n, cost / n) > dollars:
-        cost -= cost / n
-        n -= 1
+        prices += [p] * int(min(q * RULES["fill_share"], limit / p + 1))
+
+    def total(n):
+        c = sum(prices[:n])
+        return round(c + fee(n, c / n), 2), c
+
+    n = 0
+    while n < len(prices) and total(n + 1)[0] <= dollars:
+        n += 1
+    if cap is not None and n < len(prices):
+        over = total(n + 1)[0]
+        if over <= cap and (n == 0 or over - dollars < dollars - total(n)[0]):
+            n += 1
     if n <= 0:
         return None
+    cost = sum(prices[:n])
     f = fee(n, cost / n)
     return {"side": side, "contracts": n, "avg_price": round(cost / n, 4), "fee": f, "cost": round(cost + f, 2)}
 
 
-def flip(fill: dict, book: dict) -> dict | None:
+def flip(fill: dict, book: dict, cap: float | None = None) -> dict | None:
     """Evil Charles: the same dollars as Charles's `fill`, on the other side. Skips the edge and min_win_ratio checks: by
     Charles's own numbers this bet is a loser, and that's the point. `fair` stays Charles's view of that side."""
-    got = take("no" if fill["side"] == "yes" else "yes", book, fill["cost"])
+    got = take("no" if fill["side"] == "yes" else "yes", book, fill["cost"], cap)
     if not got:
         return None
     fair = 1 - fill["fair"]
@@ -345,7 +353,9 @@ def exits(led: dict, fair_now: dict, by_ticker: dict, now: datetime) -> list[dic
 
 
 def mark(led: dict, by_ticker: dict, fair_now: dict, now: datetime) -> dict:
-    """Open bets at today's best bid (what selling would fetch) and at our current fair value."""
+    """The book's value (owner 2026-11-03): its cash, so a bet takes its whole cost off the value when it's placed and puts
+    its payout back when it settles or sells. positions_value: the open bets at today's best bid (what selling would fetch),
+    for reference only."""
     val = 0.0
     for b in led["open"]:
         m = by_ticker.get(b["ticker"])
@@ -355,7 +365,7 @@ def mark(led: dict, by_ticker: dict, fair_now: dict, now: datetime) -> dict:
             b["fair_now"] = round(fair_now[b["ticker"]] if b["side"] == "yes" else 1 - fair_now[b["ticker"]], 4)
         val += b["contracts"] * b.get("bid", b["avg_price"])
     return {"ts": now.isoformat(timespec="seconds"), "cash": led["cash"], "positions_value": round(val, 2),
-            "account_value": round(led["cash"] + val, 2), "open_bets": len(led["open"])}
+            "account_value": led["cash"], "open_bets": len(led["open"])}
 
 
 def _brier(bets: list, outcomes: list, key: str):
@@ -492,7 +502,8 @@ def copy_bets(led: dict, placed: list, src_bank: float, opposite: bool, by_ticke
     for src in placed:
         if src["ticker"] in held:
             continue
-        dollars = min(src["cost"] * bank / src_bank if src_bank > 0 else 0.0, led["cash"] - bank * RULES["cash_reserve_pct"])
+        room = led["cash"] - bank * RULES["cash_reserve_pct"]
+        dollars = min(src["cost"] * bank / src_bank if src_bank > 0 else 0.0, room)
         if dollars < 1:
             continue
         try:
@@ -501,9 +512,9 @@ def copy_bets(led: dict, placed: list, src_bank: float, opposite: bool, by_ticke
             log.warning(f"betting book {src['ticker']}: {e}")
             continue
         if opposite:
-            fill = flip({"side": src["side"], "cost": dollars, "fair": src["fair"]}, book)
+            fill = flip({"side": src["side"], "cost": dollars, "fair": src["fair"]}, book, room)
         else:
-            got = take(src["side"], book, dollars)
+            got = take(src["side"], book, dollars, room)
             fill = got and {**got, "fair": src["fair"], "edge": round(src["fair"] - got["cost"] / got["contracts"], 4),
                             "expected_profit": round(got["contracts"] * src["fair"] - got["cost"], 2),
                             **({"evil": True, "charles_side": src["charles_side"]} if src.get("evil") else {})}
@@ -542,8 +553,19 @@ def run_book(name: str, path: str, eq_path: str, new_bets, by_ticker: dict, fair
     acct = mark(led, by_ticker, fair_now, now)
     if tag:
         acct["mode"] = tag
+    paid = {}                                      # whose bets paid out this scan: the line's rise is drawn in that bot's color
+    for b in settled + sold:
+        if b.get("received", 0) > 0:
+            who = b.get("bot") or name
+            paid[who] = paid.get(who, 0) + b["received"]
+    if paid:
+        acct["by"] = max(paid, key=paid.get)
     save(led, path)
     with open(eq_path, "a") as f:
+        if not f.tell():                           # a new book: its line starts at its starting money, a second before its first bets
+            start = {"ts": (now - timedelta(seconds=1)).isoformat(timespec="seconds"), "cash": led.get("start_cash", START_CASH),
+                     "positions_value": 0.0, "account_value": led.get("start_cash", START_CASH), "open_bets": 0}
+            f.write(json.dumps({**start, **({"mode": tag} if tag else {})}) + "\n")
         f.write(json.dumps(acct) + "\n")
     return {"led": led, "account": acct, "placed": placed, "sold": sold, "settled": settled, "bank": bank}
 

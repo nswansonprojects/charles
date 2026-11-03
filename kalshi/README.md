@@ -30,8 +30,9 @@ are sold early (in part, if the bids are thin) once the market catches up. All s
 **Charles and Evil Charles.** Two bots bet side by side, each in its own pretend $1,000 book
 (`data/bots/`): Charles takes the bets above, and Evil Charles takes the other side of exactly those bets,
 held to settlement. Your account (`data/bets.json`) follows the one you pick with the **Toggle Evil Charles**
-button on the Kalshi page: it copies that bot's new bets, sized to your account. Its one graph shows your
-account's value, with the line blue while it follows Charles and red while it follows Evil Charles. A card shows
+button on the Kalshi page: it copies that bot's new bets, sized to your account. Bets count at what they cost: a $20
+bet takes $20 off the value, and a win puts back the stake plus the profit. Its one graph shows your account's value,
+blue where Charles's bets moved it and red where Evil Charles's did. A card shows
 each bot's own record, never mixed. Anyone who can open the dashboard can flip it (`data/switch/mode.json`, `mode.py`).
 
 **Arbitrage scanner (side).** Looks for linked markets whose prices contradict each other by

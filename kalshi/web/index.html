@@ -743,22 +743,29 @@ function renderChart() {
   for (const v of niceTicks(lo, hi, 5)) if (v) grid += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="var(--grid)"/>` +
     `<text x="${m.l - 8}" y="${Y(v) + 4}" text-anchor="end">${money0(v)}</text>`;
   grid += `<text x="${m.l - 8}" y="${Y(0) + 4}" text-anchor="end">$0</text>`;
-  const nt = Math.max(1, Math.min(5, Math.floor((W - m.l - m.r) / 100)));
-  for (let k = 0; k <= nt; k++) {
-    const i = Math.round(k * (pts.length - 1) / nt);
-    grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(pts[i][0]))}</text>`;
+  const nt = Math.max(1, Math.min(5, pts.length - 1, Math.floor((W - m.l - m.r) / 100)));
+  for (let k = 0, said = ""; k <= nt; k++) {
+    const i = Math.round(k * (pts.length - 1) / nt), txt = fmtX(new Date(pts[i][0]));
+    if (txt === said) continue;                      // a few points close together: one label, not the same one piled up
+    said = txt;
+    grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${txt}</text>`;
   }
-  // Who the account was following at each point (owner 2026-11-03): the line is blue for Charles and red for Evil Charles,
-  // while the shading under it stays green above the start and red below.
+  // The line's color (owner 2026-11-03): each step is blue for Charles and red for Evil Charles, by whose bet moved it: a bet
+  // placed while following one, or a payout from one's bet (a Charles bet's win rises in blue even while Evil Charles is
+  // followed, then the line goes back to red). The shading under it stays green above the start and red below.
   const who = i => pts[i][2] === "evil" ? "evil" : "charles", LINE = {charles: "--series-1", evil: "--evil-line"};
-  const runs = [];
-  for (let i = 1, s = 0; i <= pts.length; i++) if (i === pts.length || who(i) !== who(s)) { runs.push([s, Math.min(i, pts.length - 1), who(s)]); s = i; }
+  const tint = i => (pts[i][3] || pts[i][2]) === "evil" ? "evil" : "charles";      // the step that ends at point i
+  const runs = [];                                   // [first point, last point, color]: consecutive steps of one color
+  for (let i = 1; i < pts.length; i++) {
+    const c = tint(i), r = runs.at(-1);
+    if (r && r[2] === c) r[1] = i; else runs.push([i - 1, i, c]);
+  }
   const seg = (a, b) => vals.slice(a, b + 1).map((v, k) => (k ? "L" : "M") + X(a + k).toFixed(1) + "," + Y(v).toFixed(1)).join("");
   const seen = [...new Set(runs.map(r => r[2]))];
-  $("legend").innerHTML = seen.map(w => `<span class="key">${keySvg(LINE[w], false)}${w === "evil" ? "Following Evil Charles" : "Following Charles"}</span>`).join("");
+  $("legend").innerHTML = seen.map(w => `<span class="key">${keySvg(LINE[w], false)}${w === "evil" ? "Evil Charles's bets" : "Charles's bets"}</span>`).join("");
   const y0 = Y(0), zeroAt = (y0 / H * 100).toFixed(2) + "%", first = !chartShown;
   chartShown = true;
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="What the account has earned since its $1,000 start: blue while it followed Charles, red while it followed Evil Charles. Arrow keys read values.">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="What the account has earned since its $1,000 start: blue where Charles's bets moved it, red where Evil Charles's did. Arrow keys read values.">
     <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="${H}"><stop offset="${zeroAt}" stop-color="var(--good)"/><stop offset="${zeroAt}" stop-color="var(--critical)"/></linearGradient></defs>
     <g class="axis">${grid}</g>
     <line x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}" stroke="var(--ref)" stroke-width="1"/>
@@ -860,10 +867,10 @@ function render() {
   fitText($("value"));
   countUp($("value"), a.all_time_pnl, sgnUsd);
   $("ret").innerHTML = `<b class="${cls(a.day_pnl)}">${sgnUsd(a.day_pnl)}</b> today · ${usd(a.account_value)} in all`;
-  const graded = a.won + a.lost;
-  $("winrate").textContent = graded ? Math.round(a.won / graded * 100) + "%" : "—";
+  $("winrate").textContent = a.finished ? Math.round(a.wins / a.finished * 100) + "%" : "—";
+  $("winrate").title = a.finished ? `${a.wins} of ${a.finished} finished bets made money` : "No bets have finished yet";
   $("avgwin").textContent = usd(a.avg_win); $("avgloss").textContent = usd(a.avg_loss);
-  $("nclosed").textContent = a.won + a.lost + a.sold ? `${a.won + a.lost + a.sold} settled · ${sgnUsd(a.realised_pnl)}` : "";
+  $("nclosed").textContent = a.finished ? `won ${a.wins} of ${a.finished} · ${sgnUsd(a.realised_pnl)}` : "";
   renderChart();
   renderHoldings();
 
@@ -926,9 +933,9 @@ function renderEvil() {
     + "Your account copies the one you pick. Evil Charles bets the opposite of Charles.";
   const c = bots.charles, e = bots.evil;
   if (!c || !e) { $("evil-vs").innerHTML = ""; $("evil-vs").hidden = true; $("evil-note").textContent = ""; return; }
-  const settled = b => b.won + b.lost + b.sold;
+  const settled = b => b.finished ?? b.won + b.lost + b.sold;
   const box = b => `<div><div class="label">${esc(b.name)}</div><div class="v num ${cls(b.earned)}">${sgnUsd(b.earned)}</div>`
-    + `<div class="small muted">${settled(b) ? `won ${b.won} of ${settled(b)}` : "nothing settled yet"} · ${plural(b.open, "open bet")}</div></div>`;
+    + `<div class="small muted">${settled(b) ? `won ${b.wins ?? b.won} of ${settled(b)} (${Math.round((b.wins ?? b.won) / settled(b) * 100)}%)` : "nothing settled yet"} · ${plural(b.open, "open bet")}</div></div>`;
   $("evil-vs").hidden = false;
   $("evil-vs").innerHTML = box(c) + box(e);
   const day = s => s ? new Date(s).toLocaleDateString("en-US", {month: "short", day: "numeric"}) : "today";
