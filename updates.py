@@ -269,7 +269,7 @@ def queue(action: str, by: str, version=None, confirm: bool = False, settings=No
             _check_target(action, version, confirm, now)
             job.update(version=version, confirm=bool(confirm))
         elif action in ("apply-settings", "backtest-settings", "undo-settings"):
-            if bot not in ("stocks", "crypto") or (bot == "crypto" and action == "backtest-settings"):
+            if bot not in ("stocks", "crypto"):
                 raise UpdateError("That can't be done for this bot.")
             if source not in SOURCES:
                 raise UpdateError("Unknown source of a settings change.")
@@ -277,7 +277,8 @@ def queue(action: str, by: str, version=None, confirm: bool = False, settings=No
             if action != "undo-settings":
                 import chat
                 import crypto_settings
-                job.update(settings=chat.check_settings(settings, custom=source in CUSTOM_SOURCES) if bot == "stocks" else crypto_settings.check(settings),
+                job.update(settings=chat.check_settings(settings, custom=source in CUSTOM_SOURCES) if bot == "stocks"
+                           else crypto_settings.check(settings, custom=source in CUSTOM_SOURCES),
                            reason=str(reason or "")[:300])
         elif action == "copy-config":
             if not isinstance(config, str) or not re.fullmatch(r"lb-[0-9a-f]{6}", config):
@@ -319,10 +320,14 @@ def copy_config(entry: str, by: str, now: datetime | None = None, fetch=None, ro
     path, history = os.path.join(root, "crypto.json"), os.path.join(root, "data", "crypto_settings_history.jsonl")
     now_set = crypto_settings.current(path)
     changes = {k: v for k, v in cfg["settings"].items() if now_set.get(k) != v}
+    if now_set.get("BLOCKS"):                      # as for stocks: a copy is that plan, on Charles's coins (Undo brings yours back)
+        changes["BLOCKS"] = None
+    if now_set.get("INVESTED", 1.0) != 1.0:
+        changes["INVESTED"] = 1.0
     if not changes:
         return True, "You already use these settings."
-    crypto_settings.apply_settings(changes, by, reason, now, path=path, source="the leaderboard", history=history)
-    return True, f"Copied {cfg['name']}'s settings. The crypto book uses them from its next check."
+    crypto_settings.apply_settings(changes, by, reason, now, path=path, source="the leaderboard", history=history, custom=True)
+    return True, f"Copied {cfg['name']}'s settings. The crypto book checks again within the hour."
 
 
 # ── Carrying it out (charles-updater.service, or charles-update over SSH) ─────
@@ -475,7 +480,8 @@ def run_job(now: datetime | None = None, **steps) -> str | None:
             who = job.get("by") or "the dashboard"
             if job.get("bot") == "crypto":
                 import crypto_settings
-                ok, said = crypto_settings.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the sliders") \
+                ok, said = crypto_settings.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the sliders",
+                                                          custom=job.get("source") in CUSTOM_SOURCES) \
                     if action == "apply-settings" else crypto_settings.undo_settings(who, now)
             else:
                 import chat
@@ -484,6 +490,10 @@ def run_job(now: datetime | None = None, **steps) -> str | None:
                     if action == "apply-settings" else chat.undo_settings(who, now)
         elif action == "copy-config":
             ok, said = copy_config(job.get("config"), job.get("by") or "the dashboard", now)
+        elif action == "backtest-settings" and job.get("bot") == "crypto":
+            import crypto_backtest
+            extra["backtest"] = crypto_backtest.compare(job.get("settings"))
+            ok, said = True, "The backtest is done."
         elif action == "backtest-settings":
             import chat
             extra["backtest"] = chat.backtest(job.get("settings"), custom=job.get("source") in CUSTOM_SOURCES)

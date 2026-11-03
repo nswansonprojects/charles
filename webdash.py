@@ -326,33 +326,54 @@ def thin_older(curve: list, now: datetime, recent_days: int = 31) -> list:
     return out
 
 
-def crypto_view(book: dict | None, prices: dict, now: datetime, bt: dict | None = None) -> dict:
+def crypto_shares(s: dict) -> dict:
+    """{product: its share of the book while it's held}: bitcoin/ether's weights, or each block's share split over its coins."""
+    inv = s.get("INVESTED", 1.0)
+    if not s.get("BLOCKS"):
+        return {p: w * inv for p, w in s["WEIGHTS"].items()}
+    out = {}
+    for b in s["BLOCKS"]:
+        for p in b["tickers"]:
+            out[p] = inv * b["pct"] / (b["picks"] if b["type"] == "momentum" else len(b["tickers"]))
+    return out
+
+
+def crypto_view(book: dict | None, prices: dict, now: datetime, bt: dict | None = None, settings: dict | None = None,
+                names: dict | None = None) -> dict:
     """The crypto demo's paper book valued at live prices, each coin vs its trend line, the next
-    weekly check, and the backtest. Missing prices (feed down) fall back to the last fill price."""
-    s = crypto_plan.DEFAULTS
-    out = {"generated_at": now.isoformat(), "settings": {k: s[k] for k in ("WEIGHTS", "TREND_DAYS", "CHECK_DAYS", "FEE")},
-           "names": crypto_plan.NAMES, "backtest": bt, "book": None}
+    weekly check, and the backtest. Missing prices (feed down) fall back to the last fill price.
+    `settings`: the plan as it stands (your own coins too); a coin the book still holds but the plan dropped is listed too."""
+    s = {**crypto_plan.DEFAULTS, **(settings or {})}
+    names = {**crypto_plan.NAMES, **(names or {})}
+    shares = crypto_shares(s)
+    out = {"generated_at": now.isoformat(), "settings": {k: s[k] for k in ("WEIGHTS", "TREND_DAYS", "CHECK_DAYS", "FEE", "INVESTED", "BLOCKS")},
+           "names": names, "backtest": bt, "book": None, "custom": bool(s.get("BLOCKS")), "shares": shares,
+           "mom_days": crypto_plan.MOM_DAYS, "types": crypto_plan.TYPE_NAMES}
     if not book:
         return out
     last = {t["product"]: t["price"] for t in book.get("trades", [])}
-    px = {p: prices.get(p) or last.get(p) or (book.get("coins", {}).get(p) or {}).get("price") for p in s["WEIGHTS"]}
     qty = book.get("qty", {})
+    listed = list(dict.fromkeys(crypto_plan.products(s) + [p for p, q in qty.items() if q > 1e-12]))
+    px = {p: prices.get(p) or last.get(p) or (book.get("coins", {}).get(p) or {}).get("price") for p in listed}
     value = book["cash"] + sum(q * px[p] for p, q in qty.items() if q and px.get(p))
     start = book.get("start_cash", 1000.0)
-    sp, btc = book.get("start_prices") or {}, px.get("BTC-USD")
+    sp, btc = book.get("start_prices") or {}, prices.get("BTC-USD") or px.get("BTC-USD")
     coins = []
-    for p, w in s["WEIGHTS"].items():
+    for p in listed:
         c = (book.get("coins") or {}).get(p) or {}
         avg = c.get("average")
         held = qty.get(p, 0.0) * (px.get(p) or 0)
-        coins.append({"product": p, "name": crypto_plan.NAMES.get(p, p), "price": px.get(p), "average": avg,
+        coins.append({"product": p, "name": crypto_plan.name_of(p, names), "price": px.get(p), "average": avg,
                       "gap_pct": round((px[p] / avg - 1) * 100, 1) if avg and px.get(p) else None,
                       "holding": held > 1, "value": round(held, 2), "share_pct": round(held / value * 100, 1) if value else 0,
-                      "target_pct": round((book.get("targets") or {}).get(p, 0) * 100), "weight_pct": round(w * 100)})
+                      "target_pct": round((book.get("targets") or {}).get(p, 0) * 100), "weight_pct": round(shares.get(p, 0) * 100, 1),
+                      "block": c.get("block"), "type": c.get("type"), "momentum": c.get("momentum"), "in_plan": p in shares})
     nxt = progress = None
     if book.get("last_check"):
         lc = datetime.fromisoformat(book["last_check"])
         nxt = lc + timedelta(days=s["CHECK_DAYS"])
+        if book.get("sig") and book["sig"] != crypto_plan.signature(s):
+            nxt = now + timedelta(minutes=60 - now.minute)          # a saved change: the next hourly step checks
         progress = round(min(1.0, max(0.0, (now - lc).total_seconds() / (s["CHECK_DAYS"] * 86400))), 2)
     curve = book.get("curve", [])
     day_ago = (now - timedelta(days=1)).isoformat()
@@ -509,15 +530,28 @@ def _bot_running() -> bool:
         return os.environ.get("WEBDASH_PREVIEW") == "1"
 
 
+def _crypto_settings() -> dict:
+    return {**crypto_plan.DEFAULTS, **crypto_settings.load()}
+
+
 def _crypto_prices() -> dict:
     import crypto_market
-    return {p: crypto_market.spot(p) for p in crypto_plan.DEFAULTS["WEIGHTS"]}
+    book = _read("crypto_paper.json") or {}
+    out = {}
+    for p in dict.fromkeys(crypto_plan.products(_crypto_settings()) + [p for p, q in (book.get("qty") or {}).items() if q] + ["BTC-USD"]):
+        try:
+            out[p] = crypto_market.spot(p)
+        except Exception as e:                     # one coin's feed down: the others still show
+            log.warning(f"crypto price {p}: {e}")
+    return out
 
 
 def build_crypto_state() -> dict:
     book = _read("crypto_paper.json")
     out = crypto_view(book, _cached("crypto_prices", 30, _crypto_prices) or {},
-                      datetime.now(timezone.utc), _cached("crypto_bt", 3600, lambda: crypto_backtest_view(_read(CRYPTO_BACKTEST))))
+                      datetime.now(timezone.utc), _cached("crypto_bt", 3600, lambda: crypto_backtest_view(_read(CRYPTO_BACKTEST))),
+                      settings=_crypto_settings(), names=coin_names_known())
+    out["evaluation"] = crypto_evaluation_view(_read("crypto_evaluation.json"))
     if book:          # bitcoin's hourly closes since the book started: the chart's "just hold bitcoin" line
         import crypto_market
         out["btc_hourly"] = _cached("btc_hourly", 900, lambda: crypto_market.hourly_closes("BTC-USD", book["started"])) or []
@@ -670,7 +704,7 @@ def plan_now(bot: str) -> dict:
     """Every setting of a bot's plan as it stands. A preview starts from what the live bot uses, then keeps its own test copy."""
     test, (path, _) = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)
     if bot == "crypto":
-        return crypto_settings.current(path if test else crypto_settings.PATH)
+        return {k: v for k, v in crypto_settings.current(path if test else crypto_settings.PATH).items() if k in crypto_settings.PLAN_KEYS}
     if test and os.path.exists(path):
         return {k: v for k, v in {**allocator.DEFAULTS, **chat.current_settings(path)}.items() if k in PLAN_KEYS}
     rules = ((_cached("state", 10, _stocks_state) or {}).get("rules") or {}).get("settings") if STATE_FROM else None
@@ -777,10 +811,109 @@ def ticker_names(symbols) -> dict:
     return {s: allocator.NAMES.get(s) or rows.get(s) or s for s in symbols}
 
 
+# ── The coin search (the crypto plan's "My own"): Coinbase's public list of coins it trades in dollars, else coins.json ──
+_STABLE = {"USDT", "USDC", "DAI", "PAX", "USDS", "PYUSD", "GUSD", "EURC", "FDUSD", "USD1"}      # cash already waits as cash
+_BUILTIN_COINS = []
+
+
+def _coinbase_coins() -> list:
+    """[{product, name}] for every coin Coinbase trades in US dollars right now (public, no key)."""
+    import crypto_market
+    names = {c.get("id"): c.get("name") for c in crypto_market._get("/currencies")}
+    out = []
+    for p in crypto_market._get("/products"):
+        pid, base = p.get("id") or "", p.get("base_currency")
+        if (p.get("quote_currency") == "USD" and p.get("status") == "online" and not p.get("trading_disabled")
+                and base not in _STABLE and crypto_plan.PRODUCT.match(pid)):
+            out.append({"product": pid, "name": names.get(base) or base})
+    return out
+
+
+def _builtin_coins() -> list:
+    if not _BUILTIN_COINS:
+        try:
+            with open(crypto_settings.COINS_FILE) as f:
+                _BUILTIN_COINS.extend(json.load(f)["coins"])
+        except (OSError, ValueError, KeyError) as e:
+            log.warning(f"coins.json unreadable: {e}")
+    return _BUILTIN_COINS
+
+
+def coin_type(product: str) -> str:
+    """Where the search suggests a coin goes: bitcoin and ether in a trend block (as in Charles's plan), any other in a
+    momentum one, where only the strongest are held. The user picks."""
+    return "trend" if product in crypto_plan.DEFAULTS["WEIGHTS"] else "momentum"
+
+
+def coin_search(q: str, lists: tuple | None = None, limit: int = 12) -> list:
+    """GET /api/tickers?bot=crypto&q=: coins by symbol first, then by name. Coinbase's own list when it answers."""
+    q = " ".join(str(q or "").split())[:40]
+    if not q:
+        return []
+    if lists is None:
+        found = _cached("coinbase_coins", 86400, _coinbase_coins)
+        if found is None:               # Coinbase didn't answer: ask again in 10 minutes, the built-in list meanwhile
+            with _lock:
+                _cache["coinbase_coins"] = (time.time() - 86400 + 600, None)
+        lists = (found or [], _builtin_coins())
+    seen, rows = set(), []
+    for lst in lists:
+        for r in lst:
+            if r["product"] not in seen and crypto_plan.PRODUCT.match(r["product"]):
+                seen.add(r["product"])
+                rows.append(r)
+    up, low = q.upper().removesuffix("-USD"), q.lower()
+    known = {r["product"] for r in _builtin_coins()} | set(crypto_plan.NAMES)
+    names = {**{r["product"]: r["name"] for r in rows}, **{r["product"]: r["name"] for r in _builtin_coins()}, **crypto_plan.NAMES}
+
+    def score(r):
+        sym, name = r["product"].split("-")[0], names[r["product"]].lower()
+        boost = 3 if r["product"] in known else 0
+        if sym == up:
+            return 0 if boost else 2.5
+        if sym.startswith(up):
+            return 1 + len(sym) - boost
+        if name.startswith(low):
+            return 20 - 5 * boost
+        if (" " + low) in (" " + name):
+            return 30 - 5 * boost
+        return None
+    hits = sorted(((score(r), r) for r in rows), key=lambda x: (x[0] if x[0] is not None else 99, x[1]["product"]))
+    return [{"symbol": r["product"], "name": names[r["product"]], "kind": "coin", "type": coin_type(r["product"])}
+            for sc, r in hits if sc is not None][:limit]
+
+
+def coin_names_known() -> dict:
+    """{product: name} for every coin known without waiting on Coinbase: its list counts once a search loaded it."""
+    with _lock:
+        hit = _cache.get("coinbase_coins")
+    rows = (hit[1] or []) if hit and isinstance(hit[1], list) else []
+    return {**{r["product"]: r["name"] for r in rows}, **{r["product"]: r["name"] for r in _builtin_coins()}, **crypto_plan.NAMES}
+
+
+def crypto_evaluation_view(ev: dict | None) -> dict | None:
+    """The crypto plan's monthly check (evaluate.crypto_main), for its Self-Tune tab: each change tried, with what it did in its
+    worse half (% a year against the plan now), like the stock plan's."""
+    if not ev:
+        return None
+    base = ((ev.get("current") or {}).get("coins")) or {}
+
+    def worst(v):
+        try:
+            r = v["results"]["coins"]
+            return round(min(r[h]["cagr_pct"] - base[h]["cagr_pct"] for h in ("first", "second")), 1)
+        except (KeyError, TypeError):
+            return None
+    tests = [{"setting": v.get("setting"), "label": v.get("label"), "from": v.get("from"), "to": v.get("to"), "passes": bool(v.get("passes")),
+              "why": v.get("why"), "worst": worst(v)} for v in ev.get("variants") or []]
+    return {k: ev.get(k) for k in ("generated", "history", "custom", "candidate", "self_tune", "self_tune_said", "rules")} | {
+        "now": base.get("all"), "tests": tests, "tested": len(tests), "passing": sum(t["passes"] for t in tests)}
+
+
 def _check_change(bot: str, changes) -> dict:
     test, path = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)[0]
     if bot == "crypto":
-        return crypto_settings.check(changes, path if test else crypto_settings.PATH)
+        return crypto_settings.check(changes, path if test else crypto_settings.PATH, custom=True)
     return chat.check_settings(changes, path if test and os.path.exists(path) else None, custom=True)
 
 
@@ -788,7 +921,8 @@ def settings_change_test(bot: str, changes, reason: str = "", source: str = "the
     """A change on a preview: checked the same way, written only to its test folder, and nobody is told."""
     path, history = _test_files(bot)
     if bot == "crypto":
-        return crypto_settings.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False)
+        return crypto_settings.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False,
+                                              custom=source == "the sliders")
     if not os.path.exists(path):
         state_io.write_json(path, {"settings": plan_now("stocks")}, indent=2)
     return chat.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False, custom=source == "the sliders")
@@ -813,8 +947,8 @@ def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
     out = {"ok": True, "bot": bot, "settings": plan_now(bot), "defaults": defaults, "test": test, "can": why is None, "why": why,
            "limits": {k: {"min": v[0], "max": v[1]} for k, v in limits.items() if v[2] in (int, float)},
            "can_undo": bool(changed), "changed_at": (changed or {}).get("at")}
+    import portfolio
     if bot == "stocks":                  # the Custom Plan, the presets and self-tune (owner 2026-11-03)
-        import portfolio
         own = _own_file(bot)
         lo, hi = strategy_settings.INVESTED_RANGE
         out["limits"]["INVESTED"] = {"min": lo, "max": hi}
@@ -825,6 +959,16 @@ def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
                            "core": allocator.DEFAULTS["CORE"]},
                    names=ticker_names(portfolio.symbols(out["settings"]) + [t for p in presets for t in portfolio.symbols(p["settings"])]),
                    checkup=checkup_installed())
+    else:                                # the crypto plan's own coins, presets and self-tune (owner 2026-11-03: "match the stock configuration")
+        test_path = _test_files(bot)[0]
+        own = crypto_settings.current(test_path if test else crypto_settings.PATH)
+        lo, hi = crypto_settings.INVESTED_RANGE
+        out["limits"]["INVESTED"] = {"min": lo, "max": hi}
+        out.update(self_tune=own.get("SELF_TUNE", True) is not False, presets=own.get("PRESETS") or [], charles_presets=crypto_plan.PRESETS,
+                   custom={"types": crypto_plan.TYPE_NAMES, "max_blocks": crypto_plan.MAX_BLOCKS, "max_tickers": crypto_plan.MAX_COINS,
+                           "max_picks": crypto_plan.MAX_PICKS, "max_presets": portfolio.MAX_PRESETS, "name_max": portfolio.NAME_MAX,
+                           "mom_days": crypto_plan.MOM_DAYS},
+                   names=coin_names_known(), checkup=checkup_installed(), fee=crypto_plan.DEFAULTS["FEE"])
     return out
 
 
@@ -859,8 +1003,6 @@ def settings_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
         return 409, {"ok": False, "error": "This is a preview: it shows the live bot, so it can't change its settings."}
     if auth.access(cfg) == "open":
         return 403, {"ok": False, "error": "Changing settings needs the dashboard login. Turn it on over SSH: charles-login"}
-    if backtest and bot != "stocks":
-        return 400, {"ok": False, "error": "The history test is for the stock plan."}
     action = "undo-settings" if undo else "backtest-settings" if backtest else "apply-settings"
     try:
         control.request(action, "the dashboard", bot=bot, source="the sliders", **({} if undo else {"settings": changes}))
@@ -1162,9 +1304,10 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
         {"name": "S&P 500", "pct": spy} if spy is not None else None)
     if on.get("crypto"):
         b = crypto.get("book") or {}
-        held = [c["name"].lower() for c in b.get("coins") or [] if c.get("holding")]
+        held = [c["name"] if c["name"].isupper() else c["name"].lower() for c in b.get("coins") or [] if c.get("holding")]
+        say = ("Holding " + (" and ".join(held) if len(held) <= 2 else f"{held[0]}, {held[1]} and {len(held) - 2} more")) if held else None
         add("crypto", "Crypto", "/crypto/", b.get("value"), b.get("start_cash") or 1000, b.get("day_change"), b.get("curve"),
-            ("Holding " + " and ".join(held)) if held else "In cash" if b else "Starts at its first check", False,
+            say or ("In cash" if b else "Starts at its first check"), False,
             {"name": "Bitcoin", "pct": b["btc_pct"]} if b.get("btc_pct") is not None else None)
     if on.get("kalshi"):
         k, a = kalshi.get("betting") or {}, (kalshi.get("betting") or {}).get("account") or {}
@@ -1607,7 +1750,9 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/api/settings":
             self._json(200, settings_view(parse_qs(query).get("bot", [""])[0], _cached("auth", 5, auth.load), self.headers.get("Cookie")))
         elif path == "/api/tickers":
-            self._json(200, {"ok": True, "tickers": ticker_search(parse_qs(query).get("q", [""])[0])})
+            qs = parse_qs(query)
+            q = qs.get("q", [""])[0]
+            self._json(200, {"ok": True, "tickers": coin_search(q) if qs.get("bot", [""])[0] == "crypto" else ticker_search(q)})
         elif path == "/api/accounts":
             self._json(200, accounts_state(self._on(), as_new(self.headers)))
         elif path == "/api/updates":

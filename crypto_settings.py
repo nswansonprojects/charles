@@ -27,11 +27,18 @@ LIMITS = {
     "MIN_TRADE":  (0.01, 0.20, float),
 }
 WEIGHT_KEYS = {"BTC_PCT": "BTC-USD", "ETH_PCT": "ETH-USD"}
+# Your own plan (owner 2026-11-03, like the stock plan's): how much of the book is in the plan, the user's coins in blocks,
+# then self-tune on or off and the saved presets. Never shared on the leaderboard or copied from it.
+CUSTOM = ("INVESTED", "BLOCKS")
+OWN = ("SELF_TUNE", "PRESETS")
+KEYS = tuple(LIMITS) + CUSTOM + OWN
+INVESTED_RANGE = (0.10, 1.0)
+COINS_FILE = os.path.join(ROOT, "coins.json")
 
 
 def flat(settings: dict) -> dict:
     """crypto_plan settings (WEIGHTS dict) → the flat keys used in crypto.json."""
-    out = {k: v for k, v in settings.items() if k in LIMITS}
+    out = {k: v for k, v in settings.items() if k in LIMITS or k in CUSTOM + OWN}
     for key, product in WEIGHT_KEYS.items():
         out[key] = settings.get("WEIGHTS", {}).get(product, 0.0)
     return out
@@ -39,11 +46,32 @@ def flat(settings: dict) -> dict:
 
 def to_plan(flat_settings: dict) -> dict:
     """Flat crypto.json keys → crypto_plan settings (WEIGHTS dict)."""
-    out = {k: v for k, v in flat_settings.items() if k in LIMITS and k not in WEIGHT_KEYS}
+    out = {k: v for k, v in flat_settings.items() if (k in LIMITS or k in CUSTOM + OWN) and k not in WEIGHT_KEYS}
     if any(k in flat_settings for k in WEIGHT_KEYS):
         base = flat({"WEIGHTS": __import__("crypto_plan").DEFAULTS["WEIGHTS"]})
         out["WEIGHTS"] = {p: float(flat_settings.get(k, base[k])) for k, p in WEIGHT_KEYS.items()}
     return out
+
+
+def _custom(name: str, value, out: dict):
+    if name == "INVESTED":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            log.warning(f"🪙 crypto.json: INVESTED={value!r} is not a number — ignored")
+            return
+        out[name] = min(max(float(value), INVESTED_RANGE[0]), INVESTED_RANGE[1])
+    elif name == "SELF_TUNE":
+        if isinstance(value, bool):
+            out[name] = value
+        else:
+            log.warning(f"🪙 crypto.json: SELF_TUNE={value!r} is not true/false — ignored")
+    elif name == "BLOCKS":
+        import crypto_plan
+        try:
+            out[name] = crypto_plan.check_blocks(value)
+        except ValueError as e:
+            log.warning(f"🪙 crypto.json: your coins' blocks are ignored ({e}): using Charles's plan")
+    elif isinstance(value, list):
+        out[name] = value                     # PRESETS: only for the dashboard, checked when saved
 
 
 def load(path: str = PATH) -> dict:
@@ -55,6 +83,9 @@ def load(path: str = PATH) -> dict:
         return {}
     out = {}
     for name, value in raw.items():
+        if name in CUSTOM + OWN:
+            _custom(name, value, out)
+            continue
         if name not in LIMITS:
             log.warning(f"🪙 crypto.json: unknown setting {name} ignored")
             continue
@@ -78,12 +109,36 @@ def load(path: str = PATH) -> dict:
 # ── Changing them: the sliders and Copy (charles-updater.service writes the file; the dashboard can't) ──
 
 LABELS = {"BTC_PCT": "Bitcoin's share", "ETH_PCT": "Ether's share", "TREND_DAYS": "Trend line (days)",
-          "CHECK_DAYS": "Days between checks", "MIN_TRADE": "Skip moves under"}
+          "CHECK_DAYS": "Days between checks", "MIN_TRADE": "Skip moves under", "INVESTED": "Invested", "BLOCKS": "Coins",
+          "SELF_TUNE": "Self-tune", "PRESETS": "Saved presets"}
+PLAN_KEYS = tuple(LIMITS) + CUSTOM          # what the Plan tab moves; presets and self-tune have their own controls
+
+
+def _word(k: str, v) -> str:
+    if k == "BLOCKS":
+        return "Charles's coins" if not v else f"{len(v)} block{'' if len(v) == 1 else 's'} ({', '.join(b['name'] for b in v)})"
+    if k == "PRESETS":
+        return f"{len(v or [])} saved"
+    if k == "SELF_TUNE":
+        return "on" if v or v is None else "off"
+    if k in ("INVESTED", "BTC_PCT", "ETH_PCT", "MIN_TRADE"):
+        return f"{round((1.0 if v is None else v) * 100)}%"
+    return str(v)
 
 
 def defaults() -> dict:
+    """The default plan's settings, in the Plan tab's keys."""
     import crypto_plan
-    return flat(crypto_plan.DEFAULTS)
+    return {k: v for k, v in flat(crypto_plan.DEFAULTS).items() if k in PLAN_KEYS}
+
+
+def coin_names(path: str = COINS_FILE) -> dict:
+    """{product: name} from coins.json, the built-in list of well-known coins."""
+    try:
+        with open(path) as f:
+            return {c["product"]: c["name"] for c in json.load(f)["coins"]}
+    except (OSError, ValueError, KeyError):
+        return {}
 
 
 def current(path: str = PATH) -> dict:
@@ -92,13 +147,16 @@ def current(path: str = PATH) -> dict:
     return flat({**crypto_plan.DEFAULTS, **load(path)})
 
 
-def check(changes, path: str = PATH) -> dict:
+def check(changes, path: str = PATH, custom: bool = False) -> dict:
     """The changes exactly as given if the plan is valid with them in; ValueError saying why otherwise. Strict: a bad value is
-    refused, never clamped."""
+    refused, never clamped. `custom` (the Plan tab, self-tune, a copy clearing them) also allows your own plan's keys."""
     from leaderboard import common
     if not isinstance(changes, dict) or not changes:
         raise ValueError("no settings to change")
-    merged = common.validate_settings("crypto", {**current(path), **changes})
+    unknown = [k for k in changes if k not in (KEYS if custom else LIMITS)]
+    if unknown:
+        raise ValueError(f"{unknown[0]} isn't a setting that can be changed here")
+    merged = common.validate_settings("crypto", {**current(path), **changes}, custom=True)
     return {k: merged[k] for k in changes}
 
 
@@ -115,20 +173,21 @@ def _tell(text: str):
 
 
 def apply_settings(changes, by: str, reason: str = "", now: datetime | None = None, path: str = PATH, source: str = "the sliders",
-                   history: str = HISTORY, tell: bool = True) -> tuple[bool, str]:
-    """Apply a confirmed change. The book reads crypto.json at its next hourly step."""
+                   history: str = HISTORY, tell: bool = True, custom: bool = False) -> tuple[bool, str]:
+    """Apply a confirmed change. The book reads crypto.json at its next hourly step, and a changed plan checks again then."""
     now = now or datetime.now(timezone.utc)
-    changes = check(changes, path)
+    changes = check(changes, path, custom=custom)
     before = current(path)
     after = {**before, **changes}
     if after == before:
         return True, "Those settings were already in place."
-    words = ", ".join(f"{LABELS.get(k, k)} {before.get(k)} → {v}" for k, v in changes.items())
+    words = ", ".join(f"{LABELS.get(k, k)} {_word(k, before.get(k))} → {_word(k, v)}" for k, v in changes.items())
     _write(after, f"{now:%Y-%m-%d}: from {source}: {words}" + (f" ({reason})" if reason else ""), path)
     with open(history, "a") as f:
         f.write(json.dumps({"at": now.isoformat(timespec="seconds"), "by": by, "reason": reason, "changes": changes,
                             "before": before, "after": after}) + "\n")
-    said = f"🎛️ Crypto settings changed: {words}. The book uses them from its next check. You can undo it on the dashboard."
+    soon = " The book checks again within the hour." if set(changes) & set(PLAN_KEYS) else ""
+    said = f"🎛️ Crypto settings changed: {words}.{soon} You can undo it on the dashboard."
     if tell:
         _tell(said)
     return True, said
@@ -158,12 +217,12 @@ def undo_settings(by: str, now: datetime | None = None, path: str = PATH, histor
     row = last_change(history)
     if not row:
         return True, "There's no change to undo."
-    common.validate_settings("crypto", row["before"])
+    common.validate_settings("crypto", row["before"], custom=True)
     _write(row["before"], f"{now:%Y-%m-%d}: undid the change of {row['at'][:10]}", path)
     with open(history, "a") as f:
         f.write(json.dumps({"at": now.isoformat(timespec="seconds"), "by": by, "undo": True, "before": row["after"],
                             "after": row["before"]}) + "\n")
-    said = "↩️ The last crypto settings change was undone. The book uses the old settings from its next check."
+    said = "↩️ The last crypto settings change was undone. The book checks again within the hour."
     if tell:
         _tell(said)
     return True, said

@@ -6,6 +6,7 @@ CHECK_DAYS days at that day's close, and compares it with simply holding bitcoin
 Writes docs/crypto_backtest.json (the dashboard's Crypto page draws it).
 Run with: ops/heavy-run python crypto_backtest.py
 """
+import bisect
 import json
 import os
 from datetime import datetime, timezone
@@ -19,24 +20,28 @@ START_CASH = 1000.0
 
 
 def simulate(days: list, closes: dict, settings: dict | None = None, hold: str | None = None) -> list:
-    """[[day, value]] for the plan (or buy-and-hold `hold` from the first day). `days` must be days every
-    coin has a close for. The plan needs TREND_DAYS of history before its first decision, so `days`
-    should start after that."""
+    """[[day, value]] for the plan (or buy-and-hold `hold` from the first day). The plan needs TREND_DAYS of history
+    before its first decision, so `days` should start after that. A coin with no close yet on a day (listed later,
+    your own plan) isn't there: it waits in cash until its prices start; a gap of a day uses its last close."""
     s = {**crypto_plan.DEFAULTS, **(settings or {})}
-    # each coin's own row for a day: their histories can have gaps (ether skips two days in May 2016)
-    row = {p: {d: i for i, d in enumerate(closes[p]["days"])} for p in closes}
     qty, cash, out = {}, START_CASH, []
     for n, day in enumerate(days):
-        at = {p: row[p][day] for p in closes}
-        prices = {p: closes[p]["close"][at[p]] for p in closes}
+        at = {}
+        for p in closes:
+            i = bisect.bisect_right(closes[p]["days"], day) - 1      # its last close on or before the day
+            if i >= 0:
+                at[p] = i
+        prices = {p: closes[p]["close"][i] for p, i in at.items()}
         if hold:
             if n == 0:
                 qty, cash = crypto_plan.apply({}, cash, prices, [{"product": hold, "side": "BUY", "value": cash,
                                                                    "qty": cash / prices[hold]}], s["FEE"])
         elif n % s["CHECK_DAYS"] == 0:
-            hist = {p: closes[p]["close"][:at[p] + 1] for p in closes}
+            hist = {p: closes[p]["close"][:i + 1] for p, i in at.items()}
             d = crypto_plan.decide(hist, s)
-            qty, cash = crypto_plan.apply(qty, cash, prices, crypto_plan.orders(qty, prices, cash, d["targets"], s), s["FEE"])
+            targets = {**{p: 0.0 for p, q in qty.items() if q}, **d["targets"]}
+            targets = {p: t for p, t in targets.items() if p in prices}
+            qty, cash = crypto_plan.apply(qty, cash, prices, crypto_plan.orders(qty, prices, cash, targets, s), s["FEE"])
         out.append([day, round(crypto_plan.weights_now(qty, prices, cash)[0], 2)])
     return out
 
@@ -56,6 +61,39 @@ def stats(curve: list) -> dict:
     return {"final": vals[-1], "cagr_pct": round(((vals[-1] / START_CASH) ** (1 / years) - 1) * 100, 1),
             "max_drawdown_pct": round(worst * 100, 1), "best_year": max(yearly.values()),
             "worst_year": min(yearly.values()), "yearly": yearly}
+
+
+def history(products: list, fetch=None) -> dict:
+    """{product: {"days", "close"}} from Coinbase's daily closes (cached)."""
+    fetch = fetch or crypto_market.daily_closes
+    out = {}
+    for p in products:
+        rows = fetch(p)
+        if rows:
+            out[p] = {"days": [d for d, _ in rows], "close": [c for _, c in rows]}
+    return out
+
+
+def window(closes: dict, settings: dict) -> list:
+    """The days a test runs on: bitcoin's days from when ether's trend line first exists (as the Plan tab's chart)."""
+    btc = closes["BTC-USD"]["days"]
+    eth = closes.get("ETH-USD", closes["BTC-USD"])["days"]
+    first = eth[min(len(eth) - 1, settings["TREND_DAYS"])]
+    return [d for d in btc if d >= first]
+
+
+def compare(changes: dict, fetch=None, path: str | None = None) -> dict:
+    """The Plan tab's "Test it on past prices" for crypto: the plan now and with `changes`, on the same days.
+    {"history", "now": {"plan": stats}, "with_change": {"plan": stats}}. Coins listed later wait in cash until then."""
+    import crypto_settings
+    now_s = {**crypto_plan.DEFAULTS, **crypto_settings.load(path or crypto_settings.PATH)}
+    new_s = {**now_s, **crypto_settings.to_plan({**crypto_settings.flat(now_s), **changes})}
+    closes = history(list(dict.fromkeys(["BTC-USD", "ETH-USD"] + crypto_plan.products(now_s) + crypto_plan.products(new_s))), fetch)
+    days = window(closes, {"TREND_DAYS": max(now_s["TREND_DAYS"], new_s["TREND_DAYS"])})
+    pick = lambda s: {p: closes[p] for p in closes if p in crypto_plan.products(s)}
+    keep = ("cagr_pct", "max_drawdown_pct", "final")
+    run = lambda s: {k: stats(simulate(days, pick(s), s))[k] for k in keep}
+    return {"history": f"{days[0][:7]} to {days[-1][:7]}", "now": {"plan": run(now_s)}, "with_change": {"plan": run(new_s)}}
 
 
 def main():

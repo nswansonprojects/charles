@@ -12,9 +12,9 @@
 <script src="/viz.js"></script>
 <style>
 /* crypto page only */
-:root { --btc: #eda100; --eth: #4a3aa7; }
-@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --btc: #c98500; --eth: #9085e9; } }
-:root[data-theme="dark"] { --btc: #c98500; --eth: #9085e9; }
+:root { --btc: #eda100; --eth: #4a3aa7; --c1: #0b8ea6; --c2: #c2410c; --c3: #15803d; --c4: #be185d; --c5: #4d7c0f; --c6: #7c3aed; }
+@media (prefers-color-scheme: dark) { :root[data-theme="auto"] { --btc: #c98500; --eth: #9085e9; --c1: #3cbfd4; --c2: #f07a3d; --c3: #34c77b; --c4: #f472b6; --c5: #a3c94a; --c6: #a585f2; } }
+:root[data-theme="dark"] { --btc: #c98500; --eth: #9085e9; --c1: #3cbfd4; --c2: #f07a3d; --c3: #34c77b; --c4: #f472b6; --c5: #a3c94a; --c6: #a585f2; }
 .coin { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; padding: 11px 0; border-top: 1px solid var(--border); }
 .ci { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 500; color: #fff; font-size: 14px; flex: none; }
 .coin .ci { grid-row: span 2; }
@@ -32,6 +32,13 @@ details.act-d p { margin: 0 0 9px 46px; font-size: 13px; color: var(--text-2); }
 .pm-eth { background: #4a3aa7; min-height: 150px; }
 .pm-cash { background: #475467; min-height: 150px; }
 .planmap.coins { grid-template-columns: var(--btc-share, 60fr) var(--eth-share, 40fr); }
+.pm-blocks .pm-cash { min-height: 76px; }
+.tag.leave { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-ink); }
+.ev-list { margin: 0; padding: 0; list-style: none; }
+.ev-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px; padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; }
+.ev-list li:first-child { border-top: 0; }
+.ev-list .why { grid-column: 1 / -1; font-size: 12.5px; color: var(--muted); }
+.ev-list .ok { color: var(--good-ink); font-weight: 600; }
 </style>
 </head>
 <body class="loading">
@@ -74,12 +81,9 @@ details.act-d p { margin: 0 0 9px 46px; font-size: 13px; color: var(--text-2); }
         <div class="card tune" id="tune" data-bot="crypto"></div>
         <div class="card tune-copy" id="tune-copy" hidden></div>
       </div>
-      <div class="two even" id="dials">
-        <div class="card dial-card" id="dial-BTC-USD"></div>
-        <div class="card dial-card" id="dial-ETH-USD"></div>
-      </div>
+      <div class="two even" id="dials"></div>
       <div class="card">
-        <div class="card-head"><h2>This plan since 2016</h2><span class="aside">Simulated, $1,000 start</span></div>
+        <div class="card-head"><h2 id="bt-title">This plan since 2016</h2><span class="aside">Simulated, $1,000 start</span></div>
         <div class="bt-big num" id="bt-big" style="--n:2"></div>
         <div class="chart" id="bt-chart"></div>
         <div class="years" id="bt-years"></div>
@@ -88,11 +92,28 @@ details.act-d p { margin: 0 0 9px 46px; font-size: 13px; color: var(--text-2); }
     </div>
   </section>
 
+  <section class="view" id="v-tune">
+    <div class="tab-stack">
+      <div class="card ink">
+        <div class="hero-head"><div class="eyebrow">The monthly rule check</div><span class="chip practice" id="tune-when" hidden></span></div>
+        <div class="ink-title" id="tune-title"></div>
+        <div class="sub" id="tune-sub"></div>
+        <div class="bt-big num" id="tune-now" style="--n:2" hidden></div>
+      </div>
+      <div class="card st-card" id="selftune" hidden></div>
+      <div class="card" id="ev-card" hidden>
+        <div class="card-head"><h2>What it tried</h2><span class="aside" id="ev-hist"></span></div>
+        <ul class="ev-list" id="ev-list"></ul>
+        <p class="note" id="ev-note"></p>
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <script>
 "use strict";
-const TABS = [["home", "Overview"], ["plan", "Plan"]];
+const TABS = [["home", "Overview"], ["plan", "Plan"], ["tune", "Self-Tune"]];
 const RANGES = [["1D", 1], ["1W", 7], ["1M", 30], ["All", 1e5]];      // crypto trades around the clock, like Kalshi
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
@@ -112,6 +133,14 @@ const ago = iso => { if (!iso) return "—"; const s = (Date.now() - new Date(is
   return s < 90 ? "just now" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 129600 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
 const dayFmt = (iso, o = {weekday: "short", month: "short", day: "numeric"}) => new Date(iso.length === 10 ? iso + "T12:00:00" : iso).toLocaleDateString("en-US", o);
 const COLOR = {"BTC-USD": "--btc", "ETH-USD": "--eth"}, LETTER = {"BTC-USD": "₿", "ETH-USD": "Ξ"};
+const PALETTE = ["--c1", "--c2", "--c3", "--c4", "--c5", "--c6"];
+/* Bitcoin and ether keep their colours; any other coin gets the next one, in the order the page lists them. */
+const colorOf = p => { if (COLOR[p]) return COLOR[p]; const others = ((S && S.book && S.book.coins) || []).map(c => c.product).filter(x => !COLOR[x]);
+  return PALETTE[Math.max(0, others.indexOf(p)) % PALETTE.length]; };
+const letterOf = p => LETTER[p] || p.split("-")[0].slice(0, 1);
+const symOf = p => p.split("-")[0];
+const priceOf = v => v == null ? "—" : v < 1 ? "$" + String(+(+v).toPrecision(3)) : usd(v, v < 100 ? 2 : 0);    // a coin under $1 keeps 3 digits
+const every = n => n === 1 ? "Daily" : n === 7 ? "Weekly" : n === 14 ? "Every 2 weeks" : `Every ${n} days`;
 const BT = [["plan", "--series-1", false, "Charles crypto"], ["btc", "--ref", true, "Just hold bitcoin"]];
 const TWO_TONE = `<svg width="18" height="6"><line x1="1" x2="9" y1="3" y2="3" stroke="var(--good)" stroke-width="2.4" stroke-linecap="round"/><line x1="9" x2="17" y1="3" y2="3" stroke="var(--critical)" stroke-width="2.4" stroke-linecap="round"/></svg>`;
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -246,6 +275,7 @@ function renderChart() {
 /* the simulation on the Plan tab: log scale, so a 50% drop looks the same in 2018 and 2022 */
 function renderBacktest() {
   const B = S && S.backtest, box = $("bt-chart");
+  $("bt-title").textContent = S && S.custom ? "Charles's coins since 2016" : "This plan since 2016";
   if (!B) { box.innerHTML = `<div class="empty">No simulation file yet.</div>`; return; }
   const base = B.runs.plan.curve, n = base.length;
   if (!box.clientWidth || n < 2) return;
@@ -271,28 +301,68 @@ function renderBacktest() {
   for (let i = 0; i < n; i++) { const y = base[i][0].slice(0, 4); if (i === n - 1 || base[i + 1][0].slice(0, 4) !== y) { yearly[y] = (base[i][1] / prev - 1) * 100; prev = base[i][1]; } }
   $("bt-years").innerHTML = yearBars(yearly, "Year by year", pct);
   const p21 = B.runs.plan.since_2021, b21 = B.runs.btc.since_2021;
-  $("bt-caveat").innerHTML = `Simulated on past Coinbase prices, not real results. Since mid-2021 the plan made <b>less</b> than just holding bitcoin (${pct(p21.cagr_pct, 0)} a year vs ${pct(b21.cagr_pct, 0)}), with about half the worst drop (${pct(p21.max_drawdown_pct, 0)} vs ${pct(b21.max_drawdown_pct, 0)}). <details style="margin-top:4px"><summary>Read this with care</summary>The simulation charges a ${B.fee_pct}% fee per trade. Crypto's early boom flatters any plan that owned coins then. Only money you could watch fall by half belongs here.</details>`;
+  $("bt-caveat").innerHTML = (S.custom ? `This is Charles's bitcoin and ether plan, not your coins: change a setting and press <b>Test it</b> to run yours on past prices. ` : "") + `Simulated on past Coinbase prices, not real results. Since mid-2021 the plan made <b>less</b> than just holding bitcoin (${pct(p21.cagr_pct, 0)} a year vs ${pct(b21.cagr_pct, 0)}), with about half the worst drop (${pct(p21.max_drawdown_pct, 0)} vs ${pct(b21.max_drawdown_pct, 0)}). <details style="margin-top:4px"><summary>Read this with care</summary>The simulation charges a ${B.fee_pct}% fee per trade. Crypto's early boom flatters any plan that owned coins then. Only money you could watch fall by half belongs here.</details>`;
 }
 
-/* The Plan tab's picture: the money as blocks, a dial per coin */
+/* The Plan tab's picture: the money as blocks, a dial per coin. Your own plan (BLOCKS): a group per block with what it holds now. */
 function renderPlan(b) {
-  const st = S.settings, w = st.WEIGHTS, coins = b ? b.coins : [];
-  const out = coins.filter(c => !c.holding), held = coins.filter(c => c.holding);
+  const st = S.settings, inv = st.INVESTED ?? 1, sh = S.shares || {}, coins = b ? b.coins : [];
+  const mine = coins.filter(c => c.in_plan !== false), out = mine.filter(c => !c.holding), held = mine.filter(c => c.holding);
+  const share = p => +((sh[p] || 0) * 100).toFixed(1);
+  const tile = (c, pc, sub) => `<div class="pm ${c ? "" : "pm-cash"}"${c ? ` style="background:var(${colorOf(c.product)})"` : ""}><b class="num">${pc}%</b><span>${c ? esc(c.name) : "Cash"}</span><small>${esc(sub)}</small></div>`;
   $("plan-mode").hidden = !b;
-  $("plan-mode").textContent = !out.length ? "Holding both" : !held.length ? "All in cash" : `Holding ${held[0].name.toLowerCase()}`;
-  const shares = `${Math.round(w["BTC-USD"] * 100)}% bitcoin, ${Math.round(w["ETH-USD"] * 100)}% ether`;
-  $("plan-title").textContent = !b ? "It starts at the first check." : !held.length ? "All in cash until a trend turns up." : !out.length ? `${shares}.` : `${held[0].name} now, ${out[0].name.toLowerCase()}'s share in cash.`;
-  $("planmap").style.setProperty("--btc-share", w["BTC-USD"] * 100 + "fr");
-  $("planmap").style.setProperty("--eth-share", w["ETH-USD"] * 100 + "fr");
-  $("planmap").innerHTML = coins.map(c => { const pc = Math.round(w[c.product] * 100), coin = c.product === "BTC-USD" ? "pm-btc" : "pm-eth";
-    return `<div class="pm ${c.holding ? coin : "pm-cash"}"><b class="num">${pc}%</b><span>${c.holding ? esc(c.name) : "Cash"}</span><small>${c.holding ? `${usd(c.value, 0)} now` : `${esc(c.name)} waits under its average`}</small></div>`; }).join("");
-  $("plan-next").innerHTML = [["Checks", "Weekly"], ["Next check", b && b.next_check ? dayFmt(b.next_check, {month: "short", day: "numeric"}) : "—"], ["Fee per trade", (st.FEE * 100).toFixed(1) + "%"]]
+  $("plan-mode").textContent = !held.length ? "All in cash" : !out.length ? (mine.length === 2 ? "Holding both" : "Holding all") : mine.length === 2 ? `Holding ${held[0].name.toLowerCase()}` : `Holding ${held.length} of ${mine.length}`;
+  const pm = $("planmap");
+  pm.style.gridTemplateColumns = "";
+  if (st.BLOCKS) {
+    pm.className = b ? "pm-blocks" : "planmap";
+    $("plan-title").textContent = !b ? "It starts at the first check." : `Your own plan: ${st.BLOCKS.length} block${st.BLOCKS.length === 1 ? "" : "s"}${inv < .9995 ? `, ${Math.round(inv * 100)}% invested` : ""}.`;
+    const kind = {long: "long term", trend: "trend", momentum: "momentum"};
+    let cash = 1;
+    pm.innerHTML = !b ? "" : st.BLOCKS.map(k => {
+      const g = Math.round(k.pct * inv * 100), now = k.tickers.map(p => coins.find(c => c.product === p)).filter(c => c && c.holding);
+      now.forEach(c => { cash -= (sh[c.product] || 0); });
+      return `<div class="pm-group" style="--g:${Math.max(1, g)}"><div class="pm-gh">${esc(k.name)}<span>${g}% · ${esc(k.type === "momentum" ? `momentum, best ${k.picks}` : kind[k.type])}</span></div>
+        <div class="pm-row">${now.map(c => tile(c, share(c.product), `${usd(c.value, 0)} now`)).join("") || `<div class="pm-none">Nothing qualifies right now: its share waits in cash.</div>`}</div></div>`;
+    }).join("") + (cash > 0.0005 ? `<div class="pm-group" style="--g:${Math.max(1, Math.round(cash * 100))}"><div class="pm-gh">Cash<span>what the coins don't use</span></div><div class="pm-row">${tile(null, +(cash * 100).toFixed(1), "US dollars, waiting")}</div></div>` : "");
+  } else {
+    const w = st.WEIGHTS, part = p => Math.round(w[p] * inv * 100);
+    pm.className = "planmap coins";
+    const shares = `${part("BTC-USD")}% bitcoin, ${part("ETH-USD")}% ether`;
+    $("plan-title").textContent = !b ? "It starts at the first check." : !held.length ? "All in cash until a trend turns up." : !out.length ? `${shares}${inv < .9995 ? `, the rest in cash` : ""}.` : `${held[0].name} now, ${out[0].name.toLowerCase()}'s share in cash.`;
+    const tiles = mine.map(c => [part(c.product), c.holding ? tile(c, part(c.product), `${usd(c.value, 0)} now`) : tile(null, part(c.product), `${c.name} waits under its average`)]);
+    if (inv < .9995) tiles.push([Math.round((1 - inv) * 100), tile(null, Math.round((1 - inv) * 100), "Kept aside: not invested")]);
+    pm.style.gridTemplateColumns = tiles.map(t => Math.max(1, t[0]) + "fr").join(" ");
+    pm.innerHTML = tiles.map(t => t[1]).join("");
+  }
+  $("plan-next").innerHTML = [["Checks", every(st.CHECK_DAYS)], ["Next check", b && b.next_check ? dayFmt(b.next_check, {month: "short", day: "numeric"}) : "—"], ["Fee per trade", (st.FEE * 100).toFixed(1) + "%"]]
     .map(([l, v]) => `<div><span>${l}</span><b>${v}</b></div>`).join("");
-  $("dials").hidden = !coins.length;
-  for (const c of coins) { const g = c.gap_pct;
-    $("dial-" + c.product).innerHTML = `<div class="card-head"><h2>${esc(c.name)}</h2><span class="aside">${c.holding ? "Holding" : "In cash"}</span></div>` +
+  // a dial for each coin, at most four (an even number, so no bubble stands alone), the plan's first ones
+  const dc = mine.filter(c => c.gap_pct != null || !st.BLOCKS), n = dc.length >= 4 ? 4 : dc.length >= 2 ? 2 : dc.length;
+  $("dials").hidden = !n;
+  $("dials").style.gridTemplateColumns = n === 1 ? "minmax(0, 1fr)" : "";
+  $("dials").innerHTML = dc.slice(0, n).map(c => { const g = c.gap_pct;
+    return `<div class="card dial-card"><div class="card-head"><h2>${esc(c.name)}</h2><span class="aside">${c.holding ? "Holding" : "In cash"}</span></div>` +
       dial({min: -40, max: 40, value: g, zones: [[-40, 0, "var(--critical)"], [0, 40, "var(--good)"]], big: g == null ? "—" : pct(g, 1), tone: cls(g),
-        sub: `Price vs its ${st.TREND_DAYS}-day average. Under the line at a weekly check, its share moves to cash.`}); }
+        sub: c.type === "long" ? `Price vs its ${st.TREND_DAYS}-day average. In a long-term block it's held either way.`
+          : `Price vs its ${st.TREND_DAYS}-day average. Under the line at a check, its share moves to cash.`}) + `</div>`; }).join("");
+}
+
+/* Self-Tune: the switch (tune.js fills #selftune) and the monthly check on Coinbase's prices since March 2017 */
+function renderTune() {
+  const E = S.evaluation, cand = E && E.candidate;
+  $("tune-title").textContent = !E ? "The first rule check is coming" : cand ? `Considering: ${cand.label.charAt(0).toLowerCase() + cand.label.slice(1)} ${cand.from} → ${cand.to}` : "No change needed";
+  $("tune-sub").textContent = !E ? "Once a month it tests small changes to the plan's numbers on Coinbase's prices since 2017. It never picks coins."
+    : (cand ? cand.why : `${E.passing} of ${E.tested} small changes beat the plan as it is in both halves of its history.`) + (E.self_tune_said ? " " + E.self_tune_said : "");
+  $("tune-when").hidden = !E; if (E) $("tune-when").textContent = `Checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}`;
+  $("tune-now").hidden = !(E && E.now);
+  if (E && E.now) $("tune-now").innerHTML = `<div class="bt-run"><span class="bt-l">Your plan, ${esc(E.history || "simulated")}</span><b class="${cls(E.now.cagr_pct)}">${pct(E.now.cagr_pct, 0)}</b><span class="bt-s">a year · worst drop <span class="down">${pct(E.now.max_drawdown_pct, 0)}</span></span></div>`;
+  $("ev-card").hidden = !(E && E.tests && E.tests.length);
+  if (!E) return;
+  $("ev-hist").textContent = E.history || "";
+  $("ev-list").innerHTML = (E.tests || []).map(t => `<li><span><b>${esc(t.label)}</b> <span class="num muted">${esc(String(t.from))} → ${esc(String(t.to))}</span></span>
+      <span class="num ${t.passes ? "ok" : cls(t.worst)}">${t.passes ? "Passed" : t.worst == null ? "—" : pct(t.worst, 1) + " a year"}</span><span class="why">${esc(t.why || "")}</span></li>`).join("");
+  $("ev-note").textContent = `A change passes only if it makes at least ${(E.rules || {}).min_gain_pct_per_year ?? 0.5}% a year more in both halves (2017-20 and 2021 on) without a much deeper worst drop. With self-tune on, at most one passing change a quarter is applied, and it can be undone on the Plan tab.`;
 }
 
 function render() {
@@ -303,10 +373,12 @@ function render() {
     $("ret").textContent = "The practice book starts at its first check.";
     $("coins").innerHTML = `<div class="empty">No check yet.</div>`;
     renderPlan(null);
+    renderTune();
     if (tab === "plan") renderBacktest();
     return;
   }
   renderPlan(b);
+  renderTune();
   $("value").className = "big num " + cls(b.return);
   $("value").textContent = sgnUsd(b.return);
   fitText($("value"));
@@ -315,18 +387,19 @@ function render() {
   $("ret").innerHTML = `<b class="${cls(b.day_change)}">${sgnUsd(b.day_change)}</b> today · ${usd(b.value)} in all` +
     (beat == null ? "" : ` · <b class="${cls(beat)}">${beat >= 0 ? "ahead of" : "behind"} bitcoin by ${Math.abs(beat).toFixed(2)} pts</b>`);
   $("next-check").textContent = b.next_check ? `Next check ${dayFmt(b.next_check, {month: "short", day: "numeric"})}` : "";
-  const parts = b.coins.map(c => [c.name, c.value, COLOR[c.product]]).concat([["Cash", b.cash, "--cash"]]);
+  const parts = b.coins.map(c => [c.name, c.value, colorOf(c.product)]).concat([["Cash", b.cash, "--cash"]]);
   $("alloc-now").innerHTML = parts.filter(r => r[1] > 0).map(([l, v, c]) => `<i style="width:${v / b.value * 100}%;background:var(${c})" title="${esc(l)} ${(v / b.value * 100).toFixed(0)}%"></i>`).join("");
   $("alloc-now").setAttribute("aria-label", parts.map(([l, v]) => `${l} ${(v / b.value * 100).toFixed(0)}%`).join(", "));
   $("alloc-keys").innerHTML = parts.map(([l, v, c]) => `<span><span class="sw" style="background:var(${c})"></span>${esc(l)} <b class="num" style="font-weight:500">${(v / b.value * 100).toFixed(0)}%</b></span>`).join("");
   $("coins").innerHTML = b.coins.map(c => {
     const g = c.gap_pct, w = g == null ? 0 : Math.min(50, Math.abs(g) * 1.5);
     const bar = g == null ? "" : `<i style="${g >= 0 ? "left:50%" : "right:50%"};width:${w}%;background:var(${g >= 0 ? "--good" : "--critical"})"></i>`;
-    return `<div class="coin"><span class="ci" style="background:var(${COLOR[c.product]})">${LETTER[c.product] || ""}</span>
-      <div style="min-width:0"><span class="sym">${esc(c.name)}</span><span class="tag ${c.holding ? "hold" : "cash"}">${c.holding ? "Holding" : "In cash"}</span></div>
+    const tag = c.in_plan === false ? ["leave", "Leaving the plan"] : c.holding ? ["hold", "Holding"] : ["cash", "In cash"];
+    return `<div class="coin"><span class="ci" style="background:var(${colorOf(c.product)})">${esc(letterOf(c.product))}</span>
+      <div style="min-width:0"><span class="sym">${esc(c.name)}</span><span class="tag ${tag[0]}">${tag[1]}</span></div>
       <div class="right"><b class="num" style="font-weight:500">${usd(c.value)}</b>${c.holding && c.gain != null ? ` <span class="small num ${cls(c.gain)}">${sgnUsd(c.gain)}</span>` : ""}</div>
       <div class="line"><div class="trend"><span class="mid"></span>${bar}</div>
-        <div class="small muted num"><span class="${cls(g)}">${g == null ? "No average yet" : pct(g, 1)}</span>${g == null ? "" : " vs its 200-day average"} · price ${usd(c.price, c.price < 100 ? 2 : 0)}</div></div></div>`;
+        <div class="small muted num">${c.block && c.block.trim().toLowerCase() !== c.name.toLowerCase() ? `${esc(c.block)} · ` : ""}<span class="${cls(g)}">${g == null ? "No average yet" : pct(g, 1)}</span>${g == null ? "" : ` vs its ${S.settings.TREND_DAYS}-day average`} · price ${priceOf(c.price)}</div></div></div>`;
   }).join("");
   // what's coming
   if (tab === "home") renderChart();

@@ -3,6 +3,8 @@
    The stock plan also has (owner 2026-11-03): presets (Charles's move only amounts, never tickers; the user can save and name their own), how
    much of the buying power is invested at all, and "My own": the user's tickers, found with the search (/api/tickers), in long-term, sector
    and momentum blocks with a share each (portfolio.py checks them again). Self-tune's switch on the Self-Tune tab saves the same way.
+   The crypto plan has the same (owner 2026-11-03, "match the stock configuration"): its presets, Invested, and "My own" coins from
+   Coinbase's list in long-term, trend and momentum blocks (crypto_plan.py checks them again).
    stocks.html and crypto.html keep their own helpers, so this keeps its own too, inside here. */
 (function () {
   const box = document.getElementById("tune"), copyBox = document.getElementById("tune-copy"), stBox = document.getElementById("selftune");
@@ -21,9 +23,16 @@
   const pickSize = d => pc(d.PICK_PCT);
   const own = d => !!(d && d.BLOCKS);
   const X = `<svg width="10" height="10" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg>`;
-  const TYPE = {long: "Long term", sector: "Sector", momentum: "Momentum"};
-  const TYPE_ABOUT = {long: "Held all the time, split evenly.", sector: "Each one is held only while it's above its trend line. Until then its share waits in T-bills."};
-  const TYPE_COLOR = {long: "--core", sector: "--sector", momentum: "--pick"};
+  const TYPE = STOCKS ? {long: "Long term", sector: "Sector", momentum: "Momentum"} : {long: "Long term", trend: "Trend", momentum: "Momentum"};
+  const TYPE_ABOUT = STOCKS ? {long: "Held all the time, split evenly.", sector: "Each one is held only while it's above its trend line. Until then its share waits in T-bills."}
+    : {long: "Held all the time, split evenly.", trend: "Each coin is held only while it's above its trend line. Until then its share waits in cash."};
+  const TYPE_COLOR = {long: "--core", sector: "--sector", trend: "--sector", momentum: "--pick"};
+  // the words that differ: stocks wait in T-bills, coins in cash; Charles picks stocks, but holds bitcoin and ether
+  const T = STOCKS ? {what: "Stocks", charles: "Charles's picks", item: "ticker", items: "tickers", rest: "T-bills", money: "buying power", none: "No stock or fund matches",
+                      charlesAbout: "The S&P 500 and the strongest stocks of Charles's list, re-picked monthly.", mineAbout: "Your tickers, in blocks. Each block gets its share of what's invested."}
+    : {what: "Coins", charles: "Charles's coins", item: "coin", items: "coins", rest: "cash", money: "book", none: "No coin matches",
+       charlesAbout: "Bitcoin and ether, each held only while it's above its trend line.", mineAbout: "Your coins, in blocks. Each block gets its share of what's invested."};
+  const short = t => STOCKS ? t : String(t).replace(/-USD$/, "");
   const NAME_OK = /^[\p{L}\p{N}_][\p{L}\p{N}_ &'+,./()-]*$/u;       // portfolio.check_name
   const tidy = s => String(s || "").trim().replace(/\s+/g, " ");
   const spyLong = d => own(d) && d.BLOCKS.some(b => b.type === "long" && b.tickers.includes(CORE()));
@@ -50,9 +59,12 @@
       {k: "AGG_VOL_MAX", label: "Calm means swings under", when: d => d.AGGRESSIVE, sub: true, pct: true, step: 1, show: pc, about: "How much the market may swing in a year."},
     ],
     crypto: [
-      {k: "BTC_PCT", label: "Bitcoin", pct: true, step: 5, show: pc, about: "Its share of the book while its trend is up."},
-      {k: "ETH_PCT", label: "Ether", pct: true, step: 5, show: pc, about: "Its share of the book while its trend is up."},
-      {k: "TREND_DAYS", label: "Trend line", step: 10, show: days, about: "Under this average, a coin's share waits in cash."},
+      {k: "INVESTED", label: "Invested", pct: true, step: 5, show: pc,
+       about: d => d.INVESTED >= .9995 ? "All of the book goes into the plan." : `${pc(d.INVESTED)} of the book goes into the plan. The other ${pc(1 - d.INVESTED)} waits in cash.`},
+      {k: "BLOCKS", kind: true},
+      {k: "BTC_PCT", label: "Bitcoin", pct: true, step: 5, show: pc, when: d => !own(d), about: "Its share of the plan while its trend is up."},
+      {k: "ETH_PCT", label: "Ether", pct: true, step: 5, show: pc, when: d => !own(d), about: "Its share of the plan while its trend is up."},
+      {k: "TREND_DAYS", label: "Trend line", step: 10, show: days, about: d => own(d) ? "The average your trend and momentum coins are measured against. Under it, a coin's share waits in cash." : "Under this average, a coin's share waits in cash."},
       {k: "CHECK_DAYS", label: "Check every", step: 1, show: v => v === 1 ? "day" : days(v), about: "How often the book looks. Longer means fewer trades and fees."},
     ],
   }[bot];
@@ -62,9 +74,10 @@
     stocks: {CORE_PCT: ["S&P 500 core", pc], PICKS: ["Momentum picks", v => v], PICK_PCT: ["Each pick", pc], DRIFT_PCT: ["Fix drift over", pc], TREND_DAYS: ["Trend line", days],
       SAFETY_SWITCH: ["Safety switch", onOff], SWITCH_CHECK: ["Switch checked", v => v], AGGRESSIVE: ["Aggressive mode", onOff], AGG_CORE: ["Aggressive fund", v => v === "UPRO" ? "3×" : "2×"],
       AGG_VOL_MAX: ["Calm means swings under", pc], AGG_VOL_EXIT: ["Aggressive off above", pc], INVESTED: ["Invested", pc], BLOCKS: ["Stocks", blockWords]},
-    crypto: {BTC_PCT: ["Bitcoin", pc], ETH_PCT: ["Ether", pc], TREND_DAYS: ["Trend line", days], CHECK_DAYS: ["Check every", v => v === 1 ? "day" : days(v)], MIN_TRADE: ["Skip moves under", pc]},
+    crypto: {BTC_PCT: ["Bitcoin", pc], ETH_PCT: ["Ether", pc], TREND_DAYS: ["Trend line", days], CHECK_DAYS: ["Check every", v => v === 1 ? "day" : days(v)], MIN_TRADE: ["Skip moves under", pc],
+      INVESTED: ["Invested", pc], BLOCKS: ["Coins", v => !v ? "Charles's coins" : blockWords(v)]},
   }[bot];
-  const SAVED = {stocks: "Saved. Charles uses them at its next daily check and may trade to match.", crypto: "Saved. The book uses them from its next check."}[bot];
+  const SAVED = {stocks: "Saved. Charles uses them at its next daily check and may trade to match.", crypto: "Saved. The book checks again within the hour and trades to match."}[bot];
 
   let V = null, draft = null, copying = null, busy = false, note = {text: "", tone: ""}, rows = [], names = {}, naming = false, picking = null;
   let stBusy = false, stNote = {text: "", tone: ""};
@@ -78,7 +91,7 @@
   /* What would stop a Save, in a sentence (portfolio.check_blocks says the same again on the server). */
   function problem(d) {
     if (!own(d)) return "";
-    if (!d.BLOCKS.length) return "Add a ticker, or go back to Charles's picks.";
+    if (!d.BLOCKS.length) return `Add a ${T.item}, or go back to ${T.charles}.`;
     const seen = new Set();
     for (const b of d.BLOCKS) {
       const n = tidy(b.name);
@@ -86,23 +99,23 @@
       if (!NAME_OK.test(n)) return "Block names can use letters, numbers, spaces and & ' + , . / ( ) -";
       if (seen.has(n.toLowerCase())) return `Two blocks are called ${n}.`;
       seen.add(n.toLowerCase());
-      if (!b.tickers.length) return `${n} has no tickers yet: add one, or remove the block.`;
+      if (!b.tickers.length) return `${n} has no ${T.items} yet: add one, or remove the block.`;
     }
     return "";
   }
 
   /* The money, as it would be with the sliders where they are. */
   function money() {
-    if (bot === "crypto") {
-      const rest = Math.max(0, 1 - draft.BTC_PCT - draft.ETH_PCT);
-      return [["Bitcoin", draft.BTC_PCT, "var(--btc)"], ["Ether", draft.ETH_PCT, "var(--eth)"], ["Cash", rest, "var(--cash)"]];
-    }
     const k = draft.INVESTED ?? 1;
+    if (bot === "crypto" && !own(draft)) {
+      const b = draft.BTC_PCT * k, x = draft.ETH_PCT * k;
+      return [["Bitcoin", b, "var(--btc)"], ["Ether", x, "var(--eth)"], ["Cash", Math.max(0, 1 - b - x), "var(--cash)"]];
+    }
     if (own(draft)) {
       const n = {};
       const parts = draft.BLOCKS.map(b => { const j = n[b.type] = (n[b.type] ?? -1) + 1;
         return [b.name || TYPE[b.type], b.pct * k, j % 2 ? `color-mix(in srgb, var(${TYPE_COLOR[b.type]}) 72%, #000)` : `var(${TYPE_COLOR[b.type]})`]; });
-      return [...parts, ["T-bills", Math.max(0, 1 - used(draft) * k), "var(--safe)"]];
+      return [...parts, [STOCKS ? "T-bills" : "Cash", Math.max(0, 1 - used(draft) * k), STOCKS ? "var(--safe)" : "var(--cash)"]];
     }
     const picks = draft.PICKS * draft.PICK_PCT * k, core = draft.CORE_PCT * k, rest = Math.max(0, 1 - core - picks);
     return [["S&P 500", core, "var(--core)"], ["Picks", picks, "var(--pick)"], ["T-bills", rest, "var(--safe)"]];
@@ -145,11 +158,11 @@
   /* ── Whose stocks: Charles's picks, or the user's own blocks ── */
   function kindHtml() {
     const d = draft, mine = own(d);
-    return `<div class="tn-row tn-kind"><div class="tn-top"><b>Stocks</b><div class="tabs" role="group" aria-label="Whose stocks">
-        <button type="button" data-kind="charles">Charles's picks</button><button type="button" data-kind="own">My own</button></div></div>
-      <p>${mine ? "Your tickers, in blocks. Each block gets its share of what's invested." : "The S&P 500 and the strongest stocks of Charles's list, re-picked monthly."}</p>
-      ${mine ? `<div class="bk-find"><input type="search" id="bk-q" placeholder="Search for a ticker to add" autocomplete="off" autocapitalize="characters" spellcheck="false"
-            enterkeyhint="search" aria-label="Search for a ticker to add" aria-autocomplete="list" aria-controls="bk-sug" aria-expanded="false"${d.BLOCKS.reduce((x, b) => x + b.tickers.length, 0) >= C().max_tickers * C().max_blocks ? " disabled" : ""}>
+    return `<div class="tn-row tn-kind"><div class="tn-top"><b>${T.what}</b><div class="tabs" role="group" aria-label="Whose ${T.what.toLowerCase()}">
+        <button type="button" data-kind="charles">${T.charles}</button><button type="button" data-kind="own">My own</button></div></div>
+      <p>${mine ? T.mineAbout : T.charlesAbout}</p>
+      ${mine ? `<div class="bk-find"><input type="search" id="bk-q" placeholder="Search for a ${T.item} to add" autocomplete="off" autocapitalize="characters" spellcheck="false"
+            enterkeyhint="search" aria-label="Search for a ${T.item} to add" aria-autocomplete="list" aria-controls="bk-sug" aria-expanded="false"${d.BLOCKS.reduce((x, b) => x + b.tickers.length, 0) >= C().max_tickers * C().max_blocks ? " disabled" : ""}>
           <ul class="bk-sug" id="bk-sug" role="listbox" aria-label="Tickers found" hidden></ul></div>
         <div class="bk-to" id="bk-to" hidden></div>
         <div class="bk-list">${d.BLOCKS.map(blockHtml).join("")}</div>
@@ -160,7 +173,7 @@
   function blockHtml(b, i) {
     const max = Math.min(C().max_picks || 8, b.tickers.length);
     const about = b.type === "momentum"
-      ? `Holds the <span class="bk-step"><button type="button" data-picks="${i}" data-d="-1" aria-label="One fewer pick"${b.picks <= 1 ? " disabled" : ""}>−</button><b class="num">${b.picks}</b><button type="button" data-picks="${i}" data-d="1" aria-label="One more pick"${b.picks >= max ? " disabled" : ""}>+</button></span> strongest of these over the past year, re-picked monthly.`
+      ? `Holds the <span class="bk-step"><button type="button" data-picks="${i}" data-d="-1" aria-label="One fewer pick"${b.picks <= 1 ? " disabled" : ""}>−</button><b class="num">${b.picks}</b><button type="button" data-picks="${i}" data-d="1" aria-label="One more pick"${b.picks >= max ? " disabled" : ""}>+</button></span> strongest of these ${STOCKS ? "over the past year, re-picked monthly" : `over the past ${C().mom_days || 90} days, above their trend line, re-picked at every check`}.`
       : e(TYPE_ABOUT[b.type]);
     return `<div class="bk" style="--bk:var(${TYPE_COLOR[b.type]})">
       <div class="bk-head"><input class="bk-name" data-name="${i}" value="${e(b.name)}" maxlength="${C().name_max || 30}" aria-label="Block name" spellcheck="false" autocomplete="off">
@@ -168,8 +181,8 @@
         <button class="bk-x" type="button" data-del="${i}" aria-label="Remove the block ${e(b.name)}">${X}</button></div>
       <div class="tn-top"><label for="bk-${i}" id="bkl-${i}">Share</label><output id="bko-${i}"></output></div>
       <input class="tn-range" type="range" id="bk-${i}" data-bpct="${i}" min="0" max="100" step="1" value="${Math.round(b.pct * 100)}">
-      <div class="bk-tickers">${b.tickers.map(t => `<span class="bk-chip" title="${e(nameOf(t))}"><b>${e(t)}</b><button type="button" data-untick="${i}" data-sym="${e(t)}" aria-label="Remove ${e(t)}">${X}</button></span>`).join("")
-        || `<span class="bk-none">No tickers yet. Search above to add one.</span>`}</div>
+      <div class="bk-tickers">${b.tickers.map(t => `<span class="bk-chip" title="${e(nameOf(t))}"><b>${e(short(t))}</b><button type="button" data-untick="${i}" data-sym="${e(t)}" aria-label="Remove ${e(short(t))}">${X}</button></span>`).join("")
+        || `<span class="bk-none">No ${T.items} yet. Search above to add one.</span>`}</div>
       <p class="bk-about">${about}</p></div>`;
   }
 
@@ -215,7 +228,7 @@
     const B = draft.BLOCKS, r = picking, fit = B.filter(b => b.type === r.type && b.tickers.length < C().max_tickers);
     const others = B.filter(b => b.type !== r.type && b.tickers.length < C().max_tickers);
     const btn = (label, val, primary) => `<button class="btn small${primary ? " primary" : ""}" type="button" data-to="${val}">${e(label)}</button>`;
-    to.innerHTML = `<span class="bk-to-l">Add <b>${e(r.symbol)}</b> <span class="muted">${e(r.name)}</span> to</span><span class="bk-to-b">`
+    to.innerHTML = `<span class="bk-to-l">Add <b>${e(short(r.symbol))}</b> <span class="muted">${e(r.name)}</span> to</span><span class="bk-to-b">`
       + fit.map((b, j) => btn(b.name, B.indexOf(b), j === 0)).join("")
       + (B.length < C().max_blocks ? btn(`A new ${TYPE[r.type].toLowerCase()} block`, "new", !fit.length) : "")
       + others.map(b => btn(b.name, B.indexOf(b), false)).join("")
@@ -231,14 +244,14 @@
     const q = input.value.trim(), ul = document.getElementById("bk-sug"), at = ++sugAt;
     if (!q) { ul.hidden = true; ul.innerHTML = ""; input.setAttribute("aria-expanded", "false"); return; }
     let found = [];
-    try { found = (await (await fetch("/api/tickers?q=" + encodeURIComponent(q), {cache: "no-store"})).json()).tickers || []; } catch (x) { found = null; }
+    try { found = (await (await fetch(`/api/tickers?bot=${bot}&q=` + encodeURIComponent(q), {cache: "no-store"})).json()).tickers || []; } catch (x) { found = null; }
     if (at !== sugAt || !document.body.contains(ul)) return;          // a newer search is on its way
     const where = {};
     draft.BLOCKS.forEach(b => b.tickers.forEach(t => { where[t] = b.name; }));
     ul.innerHTML = found === null ? `<li class="bk-nohit">The search didn't answer. Try again.</li>`
       : found.length ? found.map((r, j) => `<li role="none"><button type="button" role="option" id="bks-${j}" data-hit="${j}"${where[r.symbol] ? " disabled" : ""}>
-          <b>${e(r.symbol)}</b><span>${e(r.name)}</span><small>${where[r.symbol] ? `in ${e(where[r.symbol])}` : e(TYPE[r.type])}</small></button></li>`).join("")
-      : `<li class="bk-nohit">No stock or fund matches “${e(q)}”.</li>`;
+          <b>${e(short(r.symbol))}</b><span>${e(r.name)}</span><small>${where[r.symbol] ? `in ${e(where[r.symbol])}` : e(TYPE[r.type])}</small></button></li>`).join("")
+      : `<li class="bk-nohit">${T.none} “${e(q)}”.</li>`;
     ul.hidden = false;
     input.setAttribute("aria-expanded", "true");
     let cur = found && found.findIndex(r => !where[r.symbol]);
@@ -261,7 +274,7 @@
   /* The rows are built once per shape, so a slider being dragged is never replaced under the finger. */
   function build() {
     rows = ROWS.filter(r => !r.when || r.when(draft));
-    box.querySelector(".tn-presets").innerHTML = STOCKS ? presetsHtml() : "";
+    box.querySelector(".tn-presets").innerHTML = V.charles_presets ? presetsHtml() : "";
     box.querySelector(".tn-rows").innerHTML = rows.map(rowHtml).join("");
     box.querySelectorAll("[data-slide]").forEach(el => el.oninput = () => { moved(el.dataset.slide, +el.value / +el.dataset.k); paint(); });
     box.querySelectorAll("[data-set]").forEach(el => el.onclick = () => {
@@ -269,7 +282,7 @@
       moved(el.dataset.set, JSON.parse(el.dataset.val));
       if (ROWS.filter(r => !r.when || r.when(draft)).length !== shape) build(); else paint();
     });
-    if (STOCKS) wireCustom();
+    if (V.custom) wireCustom();
     paint();
   }
 
@@ -278,8 +291,12 @@
       const mine = el.dataset.kind === "own";
       if (mine === own(draft)) return;
       copying = null; picking = null;
-      // "My own" starts from what the user has now: the S&P 500 part as a long-term block, the rest theirs to fill
-      draft.BLOCKS = mine ? (clone(V.settings.BLOCKS) || [{name: "S&P 500", type: "long", pct: Math.round(draft.CORE_PCT * 100) / 100, tickers: [CORE()]}]) : null;
+      // "My own" starts from what the user has now: the S&P 500 part as a long-term block (stocks), or bitcoin and ether as
+      // trend blocks with their shares (crypto: the same plan as Charles's until it's changed); the rest is theirs to fill
+      const start = STOCKS ? [{name: "S&P 500", type: "long", pct: Math.round(draft.CORE_PCT * 100) / 100, tickers: [CORE()]}]
+        : [["Bitcoin", "BTC-USD", draft.BTC_PCT], ["Ether", "ETH-USD", draft.ETH_PCT]].filter(x => x[2] >= .01)
+            .map(([name, t, v]) => ({name, type: "trend", pct: Math.round(v * 100) / 100, tickers: [t]}));
+      draft.BLOCKS = mine ? (clone(V.settings.BLOCKS) || start) : null;
       if (note.text) note = {text: "", tone: ""};
       build();
     });
@@ -336,7 +353,7 @@
   /* ── Presets: Charles's move only amounts; the user's own hold a whole plan ── */
   function presetList() {
     const mine = (V.presets || []).map((p, i) => ({id: "u" + i, name: p.name, mine: true, i, settings: p.settings,
-      about: "Your own preset: " + (p.settings.BLOCKS ? blockWords(p.settings.BLOCKS) : "Charles's picks") + `, ${pc(p.settings.INVESTED ?? 1)} invested.`}));
+      about: "Your own preset: " + (p.settings.BLOCKS ? blockWords(p.settings.BLOCKS) : T.charles) + `, ${pc(p.settings.INVESTED ?? 1)} invested.`}));
     return [...(V.charles_presets || []), ...mine];
   }
   // what a preset does to the sliders: Charles's keep the user's blocks; a saved one is the whole plan it was saved with
@@ -416,12 +433,12 @@
         const out = document.getElementById("bko-" + i);
         if (out) out.textContent = pc(b.pct);
         const l = document.getElementById("bkl-" + i);
-        if (l) l.textContent = (d.INVESTED ?? 1) < .9995 ? `Share · ${pc(b.pct * d.INVESTED)} of all your money` : "Share";
+        if (l) l.textContent = (d.INVESTED ?? 1) < .9995 ? `Share · ${pc(b.pct * d.INVESTED)} of ${STOCKS ? "all your money" : "the book"}` : "Share";
       });
       const left = document.getElementById("bk-left"), room = Math.round((1 - used(d)) * 100);
-      if (left) { left.textContent = why || (room > 0 ? `${room}% isn't in a block: it waits in T-bills.` : ""); left.className = "bk-left" + (why ? " bad" : ""); left.hidden = !left.textContent; }
+      if (left) { left.textContent = why || (room > 0 ? `${room}% isn't in a block: it waits in ${T.rest}.` : ""); left.className = "bk-left" + (why ? " bad" : ""); left.hidden = !left.textContent; }
     }
-    const on = STOCKS && V.charles_presets ? active(d) : null;
+    const on = V.charles_presets ? active(d) : null;
     box.querySelectorAll("[data-pre]").forEach(b => { const x = !!on && b.dataset.pre === on.id; b.classList.toggle("on", x); b.setAttribute("aria-pressed", x); });
     const preAbout = document.getElementById("tn-pre-about");
     if (preAbout && !preAbout.hidden) {
@@ -445,7 +462,7 @@
     save.disabled = busy || !V.can || !!why;
     save.textContent = busy ? "Saving…" : copying ? `Copy ${copying.name}` : "Save";
     const test = box.querySelector(".tn-test");
-    test.hidden = !any || bot !== "stocks";
+    test.hidden = !any;
     test.disabled = busy || !V.can || !!why;
     box.querySelector(".tn-back").hidden = !any;
     box.querySelector(".tn-back").disabled = busy;
@@ -518,14 +535,15 @@
     const line = (label, r) => r ? `<div class="chg"><span>${label}</span><b class="num">${e(f(r))}</b></div>` : "";
     keep.hidden = false;
     keep.innerHTML = `<div class="sh-h" style="margin-top:0">On past prices, ${e(b.history)}</div>
-      ${line("Now", b.now.stocks)}${line("With this change", b.with_change.stocks)}
+      ${line("Now", b.now.stocks || b.now.plan)}${line("With this change", b.with_change.stocks || b.with_change.plan)}
       ${line("Sector funds, now", b.now.sectors)}${line("Sector funds, with it", b.with_change.sectors)}
-      <p class="small muted" style="margin:6px 0 0">Simulated, not a promise.${b.now.sectors ? " The sector line has no hindsight in its stock list." : " A ticker without prices that far back waits in T-bills until its prices start."}</p>`;
+      <p class="small muted" style="margin:6px 0 0">Simulated, not a promise.${b.now.sectors ? " The sector line has no hindsight in its stock list."
+        : ` A ${T.item} without prices that far back waits in ${T.rest} until its prices start.${STOCKS ? "" : ` The test charges Coinbase's ${((V.fee || .006) * 100).toFixed(1)}% fee on every trade.`}`}</p>`;
     say("");
   }
 
   function shell() {
-    box.innerHTML = `<div class="card-head"><h2>Set it yourself</h2>${STOCKS ? "" : `<button class="link-btn tn-reset" type="button" style="margin-left:auto">Back to the default plan</button>`}</div>
+    box.innerHTML = `<div class="card-head"><h2>Set it yourself</h2></div>
       <div class="tn-presets"></div>
       <div class="tn-bar" role="img"></div>
       <div class="tn-rows"></div>
@@ -552,13 +570,13 @@
 
   /* ── Self-tune on or off (the Self-Tune tab; owner 2026-11-03) ── */
   function paintSelfTune() {
-    if (!stBox || !STOCKS) return;
+    if (!stBox) return;
     if (!V || !V.ok || V.self_tune == null) { stBox.hidden = true; return; }
     stBox.hidden = false;
     const on = V.self_tune !== false;
-    const say_ = on ? (V.checkup ? "Claude may change one number of your plan a quarter, and only a change that won every test of the monthly check."
-                                  : "Once a quarter at most, one number of your plan changes by itself, and only a change that won every test of the monthly check on 19 years of prices.")
-        + " It never adds or removes your tickers, and every change can be undone on the Plan tab."
+    const say_ = on ? (V.checkup && STOCKS ? "Claude may change one number of your plan a quarter, and only a change that won every test of the monthly check."
+                                  : `Once a quarter at most, one number of your plan changes by itself, and only a change that won every test of the monthly check on ${STOCKS ? "19 years of prices" : "Coinbase's prices since 2017"}.`)
+        + ` It never adds or removes your ${T.items}, and every change can be undone on the Plan tab.`
       : "The monthly check still runs and shows what it found here, but nothing changes by itself.";
     stBox.innerHTML = `<div class="card-head"><h2>Self-tune</h2><div class="tabs" role="group" aria-label="Self-tune" style="margin-left:auto">
         <button type="button" data-st="1" class="${on ? "on" : ""}" aria-pressed="${on}">On</button><button type="button" data-st="0" class="${on ? "" : "on"}" aria-pressed="${!on}">Off</button></div></div>
@@ -614,12 +632,12 @@
       <ul class="mini tn-mini${top.length >= 6 ? " spread" : ""}">${top.map(r => `<li><span class="rk">${r.rank}</span><a class="nm" href="/leaderboard?bot=${bot}&amp;copy=${e(r.id)}">${e(r.name)}</a>
         <span>${sparkOf(r.spark, r.return_pct)}</span><span class="ret ${r.return_pct >= 0 ? "up" : "down"}">${signed(r.return_pct)}</span>
         <button class="btn small" type="button" data-copy-id="${e(r.id)}" aria-label="Copy ${e(r.name)}">Copy</button></li>`).join("")}</ul>
-      <p class="fi-foot">Copy moves the sliders to their settings${STOCKS ? ", on Charles's picks" : ""}. Nothing changes until you press the button under them.</p>`;
+      <p class="fi-foot">Copy moves the sliders to their settings, on ${T.charles}. Nothing changes until you press the button under them.</p>`;
     copyBox.querySelectorAll("[data-copy-id]").forEach(el => el.onclick = () => {
       const r = top.find(x => x.id === el.dataset.copyId);
       if (!r || !draft) return;
       // a copy is the leaderboard's plan on Charles's picks: the user's own blocks and the share invested go (Undo brings them back)
-      draft = {...V.settings, ...(STOCKS ? {BLOCKS: null, INVESTED: 1} : {}), ...r.settings}; copying = r; picking = null; note = {text: "", tone: ""};
+      draft = {...V.settings, BLOCKS: null, INVESTED: 1, ...r.settings}; copying = r; picking = null; note = {text: "", tone: ""};
       build();
       if (innerWidth < 860) box.scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start"});
     });

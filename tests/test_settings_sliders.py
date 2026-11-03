@@ -33,7 +33,8 @@ class CryptoChange(BotTestCase):
             return json.load(f)
 
     def test_a_new_install_has_no_file_and_gets_the_default_plan(self):
-        self.assertEqual(crypto_settings.current(self.path), {"BTC_PCT": 0.6, "ETH_PCT": 0.4, "TREND_DAYS": 200, "CHECK_DAYS": 7, "MIN_TRADE": 0.05})
+        self.assertEqual(crypto_settings.current(self.path), {"BTC_PCT": 0.6, "ETH_PCT": 0.4, "TREND_DAYS": 200, "CHECK_DAYS": 7, "MIN_TRADE": 0.05,
+                                                              "INVESTED": 1.0, "BLOCKS": None})
 
     def test_the_change_lands_in_the_file_the_book_reads(self):
         ok, said = self.apply({"BTC_PCT": 0.5, "ETH_PCT": 0.3})
@@ -133,7 +134,7 @@ class Job(BotTestCase):
 
     def test_what_the_queue_refuses(self):
         for k in ({"action": "apply-settings", "settings": {"PICKS": 2}, "bot": "kalshi"},
-                  {"action": "backtest-settings", "settings": {"TREND_DAYS": 150}, "bot": "crypto"},
+                  {"action": "apply-settings", "settings": {"INVESTED": 0.5}, "bot": "crypto", "source": "the chat"},     # the chat never sets your own plan
                   {"action": "apply-settings", "settings": {"PICKS": 2}, "source": "someone"},
                   {"action": "apply-settings", "settings": {"MAX_DAILY_LOSS": 1}},
                   {"action": "apply-settings", "settings": {"FEE": 0}, "bot": "crypto"}):
@@ -167,12 +168,13 @@ class Dashboard(BotTestCase):
             self.assertEqual(wd.settings_post(b"not json", {})[0], 400)
             asked.assert_not_called()
 
-    def test_only_stocks_have_the_history_test(self):
+    def test_both_plans_have_the_history_test(self):
+        # owner 2026-11-03: the crypto plan gets everything the stock plan has, "Test it on past prices" too
         with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(wd.control, "request") as asked, \
                 mock.patch.object(wd.auth, "access", return_value="public"):
-            self.assertEqual(self.post({}, bot="crypto", settings={"TREND_DAYS": 150}, backtest=True)[0], 400)
-            asked.assert_not_called()
-            self.assertEqual(self.post({}, bot="stocks", settings={"TREND_DAYS": 150}, backtest=True)[1]["action"], "backtest-settings")
+            for bot in ("crypto", "stocks"):
+                self.assertEqual(self.post({}, bot=bot, settings={"TREND_DAYS": 150}, backtest=True)[1]["action"], "backtest-settings")
+            self.assertEqual([c.kwargs["bot"] for c in asked.call_args_list], ["crypto", "stocks"])
 
     def test_undo_asks_for_the_right_bot(self):
         with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(wd.control, "request") as asked, \

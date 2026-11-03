@@ -1,0 +1,169 @@
+{
+ "about": "Well-known coins Coinbase trades in US dollars (checked 2026-11-03), for the crypto plan's coin search when Coinbase's own list can't be read. The search uses Coinbase's full list when it answers.",
+ "coins": [
+  {
+   "product": "BTC-USD",
+   "name": "Bitcoin"
+  },
+  {
+   "product": "ETH-USD",
+   "name": "Ether"
+  },
+  {
+   "product": "SOL-USD",
+   "name": "Solana"
+  },
+  {
+   "product": "XRP-USD",
+   "name": "XRP"
+  },
+  {
+   "product": "DOGE-USD",
+   "name": "Dogecoin"
+  },
+  {
+   "product": "ADA-USD",
+   "name": "Cardano"
+  },
+  {
+   "product": "AVAX-USD",
+   "name": "Avalanche"
+  },
+  {
+   "product": "LINK-USD",
+   "name": "Chainlink"
+  },
+  {
+   "product": "DOT-USD",
+   "name": "Polkadot"
+  },
+  {
+   "product": "LTC-USD",
+   "name": "Litecoin"
+  },
+  {
+   "product": "BCH-USD",
+   "name": "Bitcoin Cash"
+  },
+  {
+   "product": "XLM-USD",
+   "name": "Stellar"
+  },
+  {
+   "product": "UNI-USD",
+   "name": "Uniswap"
+  },
+  {
+   "product": "AAVE-USD",
+   "name": "Aave"
+  },
+  {
+   "product": "ATOM-USD",
+   "name": "Cosmos"
+  },
+  {
+   "product": "NEAR-USD",
+   "name": "Near Protocol"
+  },
+  {
+   "product": "APT-USD",
+   "name": "Aptos"
+  },
+  {
+   "product": "ARB-USD",
+   "name": "Arbitrum"
+  },
+  {
+   "product": "OP-USD",
+   "name": "Optimism"
+  },
+  {
+   "product": "FIL-USD",
+   "name": "Filecoin"
+  },
+  {
+   "product": "ICP-USD",
+   "name": "Internet Computer"
+  },
+  {
+   "product": "HBAR-USD",
+   "name": "Hedera"
+  },
+  {
+   "product": "ALGO-USD",
+   "name": "Algorand"
+  },
+  {
+   "product": "ETC-USD",
+   "name": "Ethereum Classic"
+  },
+  {
+   "product": "SHIB-USD",
+   "name": "Shiba Inu"
+  },
+  {
+   "product": "SUI-USD",
+   "name": "Sui"
+  },
+  {
+   "product": "PEPE-USD",
+   "name": "Pepe"
+  },
+  {
+   "product": "INJ-USD",
+   "name": "Injective"
+  },
+  {
+   "product": "RENDER-USD",
+   "name": "Render"
+  },
+  {
+   "product": "GRT-USD",
+   "name": "The Graph"
+  },
+  {
+   "product": "CRV-USD",
+   "name": "Curve DAO"
+  },
+  {
+   "product": "LDO-USD",
+   "name": "Lido DAO"
+  },
+  {
+   "product": "SEI-USD",
+   "name": "Sei"
+  },
+  {
+   "product": "TIA-USD",
+   "name": "Celestia"
+  },
+  {
+   "product": "STX-USD",
+   "name": "Stacks"
+  },
+  {
+   "product": "IMX-USD",
+   "name": "Immutable"
+  },
+  {
+   "product": "XTZ-USD",
+   "name": "Tezos"
+  },
+  {
+   "product": "POL-USD",
+   "name": "Polygon"
+  },
+  {
+   "product": "BONK-USD",
+   "name": "Bonk"
+  },
+  {
+   "product": "ONDO-USD",
+   "name": "Ondo"
+  },
+  {
+   "product": "ENA-USD",
+   "name": "Ethena"
+  }
+ ]
+}

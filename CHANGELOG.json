@@ -2,6 +2,19 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.4.0",
+   "date": "2026-11-03",
+   "kind": "rule",
+   "notes": [
+    "Crypto gets everything the stock plan has: presets (Default plan, 0.5× aggressive, 2× aggressive) and your own saved ones, and an Invested slider. The rest of the book waits in cash.",
+    "Crypto \"My own\": search Coinbase's coins and put them in long-term, trend or momentum blocks. Momentum holds the strongest of a block over 90 days, if they're above their trend line.",
+    "A saved crypto change trades within the hour, and a coin you take out of your plan is sold.",
+    "\"Test it on past prices\" works for crypto too.",
+    "Crypto has a Self-Tune tab: its monthly check tests small changes on Coinbase's prices since 2017. While self-tune is on, one passing change a quarter is made by itself, and it can be undone.",
+    "Your own coins aren't shared on the leaderboard. Copying someone goes back to Charles's coins, and Undo brings yours back."
+   ]
+  },
+  {
    "version": "v1.3.1",
    "date": "2026-11-03",
    "kind": "fix",

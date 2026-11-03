@@ -101,19 +101,21 @@ def custom_variants(cur: dict) -> list[dict]:
     return out
 
 
-def self_tune(result: dict, cur: dict, data_dir: str, now: datetime | None = None, queue=None, checkup: str = CHECKUP) -> str:
+def self_tune(result: dict, cur: dict, data_dir: str, now: datetime | None = None, queue=None, checkup: str | None = CHECKUP,
+              bot: str = "stocks") -> str:
     """Apply the candidate by itself where nobody else does (an install without Claude's check-up), if self-tune is on and
-    nothing was changed this way in the last quarter. Goes through the updater like a slider change. Returns what happened."""
+    nothing was changed this way in the last quarter. Goes through the updater like a slider change. Returns what happened.
+    The crypto plan passes checkup=None: the check-up tunes only the stock plan, so its own monthly check applies it everywhere."""
     now = now or datetime.now(timezone.utc)
     if not cur.get("SELF_TUNE", True):
         return "Self-tune is off, so nothing was changed."
-    if os.path.exists(checkup):
+    if checkup and os.path.exists(checkup):
         return "Claude's daily check-up decides here."
     cand = result.get("candidate")
     if not cand:
         return "No change passed every test, so nothing was changed."
     try:
-        with open(os.path.join(data_dir, "settings_history.jsonl")) as f:
+        with open(os.path.join(data_dir, "settings_history.jsonl" if bot == "stocks" else f"{bot}_settings_history.jsonl")) as f:
             rows = [json.loads(x) for x in f if x.strip()]
     except (OSError, ValueError):
         rows = []
@@ -128,11 +130,11 @@ def self_tune(result: dict, cur: dict, data_dir: str, now: datetime | None = Non
     if queue is None:
         import updates
         queue = updates.queue
-    said = queue("apply-settings", "self-tune", settings=cand["change"], reason=f"self-tune: {cand['why']}", bot="stocks", source="self-tune")
+    said = queue("apply-settings", "self-tune", settings=cand["change"], reason=f"self-tune: {cand['why']}", bot=bot, source="self-tune")
     return f"Self-tune: {cand['label']} {cand['from']} → {cand['to']} ({said})."
 
 
-def judge(base: dict, var: dict) -> tuple[bool, str]:
+def judge(base: dict, var: dict, halves: tuple = ("2007-16", "2017-now")) -> tuple[bool, str]:
     """base/var: {universe: {"first": stats, "second": stats, "all": stats}}. Pass only if better everywhere."""
     gains, why = [], []
     for u in base:
@@ -140,7 +142,7 @@ def judge(base: dict, var: dict) -> tuple[bool, str]:
             g = var[u][h]["cagr_pct"] - base[u][h]["cagr_pct"]
             gains.append(g)
             if g < MIN_GAIN:
-                why.append(f"{u} {'2007-16' if h == 'first' else '2017-now'} {g:+.1f}%/yr")
+                why.append(f"{u} {halves[0] if h == 'first' else halves[1]} {g:+.1f}%/yr")
         dd = var[u]["all"]["max_drawdown_pct"] - base[u]["all"]["max_drawdown_pct"]
         if dd < -DD_SLACK:
             why.append(f"{u} worst drop {dd:+.1f} pts deeper")
@@ -194,6 +196,106 @@ def live(plan_path: str, curve_path: str) -> dict:
             "note": "Live results count for tuning from 6 months on; before that only the backtest does."}
 
 
+# ── The crypto plan (owner 2026-11-03, "match the stock configuration"): the same kind of test on Coinbase's prices since 2017 ──
+CRYPTO_OUT = os.path.join(ROOT, "data", "crypto_evaluation.json")
+CRYPTO_HALF = "2021-01-01"
+CRYPTO_LABEL = {"TREND_DAYS": "Trend line (days)", "CHECK_DAYS": "Days between checks", "BTC_PCT": "Bitcoin's share", "ETH_PCT": "Ether's share"}
+
+
+def crypto_variants(cur: dict) -> list[dict]:
+    """One-step changes to the crypto plan's numbers (flat crypto.json keys): its trend line, how often it checks, and the
+    coins' shares (bitcoin/ether, or your blocks'); never which coins, never how much is invested."""
+    import crypto_plan
+    out = []
+
+    def add(setting, label, frm, to, change):
+        out.append({"setting": setting, "label": label, "from": frm, "to": to, "change": change})
+    for d in (-50, 50):
+        v = cur["TREND_DAYS"] + d
+        if 100 <= v <= 300:
+            add("TREND_DAYS", CRYPTO_LABEL["TREND_DAYS"], cur["TREND_DAYS"], v, {"TREND_DAYS": v})
+    for v in (3, 7, 14):
+        if v != cur["CHECK_DAYS"]:
+            add("CHECK_DAYS", CRYPTO_LABEL["CHECK_DAYS"], cur["CHECK_DAYS"], v, {"CHECK_DAYS": v})
+    blocks = cur.get("BLOCKS")
+    if not blocks:
+        for a, b in (("BTC_PCT", "ETH_PCT"), ("ETH_PCT", "BTC_PCT")):
+            if cur[a] >= 0.05 - 1e-9:
+                ch = {a: round(cur[a] - 0.05, 4), b: round(cur[b] + 0.05, 4)}
+                coin = {"BTC_PCT": "bitcoin", "ETH_PCT": "ether"}
+                add(a, f"5 points from {coin[a]} to {coin[b]}",
+                    f"{round(cur[a] * 100)}% / {round(cur[b] * 100)}%", f"{round(ch[a] * 100)}% / {round(ch[b] * 100)}%", ch)
+        return out
+    for i, b in enumerate(blocks):
+        if b["type"] == "momentum":
+            for d in (-1, 1):
+                n = b["picks"] + d
+                if 1 <= n <= min(crypto_plan.MAX_PICKS, len(b["tickers"])):
+                    nb = copy.deepcopy(blocks)
+                    nb[i]["picks"] = n
+                    add("BLOCKS", f"{b['name']}: picks", b["picks"], n, {"BLOCKS": nb})
+    for i, a in enumerate(blocks):
+        for j, b in enumerate(blocks):
+            if i != j and a["pct"] >= 0.10 - 1e-9:
+                nb = copy.deepcopy(blocks)
+                nb[i]["pct"], nb[j]["pct"] = round(a["pct"] - 0.05, 4), round(b["pct"] + 0.05, 4)
+                add("BLOCKS", f"5 points from {a['name']} to {b['name']}", f"{round(a['pct'] * 100)}% / {round(b['pct'] * 100)}%",
+                    f"{round(nb[i]['pct'] * 100)}% / {round(nb[j]['pct'] * 100)}%", {"BLOCKS": nb})
+    return out
+
+
+def crypto_summary(curve: list) -> dict:
+    """{"all", "first", "second"} stats of a crypto curve [[day, value]], split at CRYPTO_HALF (the second half rebased)."""
+    import crypto_backtest as cb
+    k = next(j for j, x in enumerate(curve) if x[0] >= CRYPTO_HALF)
+    second = [[d, v * cb.START_CASH / curve[k - 1][1]] for d, v in curve[k:]]
+    first = [[d, v] for d, v in curve[:k]]
+    keep = ("cagr_pct", "max_drawdown_pct")
+    return {"all": {x: cb.stats(curve)[x] for x in keep}, "first": {x: cb.stats(first)[x] for x in keep},
+            "second": {x: cb.stats(second)[x] for x in keep}}
+
+
+def crypto_main(out: str = CRYPTO_OUT, data_dir: str | None = None, fetch=None, path: str | None = None, queue=None,
+                now: datetime | None = None) -> dict:
+    """The crypto plan's monthly check: each one-step change on Coinbase's daily prices from March 2017 (ether's first
+    300 days feed the longest trend line; coins listed later wait in cash until then), better in both halves (2017-20, 2021-now)
+    or it doesn't pass. Self-tune applies a passing one."""
+    import crypto_backtest as cb
+    import crypto_plan
+    import crypto_settings
+    path = path or crypto_settings.PATH
+    flat = crypto_settings.current(path)
+    s = {**crypto_plan.DEFAULTS, **crypto_settings.load(path)}
+    closes = cb.history(list(dict.fromkeys(["BTC-USD", "ETH-USD"] + crypto_plan.products(s))), fetch)
+    days = cb.window(closes, {"TREND_DAYS": 300})            # every variant starts on the same day
+    plan = lambda st: {p: closes[p] for p in closes if p in crypto_plan.products(st)}
+
+    def test(st):
+        return {"coins": crypto_summary(cb.simulate(days, plan(st), st))}
+    base = test(s)
+    rows = []
+    for v in crypto_variants(flat):
+        st = {**s, **crypto_settings.to_plan({**flat, **v["change"]})}
+        r = test(st)
+        ok, why = judge(base, r, halves=("2017-20", "2021-now"))
+        rows.append({**v, "passes": ok, "why": why, "results": r})
+        print(f"crypto {v['label']} {v['from']}->{v['to']}: {'PASS' if ok else 'no'} — {why}", file=sys.stderr)
+    best = max((r for r in rows if r["passes"]),
+               key=lambda r: min(r["results"]["coins"][h]["cagr_pct"] - base["coins"][h]["cagr_pct"] for h in ("first", "second")), default=None)
+    data_dir = data_dir or os.path.dirname(out)
+    result = {"generated": (now or datetime.now(timezone.utc)).isoformat(timespec="minutes"), "history": f"{days[0][:7]} to {days[-1][:7]}",
+              "custom": bool(s.get("BLOCKS")), "current": base, "variants": rows,
+              "candidate": {k: best[k] for k in ("setting", "label", "from", "to", "why", "change")} if best else None,
+              "rules": {"min_gain_pct_per_year": MIN_GAIN, "dd_slack_pts": DD_SLACK}, "self_tune": flat.get("SELF_TUNE", True) is not False}
+    try:
+        result["self_tune_said"] = self_tune(result, flat, data_dir, now=now, queue=queue, checkup=None, bot="crypto")
+    except Exception as e:
+        result["self_tune_said"] = f"Self-tune couldn't apply the change: {e}"
+    import state_io
+    state_io.write_json(out, result, indent=1)
+    return result
+
+
 def main(out: str = OUT, data_dir: str | None = None):
     import strategy_settings
     cur = {**al.DEFAULTS, **strategy_settings.load()}
@@ -244,6 +346,13 @@ def main(out: str = OUT, data_dir: str | None = None):
     import state_io
     state_io.write_json(out, result, indent=1)
     print(json.dumps({"candidate": result["candidate"], "live": result["live"]}, indent=1))
+    try:                                         # the crypto add-on's plan, when it's on; its failure never undoes the stock check
+        import addons
+        if addons.enabled().get("crypto"):
+            c = crypto_main(os.path.join(data_dir, "crypto_evaluation.json"), data_dir)
+            print(json.dumps({"crypto_candidate": c["candidate"], "crypto_self_tune": c.get("self_tune_said")}, indent=1))
+    except Exception as e:
+        print(f"crypto evaluation failed: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

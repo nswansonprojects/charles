@@ -34,8 +34,16 @@ def _limits(bot: str) -> dict:
     raise ValueError(f"unknown bot {bot!r}")
 
 
-def _custom_value(name: str, value):
-    """The Custom Plan and the user's own choices (strategy_settings.CUSTOM + OWN), as strictly as the rest."""
+def _custom_keys(bot: str) -> tuple:
+    if bot == "stocks":
+        import strategy_settings
+        return strategy_settings.CUSTOM + strategy_settings.OWN
+    import crypto_settings
+    return crypto_settings.CUSTOM + crypto_settings.OWN
+
+
+def _custom_value(name: str, value, bot: str = "stocks"):
+    """Your own plan and the user's own choices (strategy_settings / crypto_settings CUSTOM + OWN), as strictly as the rest."""
     import portfolio
     import strategy_settings
     if name == "INVESTED":
@@ -48,8 +56,11 @@ def _custom_value(name: str, value):
             raise ValueError("SELF_TUNE must be true or false")
         return value
     if name == "BLOCKS":
+        if bot == "crypto":
+            import crypto_plan
+            return crypto_plan.check_blocks(value)
         return portfolio.check_blocks(value)
-    return portfolio.check_presets(value, lambda s: validate_settings("stocks", s, custom=True))
+    return portfolio.check_presets(value, lambda s: validate_settings(bot, s, custom=True))
 
 
 def validate_settings(bot: str, settings, custom: bool = False) -> dict:
@@ -64,11 +75,9 @@ def validate_settings(bot: str, settings, custom: bool = False) -> dict:
     limits = _limits(bot)
     out = {}
     for name, value in settings.items():
-        if custom and bot == "stocks":
-            import strategy_settings
-            if name in strategy_settings.CUSTOM + strategy_settings.OWN:
-                out[name] = _custom_value(name, value)
-                continue
+        if custom and name in _custom_keys(bot):
+            out[name] = _custom_value(name, value, bot)
+            continue
         if name not in limits:
             raise ValueError(f"unknown setting {name!r}")
         lo, hi, typ = limits[name]

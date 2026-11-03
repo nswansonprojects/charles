@@ -58,9 +58,10 @@ def check_name(name, what: str = "A name") -> str:
     return name
 
 
-def check_blocks(blocks) -> list | None:
+def check_blocks(blocks, kinds: tuple = TYPES, symbol=SYMBOL, max_tickers: int = MAX_TICKERS, max_picks: int = MAX_PICKS,
+                 what: str = "ticker") -> list | None:
     """The blocks exactly as given if they make a valid plan; ValueError saying why otherwise (never clamped).
-    None means Charles's default plan."""
+    None means Charles's default plan. The crypto plan uses the same checks with its own kinds and coins (crypto_plan.check_blocks)."""
     if blocks is None:
         return None
     if not isinstance(blocks, list) or not blocks:
@@ -80,27 +81,27 @@ def check_blocks(blocks) -> list | None:
         if name.lower() in names:
             raise ValueError(f"two blocks are called {name}")
         names.add(name.lower())
-        if b.get("type") not in TYPES:
-            raise ValueError(f"{name}: the type must be one of {', '.join(TYPES)}")
+        if b.get("type") not in kinds:
+            raise ValueError(f"{name}: the type must be one of {', '.join(kinds)}")
         pct = b.get("pct")
         if isinstance(pct, bool) or not isinstance(pct, (int, float)) or not 0.01 <= pct <= 1:
             raise ValueError(f"{name}: its share must be between 1% and 100%")
         total += pct
         tickers = b.get("tickers")
         if not isinstance(tickers, list) or not tickers:
-            raise ValueError(f"{name}: add at least one ticker")
-        if len(tickers) > MAX_TICKERS:
-            raise ValueError(f"{name}: at most {MAX_TICKERS} tickers in a block")
+            raise ValueError(f"{name}: add at least one {what}")
+        if len(tickers) > max_tickers:
+            raise ValueError(f"{name}: at most {max_tickers} {what}s in a block")
         for t in tickers:
-            if not isinstance(t, str) or not SYMBOL.match(t):
-                raise ValueError(f"{name}: {str(t)[:12]!r} doesn't look like a ticker")
+            if not isinstance(t, str) or not symbol.match(t):
+                raise ValueError(f"{name}: {str(t)[:12]!r} doesn't look like a {what}")
             if t in seen:
                 raise ValueError(f"{t} is in two blocks ({seen[t]} and {name})")
             seen[t] = name
         if b["type"] == "momentum":
             n = b.get("picks")
-            if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= min(MAX_PICKS, len(tickers)):
-                raise ValueError(f"{name}: picks must be a whole number from 1 to {min(MAX_PICKS, len(tickers))}")
+            if isinstance(n, bool) or not isinstance(n, int) or not 1 <= n <= min(max_picks, len(tickers)):
+                raise ValueError(f"{name}: picks must be a whole number from 1 to {min(max_picks, len(tickers))}")
         elif "picks" in b:
             raise ValueError(f"{name}: only a momentum block has picks")
     if total > 1 + 1e-9:

@@ -40,33 +40,52 @@ def save(book: dict, path: str = PATH):
     os.replace(path + ".tmp", path)
 
 
-def step(book: dict, closes: dict, prices: dict, now: datetime, settings: dict | None = None, force: bool = False) -> dict:
-    """One run: on a due weekly check, decide and fill at `prices`; always add a value point."""
+def step(book: dict, closes: dict, prices: dict, now: datetime, settings: dict | None = None, force: bool = False,
+         names: dict | None = None) -> dict:
+    """One run: on a due weekly check, decide and fill at `prices`; always add a value point. A saved change to the plan
+    (its signature) brings the check forward to this run. A coin the book holds but the plan no longer names is sold."""
     s = {**crypto_plan.DEFAULTS, **(settings or {})}
     stamp = now.isoformat(timespec="seconds")
-    book.setdefault("start_prices", dict(prices))      # for "vs just holding bitcoin" since the start
-    if force or crypto_plan.check_due(book.get("last_check"), now.date().isoformat(), s):
+    book.setdefault("start_prices", {p: v for p, v in prices.items() if p in ("BTC-USD", "ETH-USD")})  # for "vs just holding bitcoin"
+    sig = crypto_plan.signature(s)
+    # a book from before 1.4.0 has no signature: it ran fully invested on bitcoin and ether, so a new "My own" or Invested choice
+    # made before its first run on 1.4.0 still brings the check forward
+    changed = (book.get("sig") or crypto_plan.signature({**s, "INVESTED": 1.0, "BLOCKS": None})) != sig
+    book["sig"] = sig
+    if force or changed or crypto_plan.check_due(book.get("last_check"), now.date().isoformat(), s):
         d = crypto_plan.decide(closes, s)
-        trades = crypto_plan.orders(book["qty"], prices, book["cash"], d["targets"], s)
+        held = {p for p, q in book["qty"].items() if q > 1e-12}
+        targets = {**{p: 0.0 for p in held}, **d["targets"]}
+        targets = {p: t for p, t in targets.items() if prices.get(p)}       # a coin without a price this hour waits for the next check
+        trades = crypto_plan.orders(book["qty"], prices, book["cash"], targets, s)
         book["qty"], book["cash"] = crypto_plan.apply(book["qty"], book["cash"], prices, trades, s["FEE"])
+        book["qty"] = {p: q for p, q in book["qty"].items() if q > 1e-12 or p in d["targets"]}
         for o in trades:
             book["trades"].append({"timestamp": stamp, "product": o["product"], "side": o["side"],
                                    "value": o["value"], "price": prices[o["product"]],
                                    "fee": round(o["value"] * s["FEE"], 2),
-                                   "reason": crypto_plan.reason(o["product"], d["coins"][o["product"]], s)})
+                                   "reason": crypto_plan.reason(o["product"], d["coins"].get(o["product"]), s, names,
+                                                                side=o["side"] if o["product"] in held else None,      # a resize, not a coin coming in
+                                                                target=d["targets"].get(o["product"]))})
         book.update(last_check=stamp, coins=d["coins"], targets=d["targets"])
-    total, _ = crypto_plan.weights_now(book["qty"], prices, book["cash"])
+    total, _ = crypto_plan.weights_now(book["qty"], {**{p: 0.0 for p in book["qty"]}, **prices}, book["cash"])
     book["curve"].append([stamp, round(total, 2)])
     return book
 
 
 def run(force: bool = False, path: str = PATH) -> dict:
     now = datetime.now(timezone.utc)
-    products = list(crypto_plan.DEFAULTS["WEIGHTS"])
-    closes = {p: [c for _, c in crypto_market.daily_closes(p)] for p in products}
-    prices = {p: crypto_market.spot(p) for p in products}
+    settings = crypto_settings.load()
     book = load(path) or new_book(now.isoformat(timespec="seconds"))
-    book = step(book, closes, prices, now, settings=crypto_settings.load(), force=force)
+    products = list(dict.fromkeys(crypto_plan.products(settings) + [p for p, q in book["qty"].items() if q > 1e-12] + ["BTC-USD"]))
+    closes, prices = {}, {}
+    for p in products:
+        try:
+            closes[p] = [c for _, c in crypto_market.daily_closes(p)]
+            prices[p] = crypto_market.spot(p)
+        except Exception as e:                         # one coin's feed being down doesn't stop the others
+            print(f"crypto paper book: no price for {p} ({e})")
+    book = step(book, closes, prices, now, settings=settings, force=force, names=crypto_settings.coin_names())
     save(book, path)
     return book
 

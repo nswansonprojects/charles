@@ -14,6 +14,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(ROOT, "backtest_cache")
 BASE = "https://api.exchange.coinbase.com"
 FIRST_DAY = {"BTC-USD": "2015-07-20", "ETH-USD": "2016-05-18"}
+OTHER_FIRST_DAY = "2016-05-18"               # any other coin (your own plan): Coinbase answers with nothing before its listing
 DAY = 86400
 PAGE = 300                                   # Coinbase returns at most 300 candles per request
 
@@ -46,7 +47,7 @@ def daily_closes(product: str, start: str | None = None, max_age: float = 6 * 36
     except (OSError, ValueError):
         cached = []
     today = datetime.now(timezone.utc).date()
-    begin = datetime.fromisoformat(cached[-1][0]).date() if cached else datetime.fromisoformat(FIRST_DAY[product]).date()
+    begin = datetime.fromisoformat(cached[-1][0]).date() if cached else datetime.fromisoformat(FIRST_DAY.get(product, OTHER_FIRST_DAY)).date()
     rows = []
     while begin < today:
         end = min(today, begin + timedelta(days=PAGE - 1))
