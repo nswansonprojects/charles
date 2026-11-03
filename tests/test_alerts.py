@@ -80,3 +80,22 @@ class NoTelegram(BotTestCase):
                 except OSError:
                     pass
         self.assertEqual(found, [])
+
+
+class AlertRows(BotTestCase):
+    def test_a_long_message_reaches_the_row_whole(self):
+        long = "x" * 450
+        report = "Monthly Report — October 2026\n" + "─" * 30 + "\nReturn:  -3.41%\n" + "─" * 30 + "\nPicks now: MU"
+        ev = wd.alert_events({"trades": [{"timestamp": "2026-11-02T10:00:00+00:00", "action": "BUY", "symbol": "MU", "reasoning": long}]}, {}, {},
+                             [{"ts": "2026-11-02T09:00:00+00:00", "title": "Monthly report: October 2026", "message": report, "level": "info"},
+                              {"ts": "2026-11-02T08:00:00+00:00", "title": "Note", "message": long, "level": "info"}])
+        self.assertEqual(ev[0]["sub"], long)
+        self.assertEqual(ev[1]["sub"], "Return:  -3.41%\nPicks now: MU")
+        self.assertEqual(ev[2]["sub"], long)
+
+    def test_every_alert_opens_where_it_is(self):
+        with open(os.path.join(ROOT, "web", "alerts.js")) as f:
+            js = f.read()
+        self.assertIn('class="al-row al-line', js)
+        self.assertNotIn('class="toast-main">${compact(a)}</${', js)       # a bubble no longer leaves the page
+        self.assertIn("openList(true, a)", js)

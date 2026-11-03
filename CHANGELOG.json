@@ -2,6 +2,20 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.2.0",
+   "date": "2026-11-03",
+   "kind": "rule",
+   "notes": [
+    "Kalshi: Charles and Evil Charles now both bet on every scan, each with its own practice $1,000, so each builds its own record.",
+    "Kalshi: your account follows the bot you pick. One graph shows your account, blue while it follows Charles and red while it follows Evil Charles.",
+    "Kalshi: strategies bet from the first scan, with no waiting period. The weather minimum edge is back to 7c.",
+    "The tour, now with Charles talking you through Home and the Leaderboard, starts by itself only on a new install. Settings can replay it.",
+    "Leaderboard: a Reset button, and a new install's first day says when its chart starts.",
+    "Plan vs SPY is measured at the same market close everywhere, so after-hours prices no longer skew it.",
+    "Alerts show the whole message when opened, and old or false alarms clear themselves."
+   ]
+  },
+  {
    "version": "v1.0.0",
    "date": "2026-11-01",
    "kind": "fix",

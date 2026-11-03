@@ -1,10 +1,12 @@
 """Betting book: directional PAPER bets where a strategy's probability (strategies.py) beats the
 Kalshi price by more than fees. Separate $1,000 ledger from the arbitrage scanner.
 
-Each scan: settle finished bets, grade settled predictions, sell bets the market has caught up
-with, log every strategy's predictions (predictions.py), re-check each strategy's level (gates.py),
-then buy the best new edges at real order-book prices for strategies that have earned money, sized by
-a fraction of the Kelly stake (a few dollars at the "small" level). Never sends real orders.
+Each scan: grade settled predictions, log every strategy's predictions (predictions.py), then for each
+book: settle finished bets and sell bets the market has caught up with. Charles's own book buys the
+best new edges at real order-book prices, sized by a fraction of the Kelly stake; Evil Charles's own book
+takes the other side of exactly those bets; the account copies the new bets of the bot the switch
+selects. Copies are scaled to each book's money. The levels (gates.py) are off during the side-by-side
+test. Never sends real orders.
 """
 import copy
 import json
@@ -25,6 +27,19 @@ DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 LEDGER = os.path.join(DATA, "bets.json")
 EQUITY = os.path.join(DATA, "bets_equity.jsonl")
 LATEST = os.path.join(DATA, "bets_latest.json")
+# Charles and Evil Charles each keep their own practice book and bet on every scan, whichever one is selected (owner
+# 2026-11-03), so each has a record of its own and the two are never mixed. The account above (LEDGER, what the dashboard
+# shows) copies the bets of the one the switch selects (mode.py), and each of its equity points says which one that was.
+BOTS = ("charles", "evil")
+BOOKS = os.path.join(DATA, "bots")
+# The side-by-side test (owner 2026-11-03): no gates (gates.ON) and no tuning until Claude's review on this day (9:15 AM ET)
+# compares the two bots and says what should change for each.
+TEST_REVIEW = "2026-11-30"
+
+
+def bot_paths(bot: str) -> tuple[str, str]:
+    """(book, equity log) of one bot's own book. Looked up at call time, so tests can point BOOKS elsewhere."""
+    return os.path.join(BOOKS, f"{bot}.json"), os.path.join(BOOKS, f"{bot}_equity.jsonl")
 TUNING = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tuning.json")
 START_CASH = 1000.0
 
@@ -220,11 +235,9 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
             "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(exp, 2)}
 
 
-def flip(fill: dict, book: dict) -> dict | None:
-    """Evil Charles: the same dollars as Charles's `fill`, on the other side. Walks that side's offers
-    (price_range, max_walk, fill_share as usual) but skips the edge and min_win_ratio checks: by
-    Charles's own numbers this bet is a loser, and that's the point. `fair` stays Charles's view."""
-    side = "no" if fill["side"] == "yes" else "yes"
+def take(side: str, book: dict, dollars: float) -> dict | None:
+    """Buy `side` for at most `dollars` (fee included), walking its offers (price_range, max_walk, fill_share as usual) with
+    no edge or payout checks: the bet was already decided. Returns {side, contracts, avg_price, fee, cost} or None."""
     levels = [(p, q) for p, q in evaluate.asks(book, side) if RULES["price_range"][0] <= p <= RULES["price_range"][1]]
     if not levels:
         return None
@@ -233,26 +246,35 @@ def flip(fill: dict, book: dict) -> dict | None:
     for p, q in levels:
         if p > top + RULES["max_walk"] + 1e-9:
             break
-        take = int(min(q * RULES["fill_share"], (fill["cost"] - cost) / p))
-        if take <= 0:
+        k = int(min(q * RULES["fill_share"], (dollars - cost) / p))
+        if k <= 0:
             break
-        n += take
-        cost += take * p
-    while n > 0 and cost + fee(n, cost / n) > fill["cost"]:
+        n += k
+        cost += k * p
+    while n > 0 and cost + fee(n, cost / n) > dollars:
         cost -= cost / n
         n -= 1
     if n <= 0:
         return None
     f = fee(n, cost / n)
+    return {"side": side, "contracts": n, "avg_price": round(cost / n, 4), "fee": f, "cost": round(cost + f, 2)}
+
+
+def flip(fill: dict, book: dict) -> dict | None:
+    """Evil Charles: the same dollars as Charles's `fill`, on the other side. Skips the edge and min_win_ratio checks: by
+    Charles's own numbers this bet is a loser, and that's the point. `fair` stays Charles's view of that side."""
+    got = take("no" if fill["side"] == "yes" else "yes", book, fill["cost"])
+    if not got:
+        return None
     fair = 1 - fill["fair"]
-    return {"side": side, "contracts": n, "avg_price": round(cost / n, 4), "fee": f, "cost": round(cost + f, 2),
-            "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(n * fair - cost - f, 2),
-            "evil": True, "charles_side": fill["side"]}
+    return {**got, "fair": round(fair, 4), "edge": round(fair - got["cost"] / got["contracts"], 4),
+            "expected_profit": round(got["contracts"] * fair - got["cost"], 2), "evil": True, "charles_side": fill["side"]}
 
 
-def place(led: dict, pick: dict, fill: dict, m: dict, now: datetime, level: str = "normal") -> dict:
+def place(led: dict, pick: dict, fill: dict, m: dict, now: datetime, level: str = "normal", bot: str = "charles") -> dict:
+    """`bot`: who picked the bet ("charles" or "evil"), so the account's bets can be told apart."""
     yb, ya = _f(m.get("yes_bid_dollars")), _f(m.get("yes_ask_dollars"))
-    rec = {**{k: pick[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source")}, "level": level,
+    rec = {**{k: pick[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source")}, "level": level, "bot": bot,
            **fill, "fair_yes": pick["fair_yes"], "model_yes": pick.get("model_yes", pick["fair_yes"]), "market_yes": round((yb + ya) / 2, 4),
            "close_time": m.get("close_time", ""), "opened": now.isoformat(timespec="seconds"),
            "id": f"{now:%Y%m%d%H%M%S}-{len(led['open']) + len(led['closed'])}"}
@@ -406,46 +428,9 @@ def signals_of(scored: list, by_ticker: dict) -> dict:
     return out
 
 
-def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=None, get_market=None,
-        get_markets=None) -> dict:
-    now = now or datetime.now(timezone.utc)
-    apply_tuning()
-    evil = mode.is_evil()
-    get_book = get_book or kalshi_api.orderbook
-    get_market = get_market or kalshi_api.market
-    get_markets = get_markets or kalshi_api.markets
-    led = load()
-    preds = predictions.load()
-    try:
-        predictions.grade(preds, by_ticker, get_markets, now)
-    except Exception as e:
-        log.warning(f"predictions grade: {e}")
-
-    settled = []
-    try:
-        settled = settle(led, lambda t: by_ticker.get(t) or get_market(t), now)
-    except Exception as e:
-        log.warning(f"betting settle: {e}")
-    picks, status = gather(events, now)
-    picks = blend(picks, by_ticker)
-    fair_now = {p["ticker"]: p["fair_yes"] for p in picks}
-    sold = exits(led, fair_now, by_ticker, now)
-
-    scored = []
-    for p in picks:
-        m = by_ticker.get(p["ticker"])
-        q = quick_edge(p, m) if m else None
-        if q:
-            scored.append({**p, "side": q[0], "quick_edge": q[1]})
-    scored.sort(key=lambda p: p["quick_edge"], reverse=True)
-    predictions.record(preds, picks, signals_of(scored, by_ticker), {p["ticker"]: exposure_key(p) for p in picks},
-                       by_ticker, now)
-    predictions.save(preds)
-
+def bet(led: dict, scored: list, by_ticker: dict, levels: dict, book_of, now: datetime, name: str = "charles") -> list:
+    """Charles's new bets: his best edges for every strategy allowed to bet, sized on this book's money and caps."""
     bank = equity(led)
-    levels, moves = gates.update(STRATEGIES, led, predictions.load_graded(), RULES["strategy_cap_pct"], bank, now)
-    for mv in moves:
-        log.info(f"LEVEL {mv['strategy']} -> {mv['to']}: {mv['why']}")
     cands = []
     for s in STRATEGIES:
         if levels[s] == "predict":
@@ -478,39 +463,170 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
         if budget < 1:
             continue
         try:
-            book = get_book(p["ticker"])
+            book = book_of(p["ticker"])
         except Exception as e:
             log.warning(f"betting book {p['ticker']}: {e}")
             continue
         fill = size(p, p["side"], book, budget, bank)
-        if fill and evil:
-            fill = flip(fill, book)
         if not fill:
             continue
-        rec = place(led, p, fill, by_ticker[p["ticker"]], now, lvl)
+        rec = place(led, p, fill, by_ticker[p["ticker"]], now, lvl, bot="charles")
         placed.append(rec)
         held.add(p["ticker"])
         new_by[p["strategy"]] = new_by.get(p["strategy"], 0) + 1
         by_event[key] = by_event.get(key, 0) + rec["cost"]
         bets_in[key] = bets_in.get(key, 0) + 1
         by_strat[p["strategy"]] = by_strat.get(p["strategy"], 0) + rec["cost"]
-        log.info(f"{'EVIL BET' if evil else 'BET'} {rec['strategy']} {rec['side'].upper()} {rec['ticker']} x{rec['contracts']} @ {rec['avg_price']} "
+        log.info(f"BET [{name}] {rec['strategy']} {rec['side'].upper()} {rec['ticker']} x{rec['contracts']} @ {rec['avg_price']} "
                  f"(fair {rec['fair']}, edge {rec['edge']}) cost ${rec['cost']} — {rec['source']}")
-    for b in sold:
-        log.info(f"SOLD {b['strategy']} {b['ticker']} @ {b['exit_bid']}: pnl ${b['pnl']:+.2f}")
-    for b in settled:
-        log.info(f"SETTLED {b['strategy']} {b['ticker']} {b['how']}: pnl ${b['pnl']:+.2f}")
+    return placed
 
-    account = mark(led, by_ticker, fair_now, now)
-    save(led)
-    with open(EQUITY, "a") as f:
-        f.write(json.dumps(account) + "\n")
+
+def copy_bets(led: dict, placed: list, src_bank: float, opposite: bool, by_ticker: dict, book_of, now: datetime,
+              bot: str, name: str) -> list:
+    """Another book's new bets of this scan, scaled to this book's money (the same share of it): on the other side for Evil
+    Charles, who bets against exactly what Charles's book placed, or on the same side for the account, which copies the
+    bot the switch selects. The source already decided each bet, so only the cash reserve applies here."""
+    bank, out = equity(led), []
+    held = {b["ticker"] for b in led["open"]}
+    for src in placed:
+        if src["ticker"] in held:
+            continue
+        dollars = min(src["cost"] * bank / src_bank if src_bank > 0 else 0.0, led["cash"] - bank * RULES["cash_reserve_pct"])
+        if dollars < 1:
+            continue
+        try:
+            book = book_of(src["ticker"])
+        except Exception as e:
+            log.warning(f"betting book {src['ticker']}: {e}")
+            continue
+        if opposite:
+            fill = flip({"side": src["side"], "cost": dollars, "fair": src["fair"]}, book)
+        else:
+            got = take(src["side"], book, dollars)
+            fill = got and {**got, "fair": src["fair"], "edge": round(src["fair"] - got["cost"] / got["contracts"], 4),
+                            "expected_profit": round(got["contracts"] * src["fair"] - got["cost"], 2),
+                            **({"evil": True, "charles_side": src["charles_side"]} if src.get("evil") else {})}
+        if not fill:
+            continue
+        pick = {k: src[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source", "fair_yes")}
+        pick["model_yes"] = src.get("model_yes", src["fair_yes"])
+        rec = place(led, pick, fill, by_ticker.get(src["ticker"]) or {"close_time": src.get("close_time", "")}, now,
+                    src.get("level", "normal"), bot=bot)
+        held.add(src["ticker"])
+        out.append(rec)
+        log.info(f"{'EVIL BET' if rec.get('evil') else 'BET'} [{name}] {rec['strategy']} {rec['side'].upper()} {rec['ticker']} "
+                 f"x{rec['contracts']} @ {rec['avg_price']} cost ${rec['cost']} (copies {src['bot']}'s ${src['cost']})")
+    return out
+
+
+def run_book(name: str, path: str, eq_path: str, new_bets, by_ticker: dict, fair_now: dict, market_of, now: datetime,
+             tag: str | None = None) -> dict:
+    """One book's part of a scan: settle what finished, sell what the market caught up with, place `new_bets(led)`, then save
+    the book and add its equity point (`tag` on it: which bot the account was following). `bank`: its money before betting."""
+    led = load(path)
+    if name in BOTS:
+        led.setdefault("started", now.isoformat(timespec="seconds"))
+    settled = []
+    try:
+        settled = settle(led, market_of, now)
+    except Exception as e:
+        log.warning(f"betting settle [{name}]: {e}")
+    sold = exits(led, fair_now, by_ticker, now)
+    bank = equity(led)
+    placed = new_bets(led)
+    for b in sold:
+        log.info(f"SOLD [{name}] {b['strategy']} {b['ticker']} @ {b['exit_bid']}: pnl ${b['pnl']:+.2f}")
+    for b in settled:
+        log.info(f"SETTLED [{name}] {b['strategy']} {b['ticker']} {b['how']}: pnl ${b['pnl']:+.2f}")
+    acct = mark(led, by_ticker, fair_now, now)
+    if tag:
+        acct["mode"] = tag
+    save(led, path)
+    with open(eq_path, "a") as f:
+        f.write(json.dumps(acct) + "\n")
+    return {"led": led, "account": acct, "placed": placed, "sold": sold, "settled": settled, "bank": bank}
+
+
+def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=None, get_market=None,
+        get_markets=None) -> dict:
+    now = now or datetime.now(timezone.utc)
+    apply_tuning()
+    selected = "evil" if mode.is_evil() else "charles"
+    get_book = get_book or kalshi_api.orderbook
+    get_market = get_market or kalshi_api.market
+    get_markets = get_markets or kalshi_api.markets
+    books_seen, markets_seen = {}, {}
+
+    def book_of(t):                     # one fetch per market per scan, however many books bet on it
+        if t not in books_seen:
+            books_seen[t] = get_book(t)
+        return books_seen[t]
+
+    def market_of(t):
+        if by_ticker.get(t):
+            return by_ticker[t]
+        if t not in markets_seen:
+            markets_seen[t] = get_market(t)
+        return markets_seen[t]
+
+    preds = predictions.load()
+    try:
+        predictions.grade(preds, by_ticker, get_markets, now)
+    except Exception as e:
+        log.warning(f"predictions grade: {e}")
+
+    picks, status = gather(events, now)
+    picks = blend(picks, by_ticker)
+    fair_now = {p["ticker"]: p["fair_yes"] for p in picks}
+
+    scored = []
+    for p in picks:
+        m = by_ticker.get(p["ticker"])
+        q = quick_edge(p, m) if m else None
+        if q:
+            scored.append({**p, "side": q[0], "quick_edge": q[1]})
+    scored.sort(key=lambda p: p["quick_edge"], reverse=True)
+    predictions.record(preds, picks, signals_of(scored, by_ticker), {p["ticker"]: exposure_key(p) for p in picks},
+                       by_ticker, now)
+    predictions.save(preds)
+
+    # Levels (gates.py) make a strategy prove itself before it bets. Off while Charles and Evil Charles are tested side by
+    # side (owner 2026-11-03: no waiting), so every strategy bets at the normal rules from the first scan, in every book.
+    if gates.ON:
+        acct_led = load()
+        levels, moves = gates.update(STRATEGIES, acct_led, predictions.load_graded(), RULES["strategy_cap_pct"],
+                                     equity(acct_led), now)
+        for mv in moves:
+            log.info(f"LEVEL {mv['strategy']} -> {mv['to']}: {mv['why']}")
+    else:
+        levels, moves = {s: "normal" for s in STRATEGIES}, []
+
+    # Each bot's own book, whichever one is selected (owner 2026-11-03): Charles picks; Evil Charles bets against exactly
+    # what Charles's book placed. Then the account copies the selected bot's new bets.
+    books = {"charles": run_book("charles", *bot_paths("charles"),
+                                 lambda led: bet(led, scored, by_ticker, levels, book_of, now), by_ticker, fair_now, market_of, now)}
+    c = books["charles"]
+    books["evil"] = run_book("evil", *bot_paths("evil"),
+                             lambda led: copy_bets(led, c["placed"], c["bank"], True, by_ticker, book_of, now, "evil", "evil"),
+                             by_ticker, fair_now, market_of, now)
+    src = books[selected]
+    books["account"] = run_book("account", LEDGER, EQUITY,
+                                lambda led: copy_bets(led, src["placed"], src["bank"], False, by_ticker, book_of, now, selected, "account"),
+                                by_ticker, fair_now, market_of, now, tag=selected)
+
     for s in status:
         status[s]["edges"] = sum(1 for p in scored if p["strategy"] == s and p["quick_edge"] >= RULES["min_edge"][s])
-    summary = {"ts": account["ts"], "picks": len(picks), "candidates": len(cands), "placed": len(placed),
-               "sold": len(sold), "settled": len(settled), "evil": evil, "strategies": status, "levels": levels, "level_moves": moves,
+    mine = books["account"]
+    summary = {"ts": mine["account"]["ts"], "picks": len(picks), "candidates": sum(min(RULES["max_books_per_strategy"], sum(1 for p in scored if p["strategy"] == s and p["quick_edge"] >= RULES["min_edge"][s]))
+                                                                    for s in STRATEGIES if levels[s] != "predict"),
+               "placed": len(mine["placed"]), "sold": len(mine["sold"]), "settled": len(mine["settled"]),
+               "evil": selected == "evil", "selected": selected, "gates": gates.ON,
+               "books": {k: {"placed": len(v["placed"]), "sold": len(v["sold"]), "settled": len(v["settled"]),
+                             "account_value": v["account"]["account_value"], "open_bets": len(v["led"]["open"])} for k, v in books.items()},
+               "strategies": status, "levels": levels, "level_moves": moves,
                "predictions_open": len(preds["open"]),
-               "account_value": account["account_value"], "cash": led["cash"], "open_bets": len(led["open"])}
+               "account_value": mine["account"]["account_value"], "cash": mine["led"]["cash"], "open_bets": len(mine["led"]["open"])}
     top = [{k: p[k] for k in ("strategy", "ticker", "title", "sub", "side", "fair_yes", "model_yes", "quick_edge", "source")}
            | {"ask": _f(by_ticker[p["ticker"]].get(f"{p['side']}_ask_dollars"))}
            for p in scored[:25]]
@@ -522,6 +638,10 @@ def run(events: list, by_ticker: dict, now: datetime | None = None, get_book=Non
 
 
 def report():
+    for b in BOTS:
+        own = load(bot_paths(b)[0])
+        print(f"{'Evil Charles' if b == 'evil' else 'Charles'}'s own book: equity ${equity(own):,.2f} (at cost)  open {len(own['open'])}  "
+              f"closed {len(own['closed'])}  realised P&L ${sum(x['pnl'] for x in own['closed']):+.2f}")
     led = load()
     s = stats(led)
     print(f"Betting book: equity ${equity(led):,.2f} (at cost)  cash ${led['cash']:,.2f}  open {len(led['open'])}  "

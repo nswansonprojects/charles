@@ -52,7 +52,7 @@ PAGE_TAB = {"/": "home", "/index.html": "home", "/stocks": "stocks", "/crypto/":
 CRYPTO_BACKTEST = os.path.join(ROOT, "docs", "crypto_backtest.json")
 BACKTEST = os.path.join(ROOT, "docs", "backtest.json")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
-STATIC = {"/style.css": "text/css; charset=utf-8", "/shell.css": "text/css; charset=utf-8", "/shell.js": "text/javascript; charset=utf-8", "/common.js": "text/javascript; charset=utf-8", "/board.js": "text/javascript; charset=utf-8", "/chat.js": "text/javascript; charset=utf-8", "/alerts.js": "text/javascript; charset=utf-8", "/feed.js": "text/javascript; charset=utf-8", "/report.js": "text/javascript; charset=utf-8", "/tune.js": "text/javascript; charset=utf-8", "/viz.js": "text/javascript; charset=utf-8", "/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
+STATIC = {"/style.css": "text/css; charset=utf-8", "/shell.css": "text/css; charset=utf-8", "/shell.js": "text/javascript; charset=utf-8", "/common.js": "text/javascript; charset=utf-8", "/board.js": "text/javascript; charset=utf-8", "/chat.js": "text/javascript; charset=utf-8", "/alerts.js": "text/javascript; charset=utf-8", "/tour.js": "text/javascript; charset=utf-8", "/feed.js": "text/javascript; charset=utf-8", "/report.js": "text/javascript; charset=utf-8", "/tune.js": "text/javascript; charset=utf-8", "/viz.js": "text/javascript; charset=utf-8", "/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
 # The login (auth.py). Cookie names carry the port: browsers send a host's cookies to all its ports, so
 # the dashboard (:8502) and the preview (:8504) would otherwise log each other out.
 SESSION_COOKIE, CSRF_COOKIE = f"charles_session_{PORT}", f"charles_csrf_{PORT}"
@@ -786,7 +786,7 @@ def shell(page: bytes, on: dict, current: str) -> bytes:
     # The theme is set before the page paints; it's chosen on Settings.
     extra = (f'<link href="{FONTS}" rel="stylesheet"><link rel="stylesheet" href="/shell.css">'
              '<script>try{var t=localStorage.getItem("charles-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>').encode()
-    foot = (f'<nav class="appnav" aria-label="Main">{links}</nav><script src="/shell.js" defer></script><script src="/alerts.js" defer></script><script src="/chat.js" defer></script><script src="/feed.js" defer></script><script src="/report.js" defer></script>').encode()
+    foot = (f'<nav class="appnav" aria-label="Main">{links}</nav><script src="/shell.js" defer></script><script src="/tour.js" defer></script><script src="/alerts.js" defer></script><script src="/chat.js" defer></script><script src="/feed.js" defer></script><script src="/report.js" defer></script>').encode()
     return page.replace(b"</head>", extra + b"</head>", 1).replace(b"</body>", foot + b"</body>", 1)
 
 
@@ -946,6 +946,18 @@ MODE_ALERTS = (("Safety mode on", "Safety switch: into T-bills"), ("Aggressive m
 _NOT_WORDS = re.compile(r"^[^\w$+(−-]+")
 
 
+ALERT_TEXT = 4000                                  # a row opens to the whole message; this only stops a runaway one
+
+
+def _alert_text(title: str, text: str) -> str:
+    """A notice's message for a row: without a report's ruled lines, or a first line that only repeats the title."""
+    words = lambda t: re.sub(r"\W+", " ", t).strip().lower()
+    lines = [ln for ln in text.splitlines() if not set(ln.strip()) <= set("─━-=_ ")]
+    if lines and words(lines[0]) == words(title):
+        lines = lines[1:]
+    return "\n".join(lines).strip()
+
+
 def alert_events(stocks: dict, crypto: dict, kalshi: dict, noted: list, keep: int = 30) -> list:
     """GET /api/alerts: what web/alerts.js pops up and the bell lists, newest first, in one shape:
     {"ts", "bot", "kind": buy|sell|won|lost|bet|note|error, "title", "sub", "amount", "pnl", "href"}."""
@@ -954,26 +966,26 @@ def alert_events(stocks: dict, crypto: dict, kalshi: dict, noted: list, keep: in
     for t in trades[:keep]:
         buy = str(t.get("action") or "").startswith("BUY")
         ev.append({"ts": t.get("timestamp"), "bot": "Stocks", "kind": "buy" if buy else "sell", "title": f"{'Bought' if buy else 'Sold'} {t.get('symbol')}",
-                   "sub": str(t.get("reasoning") or "")[:200], "amount": t.get("value"), "pnl": None if buy else t.get("pnl"), "href": "/stocks"})
+                   "sub": str(t.get("reasoning") or "")[:ALERT_TEXT], "amount": t.get("value"), "pnl": None if buy else t.get("pnl"), "href": "/stocks"})
     plan = stocks.get("plan") or {}
     for v in plan.get("vetoes") or []:
-        ev.append({"ts": plan.get("last_rebalance"), "bot": "Stocks", "kind": "note", "title": f"AI skipped {v.get('symbol')}", "sub": str(v.get("reason") or "")[:200],
+        ev.append({"ts": plan.get("last_rebalance"), "bot": "Stocks", "kind": "note", "title": f"AI skipped {v.get('symbol')}", "sub": str(v.get("reason") or "")[:ALERT_TEXT],
                    "amount": None, "pnl": None, "href": "/stocks"})
     book = crypto.get("book") or {}
     for t in (book.get("trades") or [])[:keep]:
         buy = str(t.get("side")).upper() == "BUY"
         name = (crypto.get("names") or {}).get(t.get("product"), t.get("product"))
         ev.append({"ts": t.get("timestamp"), "bot": "Crypto", "kind": "buy" if buy else "sell", "title": f"{'Bought' if buy else 'Sold'} {name}",
-                   "sub": str(t.get("reason") or "")[:200], "amount": t.get("value"), "pnl": None, "href": "/crypto/"})
+                   "sub": str(t.get("reason") or "")[:ALERT_TEXT], "amount": t.get("value"), "pnl": None, "href": "/crypto/"})
     bets = kalshi.get("betting") or {}
     for b in sorted(bets.get("closed") or [], key=lambda x: str(x.get("closed")), reverse=True)[:keep]:
         how = b.get("how")
         word = {"won": "Won", "lost": "Lost", "sold": "Sold", "void": "Refunded"}.get(how, "Closed")
         ev.append({"ts": b.get("closed"), "bot": "Kalshi", "kind": how if how in ("won", "lost") else "note", "title": f"{word}: {b.get('sub') or b.get('title')}",
-                   "sub": str(b.get("title") or "")[:200], "amount": None, "pnl": b.get("pnl"), "href": "/kalshi/"})
+                   "sub": str(b.get("title") or "")[:ALERT_TEXT], "amount": None, "pnl": b.get("pnl"), "href": "/kalshi/"})
     for b in sorted(bets.get("open") or [], key=lambda x: str(x.get("opened")), reverse=True)[:keep]:
         ev.append({"ts": b.get("opened"), "bot": "Kalshi", "kind": "bet", "title": f"Bet {str(b.get('side') or '').upper()}: {b.get('sub') or b.get('title')}".replace("Bet : ", "Bet: "),
-                   "sub": str(b.get("title") or "")[:200], "amount": b.get("cost"), "pnl": None, "href": "/kalshi/"})
+                   "sub": str(b.get("title") or "")[:ALERT_TEXT], "amount": b.get("cost"), "pnl": None, "href": "/kalshi/"})
     for n in noted:
         title, sub = _NOT_WORDS.sub("", str(n.get("title") or "")).strip(), _NOT_WORDS.sub("", str(n.get("message") or "")).strip()
         if title == "Rebalanced":
@@ -982,7 +994,7 @@ def alert_events(stocks: dict, crypto: dict, kalshi: dict, noted: list, keep: in
                 continue
             title, sub = said[0], ""
         ev.append({"ts": n.get("ts"), "bot": "Charles", "kind": "error" if n.get("level") == "error" else "note", "title": title or "Note",
-                   "sub": sub[:200], "amount": None, "pnl": None, "href": "/" if n.get("level") == "error" else None})
+                   "sub": _alert_text(title, sub)[:ALERT_TEXT], "amount": None, "pnl": None, "href": "/" if n.get("level") == "error" else None})
     return sorted([e for e in ev if e["ts"]], key=lambda e: str(e["ts"]), reverse=True)[:keep]
 
 
@@ -1019,7 +1031,9 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
         k, a = kalshi.get("betting") or {}, (kalshi.get("betting") or {}).get("account") or {}
         n = a.get("open_bets")
         add("kalshi", "Kalshi", "/kalshi/", a.get("account_value"), a.get("start_cash") or 1000, a.get("day_pnl"), k.get("equity"),
-            "Evil Charles is on" if (k.get("mode") or {}).get("evil") else f"{n} open bet{'' if n == 1 else 's'}" if n is not None else "No word from it yet",
+            # Both bots always bet in their own books; the account copies the one the switch picks (Kalshi, owner 2026-11-03)
+            (f"Following {'Evil Charles' if (k.get('mode') or {}).get('evil') else 'Charles'}" + (f" · {n} open bet{'' if n == 1 else 's'}" if n is not None else ""))
+            if k else "No word from it yet",
             bool(kalshi) and not (kalshi.get("scanner") or {}).get("healthy", True))
     live = [b for b in bots if b["value"] is not None]
     earned = round(sum(b["earned"] for b in live), 2)
@@ -1265,6 +1279,13 @@ def leaderboard_mine(bot: str) -> dict:
     return out
 
 
+def _board_changed():
+    """Someone just joined or left the board: the next look shows it, not the last minute's copy."""
+    with _lock:
+        for k in [k for k in _cache if k.startswith("board-")]:
+            del _cache[k]
+
+
 def leaderboard_post(path: str, body: bytes):
     """(status, reply) for a Submit or Withdraw from the Home card."""
     from leaderboard import client
@@ -1273,8 +1294,11 @@ def leaderboard_post(path: str, body: bytes):
         if path.endswith("/submit"):
             if req.get("bot") not in ("stocks", "crypto"):
                 return 400, {"ok": False, "message": "unknown bot"}
-            return client.submit(req["bot"], req.get("name") or None, DATA, LEADERBOARD_BOT_DIR, LEADERBOARD_URL)
-        return client.withdraw(str(req["id"]), DATA, LEADERBOARD_URL)
+            out = client.submit(req["bot"], req.get("name") or None, DATA, LEADERBOARD_BOT_DIR, LEADERBOARD_URL)
+        else:
+            out = client.withdraw(str(req["id"]), DATA, LEADERBOARD_URL)
+        _board_changed()
+        return out
     except (ValueError, KeyError, TypeError, AttributeError) as e:
         return 400, {"ok": False, "message": str(e) or "malformed request"}
     except Exception as e:
@@ -1289,9 +1313,14 @@ def notices(path: str | None = None, now=None) -> dict:
             rows = json.load(f)
     except (OSError, ValueError):
         return {"notices": []}
+    rows = rows if isinstance(rows, list) else []
+    # A restart alarm stops counting once a later restart went clean or Claude checked it. The file itself is never edited.
+    clear = [i for i, r in enumerate(rows) if isinstance(r, dict) and str(r.get("title", "")).startswith(("Charles restarted", "Charles restart checked"))]
     keep = []
-    for r in rows if isinstance(rows, list) else []:
+    for i, r in enumerate(rows):
         try:
+            if clear and i < clear[-1] and str(r.get("title", "")).startswith("Charles restart") and "needs a look" in str(r.get("title", "")):
+                continue
             if (now - datetime.fromisoformat(r["ts"])).total_seconds() <= 7 * 86400:
                 keep.append({"ts": r["ts"], "title": str(r.get("title", "")), "message": str(r.get("message", "")),
                              "level": "error" if r.get("level") == "error" else "info"})

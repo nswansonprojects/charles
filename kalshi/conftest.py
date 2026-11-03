@@ -15,3 +15,4 @@ def _scratch_data(tmp_path, monkeypatch):
                          (predictions, "GRADED", "predictions_graded.jsonl"), (gates, "STATE", "levels.json"),
                          (mode, "PATH", "mode.json")):
         monkeypatch.setattr(mod, name, str(tmp_path / f))
+    monkeypatch.setattr(betting, "BOOKS", str(tmp_path / "bots"))     # each bot's own book (2026-11-03)

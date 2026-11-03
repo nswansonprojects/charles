@@ -15,7 +15,7 @@
   color-scheme: light;
   --bg: #f7f5f0; --surface: #fdfcf9; --surface-2: #efece4; --border: #dfdbd0;
   --text: #12110e; --text-2: #4a4740; --muted: #6b675c; --grid: #e6e2d6;
-  --series-1: #1a66d6; --ref: #8b877c;
+  --series-1: #1a66d6; --ref: #8b877c; --evil-line: #c1121f;
   --good: #07803c; --good-ink: #07803c; --warn: #c98500; --critical: #cf2e22; --critical-ink: #c22a1f;
   --accent-soft: rgba(26,102,214,.10);
   --core: #1a66d6; --pick: #4a3aa7; --safe: #c98500; --leaving: #d9622b; --cash: #d3cfc2;
@@ -29,7 +29,7 @@
     color-scheme: dark;
     --bg: #131311; --surface: #1a1a17; --surface-2: #24241f; --border: #2f2e29;
     --text: #f4f2e8; --text-2: #bcb9ae; --muted: #949186; --grid: #2a2925;
-    --series-1: #5b9ff5; --ref: #8e8b80;
+    --series-1: #5b9ff5; --ref: #8e8b80; --evil-line: #ff4d5a;
     --good: #3fdc85; --good-ink: #3fdc85; --warn: #f0b429; --critical: #ff6b5e; --critical-ink: #ff7d70;
     --accent-soft: rgba(91,159,245,.16);
     --core: #5b9ff5; --pick: #9085e9; --safe: #c98500; --leaving: #d95926; --cash: #3a3a35;
@@ -39,7 +39,7 @@
   color-scheme: dark;
   --bg: #131311; --surface: #1a1a17; --surface-2: #24241f; --border: #2f2e29;
   --text: #f4f2e8; --text-2: #bcb9ae; --muted: #949186; --grid: #2a2925;
-  --series-1: #5b9ff5; --ref: #8e8b80;
+  --series-1: #5b9ff5; --ref: #8e8b80; --evil-line: #ff4d5a;
   --good: #3fdc85; --good-ink: #3fdc85; --warn: #f0b429; --critical: #ff6b5e; --critical-ink: #ff7d70;
   --accent-soft: rgba(91,159,245,.16);
   --core: #5b9ff5; --pick: #9085e9; --safe: #c98500; --leaving: #d95926; --cash: #3a3a35;
@@ -361,11 +361,11 @@ body.evil .logo .ear-in { fill: #7f1d1d; stroke: #7f1d1d; }
       <div class="two even">
        <div class="col">
         <div class="card" id="evil-card">
-          <div class="card-head"><h2>Evil Charles</h2><span class="aside" id="evil-state"></span></div>
+          <div class="card-head"><h2>Charles vs Evil Charles</h2><span class="aside" id="evil-state"></span></div>
           <p class="small" id="evil-about" style="margin:0;color:var(--text-2)"></p>
           <div class="duel" id="evil-vs"></div>
           <p class="note" id="evil-note"></p>
-          <button class="evil-btn" id="evil-btn" type="button" aria-pressed="false" title="Bet the opposite of every bet Charles places">Toggle Evil Charles</button>
+          <button class="evil-btn" id="evil-btn" type="button" aria-pressed="false" title="Pick whose bets your account copies. Both keep betting with their own practice money either way.">Toggle Evil Charles</button>
         </div>
         <div class="card">
           <div class="card-head" style="margin-bottom:0"><h2>Track record</h2><span class="aside" id="nclosed"></span></div>
@@ -619,7 +619,6 @@ function buildTabs() {
   $("range").innerHTML = RANGES.map(([k]) => `<button type="button" data-r="${k}">${k}</button>`).join("");
   document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r;
     try { localStorage.setItem("kn-range", range); } catch (e) {} renderChart(); });
-  $("legend").innerHTML = `<span class="key">${TWO_TONE}Book, from its $1,000 start</span>`;
   setTab(tab);
 }
 function keySvg(color, dashed) {
@@ -749,14 +748,22 @@ function renderChart() {
     const i = Math.round(k * (pts.length - 1) / nt);
     grid += `<text x="${X(i)}" y="${H - 6}" text-anchor="${k === 0 ? "start" : k === nt ? "end" : "middle"}">${fmtX(new Date(pts[i][0]))}</text>`;
   }
+  // Who the account was following at each point (owner 2026-11-03): the line is blue for Charles and red for Evil Charles,
+  // while the shading under it stays green above the start and red below.
+  const who = i => pts[i][2] === "evil" ? "evil" : "charles", LINE = {charles: "--series-1", evil: "--evil-line"};
+  const runs = [];
+  for (let i = 1, s = 0; i <= pts.length; i++) if (i === pts.length || who(i) !== who(s)) { runs.push([s, Math.min(i, pts.length - 1), who(s)]); s = i; }
+  const seg = (a, b) => vals.slice(a, b + 1).map((v, k) => (k ? "L" : "M") + X(a + k).toFixed(1) + "," + Y(v).toFixed(1)).join("");
+  const seen = [...new Set(runs.map(r => r[2]))];
+  $("legend").innerHTML = seen.map(w => `<span class="key">${keySvg(LINE[w], false)}${w === "evil" ? "Following Evil Charles" : "Following Charles"}</span>`).join("");
   const y0 = Y(0), zeroAt = (y0 / H * 100).toFixed(2) + "%", first = !chartShown;
   chartShown = true;
-  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="What the betting book has earned since its $1,000 start. Arrow keys read values.">
+  box.innerHTML = `<svg viewBox="0 0 ${W} ${H}" tabindex="0" role="img" aria-label="What the account has earned since its $1,000 start: blue while it followed Charles, red while it followed Evil Charles. Arrow keys read values.">
     <defs><linearGradient id="g" gradientUnits="userSpaceOnUse" x1="0" x2="0" y1="0" y2="${H}"><stop offset="${zeroAt}" stop-color="var(--good)"/><stop offset="${zeroAt}" stop-color="var(--critical)"/></linearGradient></defs>
     <g class="axis">${grid}</g>
     <line x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}" stroke="var(--ref)" stroke-width="1"/>
     <g${first ? ' class="plot-in"' : ""}><path d="${line(vals)}L${X(vals.length - 1)},${y0}L${X(0)},${y0}Z" fill="url(#g)" style="opacity:var(--chart-fill, .17)"/>
-    <path d="${line(vals)}" fill="none" stroke="url(#g)" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/></g>
+    ${runs.filter(([a, b]) => b > a).map(([a, b, w]) => `<path d="${seg(a, b)}" fill="none" stroke="var(${LINE[w]})" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>`).join("")}</g>
     <line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
     <circle id="cdot" r="4.5" fill="var(--text)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
   </svg><div class="tip" id="tip"></div>`;
@@ -769,7 +776,8 @@ function renderChart() {
     dot.setAttribute("cx", xi); dot.setAttribute("cy", Y(vals[cur])); dot.setAttribute("opacity", 1);
     tip.innerHTML = `<div class="t">${new Date(pts[cur][0]).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
       <div class="r">${TWO_TONE}<span>Earned</span><b class="num ${cls(vals[cur])}">${sgnUsd(vals[cur])}</b></div>
-      <div class="r"><span>Book</span><b class="num">${usd(raw[cur])}</b></div>`;
+      <div class="r"><span>Account</span><b class="num">${usd(raw[cur])}</b></div>
+      <div class="r">${keySvg(LINE[who(cur)], false)}<span>Following</span><b>${who(cur) === "evil" ? "Evil Charles" : "Charles"}</b></div>`;
     tip.style.display = "block";
     const tw = tip.offsetWidth;
     tip.style.left = (xi + 12 + tw > W ? Math.max(0, xi - tw - 12) : xi + 12) + "px";
@@ -871,12 +879,16 @@ function render() {
   const miles = B.milestones || [], strats = miles.filter(m => m.level), others = miles.filter(m => !m.level);
   const live = strats.filter(m => m.level !== "predict");
   const LV = {predict: "Predicting", small: "Small bets", normal: "Full bets"};
-  const v = !strats.length ? ["Getting ready", ""]
+  const T = B.test && !B.test.gates ? B.test : null;
+  const v = T ? [T.review ? "Testing Charles and Evil Charles" : "Charles and Evil Charles, side by side", "Every strategy bets in both bots' books from the first scan."
+      + (T.review ? " Claude's review on " + new Date(T.review + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"}) + " compares them. Nothing is tuned until then." : "")]
+    : !strats.length ? ["Getting ready", ""]
     : live.length ? [`${live.length} of ${strats.length} strategies are betting`, "The others only predict until their odds beat Kalshi's prices."]
     : [B.open.length ? "No new bets right now" : "No money at risk right now", (B.open.length ? plural(B.open.length, "older bet") + " still open. " : "") + "Every strategy only predicts until its odds beat Kalshi's prices and its would-be bets make money."];
   $("tune-title").textContent = v[0]; $("tune-sub").textContent = v[1];
   $("cl-miles").innerHTML = strats.map(m => { const said = String(m.detail).split(" · ").slice(1).join(" · ");
-    return ring(m.progress, Math.round(m.progress * 100) + "%", m.name.split(":")[0], (LV[m.level] || m.level) + (said ? `, ${said}` : ""), m.level === "predict" ? "var(--series-1)" : "var(--good)"); }).join("");
+    const what = T ? String(m.detail).split(" · ")[0] : (LV[m.level] || m.level);
+    return ring(m.progress, Math.round(m.progress * 100) + "%", m.name.split(":")[0], what + (said ? `, ${said}` : ""), m.level === "predict" ? "var(--series-1)" : "var(--good)"); }).join("");
   const nx = others[0];
   $("cl-next-card").hidden = !nx;
   if (nx) $("cl-next").innerHTML = ring(nx.progress, Math.round(nx.progress * 100) + "%", "", "") + `<p><b>${esc(nx.name)}: ${esc(nx.detail)}</b>${esc(nx.about)}</p>`;
@@ -904,23 +916,29 @@ function render() {
 }
 
 function renderEvil() {
-  const m = B.mode || {evil: false}, r = B.evil_record, on = !!m.evil;
+  // Both bots bet on every scan in their own books (owner 2026-11-03); the switch picks whose bets the account copies.
+  const m = B.mode || {evil: false}, on = !!m.evil, bots = B.bots || {}, r = B.evil_record;
   document.body.classList.toggle("evil", on);
   $("evil-btn").setAttribute("aria-pressed", on ? "true" : "false");
-  $("evil-state").innerHTML = on ? `<span class="evil-tag">ON</span> since ${new Date(m.since).toLocaleDateString("en-US", {month: "short", day: "numeric"})}` : "Off";
-  const betting = (B.milestones || []).some(x => x.level && x.level !== "predict");
-  $("evil-about").textContent = (on ? "On: every bet Charles decides to place goes on the other side, for the same money." : "Bets the opposite of every bet Charles decides to place, for the same money.")
-    + (betting ? "" : " Every strategy is only predicting right now, so no bets go on either way.");
-  if (!r || !r.bets) {
-    $("evil-vs").innerHTML = ""; $("evil-vs").hidden = true; $("evil-note").textContent = "";
-    return;
-  }
-  const box = (name, d) => `<div><div class="label">${name}</div><div class="v num ${cls(d.roi_pct)}">${d.roi_pct == null ? "—" : (d.roi_pct > 0 ? "+" : "") + d.roi_pct + "%"}</div><div class="small muted">won ${d.won} of ${r.bets}</div></div>`;
+  const since = m.since ? ` since ${new Date(m.since).toLocaleDateString("en-US", {month: "short", day: "numeric"})}` : "";
+  $("evil-state").innerHTML = on ? `<span class="evil-tag">FOLLOWING</span> Evil Charles${since}` : `Following Charles${since}`;
+  $("evil-about").textContent = "Both bet on every scan with their own practice $1,000, so each has a record of its own. "
+    + "Your account copies the one you pick. Evil Charles bets the opposite of Charles.";
+  const c = bots.charles, e = bots.evil;
+  if (!c || !e) { $("evil-vs").innerHTML = ""; $("evil-vs").hidden = true; $("evil-note").textContent = ""; return; }
+  const settled = b => b.won + b.lost + b.sold;
+  const box = b => `<div><div class="label">${esc(b.name)}</div><div class="v num ${cls(b.earned)}">${sgnUsd(b.earned)}</div>`
+    + `<div class="small muted">${settled(b) ? `won ${b.won} of ${settled(b)}` : "nothing settled yet"} · ${plural(b.open, "open bet")}</div></div>`;
   $("evil-vs").hidden = false;
-  $("evil-vs").innerHTML = box("Charles's picks", r.charles) + box("The opposite", r.evil);
-  $("evil-note").textContent = `Last ${r.days} days, ${r.bets} bets on ${r.events} outcomes, after fees.`
-    + (r.estimated ? " Older opposite prices are estimated." : "")
-    + (r.events < 30 ? " A small sample." : "");
+  $("evil-vs").innerHTML = box(c) + box(e);
+  const day = s => s ? new Date(s).toLocaleDateString("en-US", {month: "short", day: "numeric"}) : "today";
+  let note = `Each from its own $1,000 on ${day(c.started || e.started)}.`;
+  if (!settled(c) && !settled(e) && r && r.bets) {
+    const pct = d => d.roi_pct == null ? "—" : (d.roi_pct > 0 ? "+" : d.roi_pct < 0 ? "−" : "") + Math.abs(d.roi_pct) + "%";
+    note += ` Before that, over ${r.days} days, Charles's would-be bets made ${pct(r.charles)} and the opposite ${pct(r.evil)}.`;
+  }
+  if (B.test && B.test.review) note += ` Claude's review compares them on ${new Date(B.test.review + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"})}.`;
+  $("evil-note").textContent = note;
 }
 $("evil-btn").onclick = async () => {
   const btn = $("evil-btn"), want = btn.getAttribute("aria-pressed") !== "true";
@@ -949,6 +967,10 @@ buildTabs(); load();
 setInterval(() => { if (!document.hidden) load(); }, 60000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(); });
 let rz; addEventListener("resize", () => { clearTimeout(rz); rz = setTimeout(() => { if (S) { fitText($("value")); renderChart(); } }, 120); });
+// The big number and the chart also refit when their panel changes width without a resize, e.g. while the alerts window
+// slides in beside the page (2026-11-03: −$437.36 ran 51px under the feed at 1280 px). Width only, so a refit can't loop.
+if (window.ResizeObserver) { let w0 = 0, ft; new ResizeObserver(es => { const w = Math.round(es[0].contentRect.width); if (w === w0) return; w0 = w;
+  clearTimeout(ft); ft = setTimeout(() => { if (S) { fitText($("value")); renderChart(); } }, 80); }).observe($("value").parentElement); }
 </script>
 </body>
 </html>

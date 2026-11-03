@@ -20,10 +20,11 @@
   const RANGE_WORD = {week: "this week", month: "this month", all: "since it started"};
   const BENCH = {SPY: "S&P 500", "BTC-USD": "Bitcoin"};
   const q = new URLSearchParams(location.search);
-  let bot = q.get("bot") === "crypto" ? "crypto" : "stocks", range = "all", B = null, M = null, C = null, wantCopy = q.get("copy");
+  let bot = q.get("bot") === "crypto" ? "crypto" : "stocks", range = "all", B = null, M = null, C = null, P = null, wantCopy = q.get("copy");
   try { range = localStorage.getItem("board-range") || range; } catch (e) {}
   const dlg = $("dlg");
   dlg.addEventListener("click", ev => { if (ev.target === dlg) dlg.close(); });
+  const tell = what => dispatchEvent(new CustomEvent("charles:board", {detail: what}));     // the tour follows along (web/tour.js)
 
   const label = (k, v) => { const [l, f] = LABELS[bot][k] || [k, x => x]; return [l, f(v)]; };
   const gist = s => !s ? "" : bot === "stocks"
@@ -73,9 +74,10 @@
     const box = $("me");
     if (!M || !M.ok) { box.innerHTML = `<div class="muted">${esc((M && M.message) || "The leaderboard isn't answering right now.")}</div>`; return; }
     const mine = (M.entries || []).find(x => x.status === "active");
+    const reset = offPlan().length ? `<button class="btn small" type="button" id="me-reset" aria-label="Reset to the default plan">Reset</button>` : "";
     if (!mine) {
       box.innerHTML = `<div><b>You're not on it yet</b><div class="small muted">${esc(gist((M.preview || {}).settings))}</div></div>
-        <div class="acts"><button class="btn" type="button" id="me-share">Share mine</button></div>`;
+        <div class="acts">${reset}<button class="btn" type="button" id="me-share">Share mine</button></div>`;
     } else {
       const rk = (B && B.ranked || []).find(r => r.id === mine.id), w = (B && B.warming || []).find(r => r.id === mine.id);
       const need = (w && w.need) || (B && B.min_days) || M.min_days || 20, days = w ? w.days : null;
@@ -83,10 +85,11 @@
           ${rk ? `<div class="small num ${cls(rk.return_pct)}">${pct(rk.return_pct, 1)} ${RANGE_WORD[range]}</div>` : days != null
             ? `<div class="prog"><div class="meter"><i style="width:${Math.min(100, days / need * 100)}%"></i></div><span>${days} of ${need} days</span></div>`
             : `<div class="small muted">Ranked after ${need} days</div>`}</div>
-        <div class="acts"><button class="btn small" type="button" id="me-share">Share current</button><button class="btn small" type="button" id="me-out">Withdraw</button></div>`;
+        <div class="acts">${reset}<button class="btn small" type="button" id="me-share">Share current</button><button class="btn small" type="button" id="me-out">Withdraw</button></div>`;
       $("me-out").onclick = () => openWithdraw(mine);
     }
     $("me-share").onclick = openShare;
+    if ($("me-reset")) $("me-reset").onclick = openReset;
   }
 
   /* Copy: what changes, then a second press */
@@ -106,19 +109,26 @@
     $("d-x").onclick = $("d-no").onclick = () => dlg.close();
     if ($("d-go")) $("d-go").onclick = () => doCopy(r, $("d-go"));
     if (!dlg.open) dlg.showModal();
+    tell("open-copy");
   }
   async function doCopy(r, btn) {
     const msg = $("d-msg");
     btn.disabled = true; btn.textContent = "Copying…"; msg.className = "lb-msg"; msg.textContent = "";
     const before = await jobOnFile();
     const res = await call("POST", "/api/leaderboard/copy", {id: r.id}).catch(() => ({ok: false, message: "The dashboard didn't answer. Try again."}));
-    if (!res.ok) { btn.disabled = false; btn.textContent = "Copy these settings"; msg.className = "lb-msg down"; msg.textContent = res.message || "That didn't work."; return; }
+    const stop = text => { btn.disabled = false; btn.textContent = "Copy these settings"; msg.className = "lb-msg down"; msg.textContent = text; tell("failed"); };
+    if (!res.ok) return stop(res.message || "That didn't work.");
     let said = res.message;
     if (!res.done) {                                     // the root service does the work: wait for it to report back
       const j = await job("copy-config", before);
-      if (j.status !== "done") { btn.disabled = false; btn.textContent = "Copy these settings"; msg.className = "lb-msg down"; msg.textContent = j.result || "It didn't finish. Try again."; return; }
+      if (j.status !== "done") return stop(j.result || "It didn't finish. Try again.");
       said = bot === "stocks" ? "Copied. Charles uses them at its next daily check." : "Copied. The crypto book uses them from its next check.";
     }
+    changed(msg, said);
+    tell("copied");
+  }
+  /* A change went through: say so and offer the way back. */
+  function changed(msg, said) {
     msg.className = "lb-msg up"; msg.textContent = said;
     $("d-btns").innerHTML = `<button class="btn" type="button" id="d-done">Done</button><button class="btn" type="button" id="d-undo">Undo</button>`;
     $("d-done").onclick = () => dlg.close();
@@ -129,9 +139,40 @@
       const j = u.done ? {status: "done"} : u.ok ? await job("undo-settings", was) : {status: "failed", result: u.message};
       msg.className = "lb-msg " + (j.status === "done" ? "muted" : "down"); msg.textContent = j.status === "done" ? "Undone. Your old settings are back." : j.result || "That didn't work.";
       if ($("d-undo")) $("d-undo").remove();
-      loadMine();
+      await loadMine();
+      if (j.status === "done") tell("undone");
     };
     loadMine();
+  }
+
+  /* Reset: back to the default plan. The same request as the Plan tab's sliders, so it's checked the same way and can be undone. */
+  const same = (a, b) => typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-9 : a === b;
+  const offPlan = () => P && P.ok && P.defaults ? Object.keys(P.defaults).filter(k => !same(P.settings[k], P.defaults[k])) : [];
+  function openReset() {
+    const diffs = offPlan();
+    dlg.innerHTML = `<h3>Back to the default plan?</h3>
+      <div class="sh-h">What changes</div>${diffs.map(k => `<div class="chg"><span>${esc(label(k, P.settings[k])[0])}</span><b class="num">${esc(label(k, P.settings[k])[1])} → ${esc(label(k, P.defaults[k])[1])}</b></div>`).join("")}
+      <p class="small muted" style="margin:10px 0 0">${bot === "stocks" ? "Charles uses it at its next daily check and may trade to match." : "The crypto book uses it from its next check."}</p>
+      <p class="lb-msg" id="d-msg" role="status"></p>
+      <div class="lb-btns" id="d-btns"><button class="btn" type="button" id="d-no">Keep mine</button><button class="btn primary" type="button" id="d-go">Reset</button></div>`;
+    $("d-no").onclick = () => dlg.close();
+    $("d-go").onclick = () => doReset($("d-go"));
+    if (!P.can) { $("d-go").disabled = true; $("d-msg").textContent = P.why || ""; }
+    dlg.showModal();
+    tell("open-reset");
+  }
+  async function doReset(btn) {
+    const msg = $("d-msg"), stop = text => { btn.disabled = false; btn.textContent = "Reset"; msg.className = "lb-msg down"; msg.textContent = text; tell("failed"); };
+    btn.disabled = true; btn.textContent = "Resetting…"; msg.className = "lb-msg"; msg.textContent = "";
+    const before = await jobOnFile();
+    const res = await call("POST", "/api/settings", {bot, settings: Object.fromEntries(offPlan().map(k => [k, P.defaults[k]]))}).catch(() => ({ok: false, message: "The dashboard didn't answer. Try again."}));
+    if (!res.ok) return stop(res.message || "That didn't work.");
+    if (!res.done) {
+      const j = await job("apply-settings", before);
+      if (j.status !== "done") return stop(j.result || "It didn't finish. Try again.");
+    }
+    changed(msg, "Reset. You're back on the default plan.");
+    tell("reset");
   }
   const jobOnFile = async () => { try { return ((await getJSON("/api/updates")).job || {}).at; } catch (x) { return undefined; } };
   /* `before` is the job on file when we asked: until a new one shows up, an old result says nothing about this request. */
@@ -168,9 +209,11 @@
       const r = await call("POST", "/api/leaderboard/submit", {bot, name});
       go.disabled = false;
       msg.className = "lb-msg " + (r.ok ? "up" : "down"); msg.textContent = r.message || (r.ok ? "Shared." : "Couldn't share.");
+      tell(r.ok ? "shared" : r.id ? "failed-same" : "failed");
       if (r.ok) { await load(); setTimeout(() => dlg.open && dlg.close(), 2000); }
     };
     dlg.showModal();
+    tell("open-share");
   }
   function openWithdraw(mine) {
     dlg.innerHTML = `<h3>Withdraw it?</h3><p class="sh-p">It stops being ranked and shows as retired, with its record. You can share again any time.</p>
@@ -225,13 +268,15 @@
       const r = await call("POST", "/api/challenge/enter", {bot, name});
       go.disabled = false;
       msg.className = "lb-msg " + (r.ok ? "up" : "down"); msg.textContent = r.message || (r.ok ? "You're in." : "Couldn't enter.");
+      tell(r.ok ? "entered" : "failed");
       if (r.ok) { await loadChallenge(); setTimeout(() => dlg.open && dlg.close(), 2000); }
     };
     dlg.showModal();
+    tell("open-enter");
   }
 
   async function loadMine() {
-    try { M = await call("GET", "/api/leaderboard/mine?bot=" + bot); } catch (x) { M = null; }
+    try { [M, P] = await Promise.all([call("GET", "/api/leaderboard/mine?bot=" + bot), call("GET", "/api/settings?bot=" + bot)]); } catch (x) { M = P = null; }
     renderMe();
   }
   async function loadChallenge() {

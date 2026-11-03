@@ -297,7 +297,7 @@ def test_book_walk_stops_near_the_best_offer():
 def _run_with(tmp_path, monkeypatch, picks, markets, ledger=None, level="normal"):
     import json
     import gates
-    for k, f in (("TUNING", "tuning.json"), ("LEDGER", "b.json"), ("EQUITY", "e.jsonl"), ("LATEST", "l.json")):
+    for k, f in (("TUNING", "tuning.json"), ("LEDGER", "b.json"), ("EQUITY", "e.jsonl"), ("LATEST", "l.json"), ("BOOKS", "bots")):
         monkeypatch.setattr(betting, k, str(tmp_path / f))
     if ledger:
         (tmp_path / "b.json").write_text(json.dumps(ledger))
@@ -350,12 +350,94 @@ def test_evil_charles_bets_the_other_side_with_the_same_dollars(tmp_path, monkey
 
 
 def test_evil_charles_bets_nothing_where_charles_bets_nothing(tmp_path, monkeypatch):
+    import gates
     import mode
     mode.set_evil(True, NOW)
     ev = "KXNBAGAME-26OCT13GSWLAL"
+    fair = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.50)]           # no edge for Charles: nothing to flip
+    assert _run_with(tmp_path / "a", monkeypatch, fair, {f"{ev}-GSW": _mkt(0.55, 0.45)})["open"] == []
+    assert all(betting.load(betting.bot_paths(b)[0])["open"] == [] for b in betting.BOTS)
+    monkeypatch.setattr(gates, "ON", True)                                      # with the levels back on, predict bets nothing
     picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)]
-    led = _run_with(tmp_path, monkeypatch, picks, {f"{ev}-GSW": _mkt(0.55, 0.45)}, level="predict")
+    led = _run_with(tmp_path / "b", monkeypatch, picks, {f"{ev}-GSW": _mkt(0.55, 0.45)}, level="predict")
     assert led["open"] == []
+
+
+# ---------------------------------------------------------------- both bots, one account (owner 2026-11-03)
+def _scan(tmp_path, monkeypatch, picks, markets, now=NOW, calls=None):
+    for k, f in (("TUNING", "tuning.json"), ("LEDGER", "b.json"), ("EQUITY", "e.jsonl"), ("LATEST", "l.json")):
+        monkeypatch.setattr(betting, k, str(tmp_path / f))
+    monkeypatch.setattr(betting, "gather", lambda ev, now: (picks, {}))
+
+    def book(t):
+        if calls is not None:
+            calls.append(t)
+        return {"yes": [(round(1 - float(markets[t]["no_ask_dollars"]), 2), 500)],
+                "no": [(round(1 - float(markets[t]["yes_ask_dollars"]), 2), 500)]}
+    return betting.run([], markets, now, get_book=book, get_market=lambda t: {}, get_markets=lambda ts: [])
+
+
+def _eq(path):
+    import json
+    with open(path) as f:
+        return [json.loads(line) for line in f]
+
+
+def test_both_bots_bet_every_scan_in_their_own_books(tmp_path, monkeypatch):
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    picks = [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)]
+    summary = _scan(tmp_path, monkeypatch, picks, {f"{ev}-GSW": _mkt(0.55, 0.45)})      # Charles selected (the default)
+    charles, evil = (betting.load(betting.bot_paths(b)[0]) for b in betting.BOTS)
+    assert [b["side"] for b in charles["open"]] == ["no"] and [b["side"] for b in evil["open"]] == ["yes"]
+    assert charles["open"][0]["bot"] == "charles" and evil["open"][0]["bot"] == "evil" and evil["open"][0]["evil"]
+    assert charles["started"] == evil["started"] == NOW.isoformat(timespec="seconds")
+    assert charles["start_cash"] == evil["start_cash"] == betting.START_CASH
+    acct = betting.load()
+    assert [(b["side"], b["bot"]) for b in acct["open"]] == [("no", "charles")]          # the account copies the selected bot
+    assert summary["selected"] == "charles" and summary["books"]["evil"]["placed"] == 1
+    assert _eq(betting.EQUITY)[-1]["mode"] == "charles"
+    assert len(_eq(betting.bot_paths("charles")[1])) == len(_eq(betting.bot_paths("evil")[1])) == 1
+
+
+def test_the_account_follows_the_switch_and_keeps_what_it_holds(tmp_path, monkeypatch):
+    import mode
+    a, b = "KXNBAGAME-26OCT13GSWLAL", "KXNBAGAME-26OCT13BOSNYK"
+    markets = {f"{a}-GSW": _mkt(0.55, 0.45), f"{b}-BOS": _mkt(0.55, 0.45)}
+    _scan(tmp_path, monkeypatch, [dict(PICK, ticker=f"{a}-GSW", event=a, fair_yes=0.30)], markets)
+    mode.set_evil(True, NOW + timedelta(minutes=5))
+    _scan(tmp_path, monkeypatch, [dict(PICK, ticker=f"{b}-BOS", event=b, fair_yes=0.30)], markets, NOW + timedelta(minutes=15))
+    acct = betting.load()
+    assert [(x["ticker"], x["side"], x["bot"]) for x in acct["open"]] == [(f"{a}-GSW", "no", "charles"), (f"{b}-BOS", "yes", "evil")]
+    assert [e["mode"] for e in _eq(betting.EQUITY)] == ["charles", "evil"]
+    for bot, side in (("charles", "no"), ("evil", "yes")):                    # each bot's book never saw the switch
+        assert [(x["side"], x["bot"]) for x in betting.load(betting.bot_paths(bot)[0])["open"]] == [(side, bot)] * 2
+
+
+def test_no_waiting_every_strategy_bets_from_the_first_scan(tmp_path, monkeypatch):
+    import gates
+    assert gates.ON is False                                                  # owner 2026-11-03, until the test review
+    picks = [dict(PICK, strategy=s, ticker=f"T{s}", event=f"E{s}", fair_yes=0.80) for s in ("sports", "weather", "econ")]
+    markets = {p["ticker"]: _mkt(0.40, 0.62) for p in picks}
+    summary = _scan(tmp_path, monkeypatch, picks, markets)                    # fresh install: no levels saved at all
+    assert set(summary["levels"].values()) == {"normal"} and not (tmp_path / "levels.json").exists()
+    assert {x["strategy"] for x in betting.load()["open"]} == {"sports", "weather", "econ"}
+
+
+def test_each_market_book_is_fetched_once_per_scan(tmp_path, monkeypatch):
+    calls = []
+    picks = [dict(PICK, ticker=f"G{i}", event=f"E{i}", fair_yes=0.80) for i in range(3)]
+    _scan(tmp_path, monkeypatch, picks, {p["ticker"]: _mkt(0.40, 0.62) for p in picks}, calls=calls)
+    assert sorted(calls) == ["G0", "G1", "G2"]                                # three books bet, one fetch each
+
+
+def test_followed_at_reads_the_saved_flips():
+    import mode
+    st = {"evil": True, "history": [{"ts": "2026-10-26T19:51:09+00:00", "evil": True}, {"ts": "2026-10-26T19:51:09+00:00", "evil": False},
+                                    {"ts": "2026-10-28T15:42:43+00:00", "evil": True}]}
+    assert mode.followed_at("2026-10-20T00:00:00+00:00", st) == "charles"     # before the first flip: its opposite
+    assert mode.followed_at("2026-10-27T00:00:00+00:00", st) == "charles"     # same-second on then off: off
+    assert mode.followed_at("2026-11-01T00:00:00+00:00", st) == "evil"
+    assert mode.followed_at("2026-11-01T00:00:00+00:00", {"evil": True, "history": []}) == "evil"
 
 
 def test_evil_bets_hold_to_settlement():
@@ -379,3 +461,28 @@ def test_shadow_signal_carries_the_opposite_cost():
     m = {"X": _mkt(0.55, 0.47)}
     sig = betting.signals_of([dict(PICK, side="no", quick_edge=0.2)], m)["X"]
     assert sig["opp_cost"] == round(0.55 + betting.fee(100, 0.55) / 100, 4)
+
+
+def test_evil_charles_bets_against_exactly_what_charles_placed(tmp_path, monkeypatch):
+    # 2026-11-03 scratch scan: picking on his own caps, Evil Charles's cheaper opposite bets left $1.08 under one CPI
+    # release's cap, a $0.85 crumb took his third inflation slot, and he never bet against Charles's $30 October bet.
+    picks = [dict(PICK, strategy="econ", ticker=t, event=t.rsplit("-", 1)[0], fair_yes=f) for t, f in
+             (("KXCPIYOY-26NOV-T4.0", 0.60), ("KXCPIYOY-26NOV-T3.9", 0.68), ("KXCPI-26NOV-T0.4", 0.62), ("KXCPI-26OCT-T0.1", 0.10))]
+    markets = {"KXCPIYOY-26NOV-T4.0": _mkt(0.31, 0.70), "KXCPIYOY-26NOV-T3.9": _mkt(0.41, 0.60),
+               "KXCPI-26NOV-T0.4": _mkt(0.30, 0.72), "KXCPI-26OCT-T0.1": _mkt(0.96, 0.05)}
+    _scan(tmp_path, monkeypatch, picks, markets)
+    charles, evil = (betting.load(betting.bot_paths(b)[0])["open"] for b in betting.BOTS)
+    assert sorted(b["ticker"] for b in evil) == sorted(b["ticker"] for b in charles)
+    for c in charles:
+        e = next(b for b in evil if b["ticker"] == c["ticker"])
+        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and c["cost"] - 1 < e["cost"] <= c["cost"]
+
+
+def test_the_account_scales_the_bots_bets_to_its_own_money(tmp_path, monkeypatch):
+    ev = "KXNBAGAME-26OCT13GSWLAL"
+    half = {"start_cash": 1000.0, "cash": 500.0, "open": [], "closed": []}            # the account has half the money
+    import json
+    (tmp_path / "b.json").write_text(json.dumps(half))
+    _scan(tmp_path, monkeypatch, [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)], {f"{ev}-GSW": _mkt(0.55, 0.45)})
+    mine, his = betting.load()["open"][0], betting.load(betting.bot_paths("charles")[0])["open"][0]
+    assert mine["side"] == his["side"] and abs(mine["cost"] - his["cost"] / 2) < 1

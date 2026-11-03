@@ -51,8 +51,10 @@ function renderChart() {
   $("range").innerHTML = RANGES.map(([k, d]) => `<button type="button" data-r="${k}" class="${k === shown ? "on" : ""}"${d < 1e5 && hd < d ? " disabled" : ""}>${k}</button>`).join("");
   document.querySelectorAll("[data-r]").forEach(b => b.onclick = () => { range = b.dataset.r; try { localStorage.setItem("home-range", range); } catch (e) {} renderChart(); });
   const all = D.series, cut = days >= 1e5 ? "" : new Date(Date.now() - days * 864e5).toISOString();
-  const rows = days >= 1e5 ? all : all.filter(r => new Date(r[0]).toISOString() >= cut);
-  zeroChart($("chart"), rows.length > 1 ? rows : all, {axis: true, reveal: !$("earned").dataset.counted, label: "What your bots have earned together", empty: "The chart starts after the first check."});
+  const rows = days >= 1e5 ? all : all.filter(r => new Date(r[0]).toISOString() >= cut), pts = rows.length > 1 ? rows : all;
+  // A new install's first day: a few minutes of nothing earned is a flat line with odd labels (+$0, the same day five times), not a chart
+  const day = r => new Date(dayRow(r[0])).toDateString(), day1 = pts.length > 1 && pts.every(r => day(r) === day(pts[0]) && r[1] === pts[0][1]);
+  zeroChart($("chart"), day1 ? [] : pts, {axis: true, reveal: !$("earned").dataset.counted, label: "What your bots have earned together", empty: "The chart starts after the first check."});
 }
 
 function renderHero() {
@@ -153,12 +155,14 @@ function drawBots() {
   }
 }
 
-// Anything wrong shows here for 48 hours, or until "Got it".
+// Anything wrong shows here for 48 hours, or until "Got it". A daily-loss pause ends with its market day, so it goes then.
 const NOTICE_SEEN = "charles-notice-seen";
+const marketDay = t => new Intl.DateTimeFormat("en-CA", {timeZone: "America/New_York"}).format(new Date(t));
+const overToday = n => n.title.startsWith("Buys paused") && marketDay(n.ts) !== marketDay(Date.now());
 function renderAttention() {
   let seen = "";
   try { seen = localStorage.getItem(NOTICE_SEEN) || ""; } catch (e) {}
-  const hot = (D.notices || []).filter(n => n.level === "error" && Date.now() - new Date(n.ts) < 48 * 36e5 && n.ts > seen), box = $("attention");
+  const hot = (D.notices || []).filter(n => n.level === "error" && Date.now() - new Date(n.ts) < 48 * 36e5 && n.ts > seen && !overToday(n)), box = $("attention");
   box.hidden = !hot.length;
   box.innerHTML = hot.length ? `<div class="card-head"><h2>Needs a look</h2><button class="got" id="notice-got" type="button">Got it</button></div>${hot.map(n =>
     `<div class="notice"><div class="row-t"><b>${esc(n.title)}</b><span class="small muted">${ago(n.ts)}</span></div>${n.message ? `<div class="small muted">${esc(n.message)}</div>` : ""}</div>`).join("")}` : "";
@@ -195,7 +199,7 @@ async function load() {
     renderSetup();
     renderBots();
     renderAttention();
-    if (!window.homeReady) { window.homeReady = true; dispatchEvent(new Event("charles:home-ready")); }
+    if (!window.homeReady) { window.homeNew = !!D.setup; window.homeReady = true; dispatchEvent(new Event("charles:home-ready")); }
   } catch (e) {
     $("earned-sub").textContent = "The dashboard isn't answering. Refresh in a moment.";
     document.body.classList.remove("loading");

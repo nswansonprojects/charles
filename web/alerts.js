@@ -68,9 +68,9 @@
 
   function show(a) {
     lane();
-    const href = safeHref(a.href), el = document.createElement("div"), left = queue.length + unshown;
+    const el = document.createElement("div"), left = queue.length + unshown;
     el.className = "toast" + (a.kind === "error" ? " err" : "");
-    el.innerHTML = `<${href ? `a href="${e(href)}"` : `button type="button"`} class="toast-main">${compact(a)}</${href ? "a" : "button"}>
+    el.innerHTML = `<button type="button" class="toast-main">${compact(a)}</button>
       ${left ? `<button type="button" class="toast-more" aria-label="${left} more alerts">+${left}</button>` : ""}
       <button type="button" class="toast-x" aria-label="Dismiss"><svg viewBox="0 0 14 14" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg></button>`;
     box.append(el);
@@ -78,7 +78,7 @@
     el.querySelector(".toast-x").onclick = next;
     const more = el.querySelector(".toast-more");
     if (more) more.onclick = openList;
-    if (!href) el.querySelector(".toast-main").onclick = openList;
+    el.querySelector(".toast-main").onclick = () => openList(true, a);     // the list, with this one open
     // Swipe it away; a swipe that goes back is a tap.
     let x0 = null, dx = 0;
     el.addEventListener("pointerdown", ev => { if (ev.pointerType !== "mouse") { x0 = ev.clientX; dx = 0; } });
@@ -89,7 +89,7 @@
     });
     const end = () => { if (x0 === null) return; x0 = null; el.style.transition = ""; el.style.transform = ""; if (Math.abs(dx) > 70) { queue.length ? next() : leave(el, dx > 0 ? 300 : -300); } };
     el.addEventListener("pointerup", end); el.addEventListener("pointercancel", end);
-    el.addEventListener("click", ev => { if (Math.abs(dx) > 8) ev.preventDefault(); }, true);
+    el.addEventListener("click", ev => { if (Math.abs(dx) > 8) { ev.preventDefault(); ev.stopPropagation(); } }, true);
     el.addEventListener("pointerenter", () => clearTimeout(el._t));     // reading it: it stays
     el.addEventListener("pointerleave", () => arm(el, 2500));
     requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add("in")));
@@ -111,7 +111,7 @@
   let A = [], stopped = false;
   const listOpen = () => list && !list.hidden;
   const touring = () => document.querySelector(".tour-card");
-  const tourFirst = () => { if (page !== "home") return false; try { return !localStorage.getItem(TOUR); } catch (x) { return false; } };
+  const tourFirst = () => { if (document.documentElement.dataset.tour) return true; if (page !== "home") return false; try { return !localStorage.getItem(TOUR); } catch (x) { return false; } };
   // Open without being asked once there's something to show, so a new install's page doesn't move over for an empty window.
   const wanted = () => { const w = get(WIN); return docked.matches && (w === "open" || (w === null && roomy.matches && get(ANY) === "1")); };
   const settle = () => { if (!listOpen() && wanted() && !touring() && !tourFirst()) openList(false); };
@@ -154,14 +154,23 @@
     list.innerHTML = `<div class="chat-head"><h2>Alerts</h2><button class="icon" id="alerts-close" type="button" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg></button></div><div class="alerts-list" id="alerts-list"></div>`;
     document.body.append(list);
     document.getElementById("alerts-close").onclick = closeList;
+    document.getElementById("alerts-list").addEventListener("click", ev => {   // a row opens in place to its whole message
+      const row = ev.target.closest("button.al-line");
+      if (!row) return;
+      const item = row.parentElement, on = item.classList.toggle("open");
+      row.setAttribute("aria-expanded", String(on));
+      if (on) opened.add(item.dataset.k); else opened.delete(item.dataset.k);
+    });
   }
+  const keyOf = a => a.ts + a.title, opened = new Set();
+  const goTo = (a, h) => h === "/" ? "Go to Home" : `Go to ${a.bot}`;
   let filled = null, loaded = false;
   function fill() {                                        // only when something changed, so a scrolled list stays where it is
     const key = A.map(a => a.ts + a.title).join();
     if (key !== filled || !loaded) {
       const read = +get(READ) || 0;
-      document.getElementById("alerts-list").innerHTML = A.length ? A.map(a => { const h = safeHref(a.href);
-        return `<${h ? `a href="${e(h)}"` : "div"} class="al-row al-line${ms(a) > read ? " new" : ""}">${inner(a)}</${h ? "a" : "div"}>`; }).join("")
+      document.getElementById("alerts-list").innerHTML = A.length ? A.map(a => { const h = safeHref(a.href), on = opened.has(keyOf(a));
+        return `<div class="al-item${on ? " open" : ""}" data-k="${e(keyOf(a))}"><button type="button" class="al-row al-line${ms(a) > read ? " new" : ""}" aria-expanded="${on}">${inner(a)}</button>${h ? `<a class="al-go" href="${e(h)}">${e(goTo(a, h))}</a>` : ""}</div>`; }).join("")
         : `<p class="alerts-empty">Nothing yet. Trades, bets and anything that needs a look show up here.</p>`;
       filled = key; loaded = true;
     }
@@ -173,13 +182,15 @@
     bell.classList.toggle("on", on); bell.setAttribute("aria-expanded", String(on));
     dispatchEvent(new Event("resize"));                    // the page moved over: the charts redraw at their new width
   }
-  function openList(asked = true) {
+  function openList(asked = true, one = null) {
     if (!list) makeList();
+    if (one) { opened.add(keyOf(one)); filled = null; }
     if (asked) { put(WIN, "open"); fill(); }
     clearAll();
     setShown(true);
     badge();
     if (asked) document.getElementById("alerts-close").focus();
+    if (one) { const k = list.querySelector(".al-item.open[data-k=\"" + CSS.escape(keyOf(one)) + "\"]"); if (k) k.scrollIntoView({block: "nearest"}); }
   }
   function closeList() { if (!list) return; put(WIN, "hidden"); setShown(false); bell.focus(); }
   bell.setAttribute("aria-haspopup", "dialog");

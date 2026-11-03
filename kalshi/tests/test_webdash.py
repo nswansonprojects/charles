@@ -107,3 +107,46 @@ def test_flipping_the_switch_shows_at_the_next_look(monkeypatch):
     assert wd.state_json() == b'{"v": 1}'            # still fresh
     wd.state_changed()
     assert wd.state_json() == b'{"v": 2}'
+
+
+# ---------------------------------------------------------------- one account, two bots (owner 2026-11-03)
+def test_each_account_point_says_who_it_followed():
+    st = {"evil": True, "history": [{"ts": "2026-10-28T15:42:43+00:00", "evil": True}]}
+    eq = [{"ts": "2026-10-27T00:00:00+00:00", "account_value": 560.0},                     # before the flip: Charles
+          {"ts": "2026-10-29T00:00:00+00:00", "account_value": 555.0},                     # after it: Evil Charles
+          {"ts": "2026-11-03T02:00:00+00:00", "account_value": 554.0, "mode": "charles"}]  # tagged by the scan itself
+    assert [r[2] for r in wd.tagged_equity(eq, st)] == ["charles", "evil", "charles"]
+    assert wd.tagged_equity(eq, st)[0][:2] == ["2026-10-27T00:00:00+00:00", 560.0]        # Charles's Home still reads [ts, value]
+
+
+def test_bot_view_keeps_each_bots_record_apart():
+    import json
+    import betting
+    import os
+    os.makedirs(betting.BOOKS, exist_ok=True)
+    path, eq = betting.bot_paths("evil")
+    with open(path, "w") as f:
+        json.dump({"start_cash": 1000.0, "cash": 990.0, "started": "2026-11-03T01:00:00+00:00", "open": [{"cost": 4.0}],
+                   "closed": [{"strategy": "weather", "pnl": 6.0, "how": "won"}, {"strategy": "sports", "pnl": -5.0, "how": "lost"}]}, f)
+    with open(eq, "w") as f:
+        f.write(json.dumps({"ts": "2026-11-03T02:00:00+00:00", "account_value": 1003.5}) + "\n")
+    v = wd.bot_view("evil")
+    assert (v["name"], v["earned"], v["won"], v["lost"], v["open"]) == ("Evil Charles", 3.5, 1, 1, 1)
+    assert v["by_strategy"]["weather"] == {"settled": 1, "pnl": 6.0}
+    assert wd.bot_view("charles")["placed"] == 0 and wd.bot_view("charles")["earned"] == 0.0      # no book yet: a fresh $1,000
+
+
+def test_self_tune_shows_the_test_while_the_levels_are_off():
+    from datetime import datetime, timezone
+    now = datetime(2026, 11, 10, 15, tzinfo=timezone.utc)
+    bots = {b: {"started": "2026-11-03T01:00:00+00:00",
+                "by_strategy": {s: {"settled": 10 if b == "charles" else 8, "pnl": 1.0} for s in wd.STRATEGY_INFO}}
+            for b in ("charles", "evil")}
+    test = wd.test_view(now, bots, has_review=True)
+    assert test["review"] == "2026-11-30" and 0 < test["progress"] < 0.5 and test["days_left"] == 20
+    m = wd.test_milestones(bots, test)
+    assert [x["key"] for x in m] == ["weather", "sports", "econ", "longshot", "review"]
+    assert m[0]["progress"] == 0.4 and m[0]["detail"].startswith("8 settled each")                 # the smaller of the two books
+    assert m[-1]["detail"].startswith("Mon Nov 30") and not m[-1].get("level")
+    alone = wd.test_view(now, bots, has_review=False)                     # a public install: no review to promise
+    assert alone["review"] is None and [x["key"] for x in wd.test_milestones(bots, alone)][-1] == "longshot"

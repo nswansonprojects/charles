@@ -1,5 +1,5 @@
-"""webdash.py — Kalshi paper-account dashboard (port 8503): the betting book on top,
-the arbitrage scanner below it.
+"""webdash.py — Kalshi paper-account dashboard (port 8503): the account on top (it copies the bets of
+whichever bot the switch selects), each bot's own record beside it, the arbitrage scanner below.
 
 One page (web/index.html) plus one JSON endpoint (/api/state). It reads data/ files written by
 run.py and never trades or calls Kalshi. The one thing it writes: the Charles / Evil Charles
@@ -76,6 +76,70 @@ STRATEGY_INFO = {
     "econ": ("Inflation", "CPI markets vs the Cleveland Fed's inflation nowcast."),
     "longshot": ("Longshot bias", "Bets NO on 3-10c long shots, which win less often than their price says."),
 }
+
+
+BOT_NAMES = {"charles": "Charles", "evil": "Evil Charles"}
+REVIEW_EVIDENCE = 20        # settled bets per strategy in each bot's book before the review's numbers are more than a hint
+# Claude's daily review runs only on the owner's server (ops/ isn't in the public release), so a new install never promises it.
+HAS_REVIEW = os.path.exists(os.path.join(ROOT, "ops", "run-review"))
+
+
+def bot_view(bot: str) -> dict:
+    """One bot's own practice book (betting.BOTS, owner 2026-11-03): what it has earned and its record, never mixed with the other's."""
+    path, eq_path = betting.bot_paths(bot)
+    led = betting.load(path)
+    eq = _jsonl(eq_path, last=1)
+    start = led.get("start_cash", betting.START_CASH)
+    value = eq[-1]["account_value"] if eq else led["cash"] + sum(b["cost"] for b in led["open"])
+    closed = led["closed"]
+    by = {s: {"settled": sum(b["strategy"] == s and b["how"] in ("won", "lost", "sold") for b in closed),
+              "pnl": round(sum(b["pnl"] for b in closed if b["strategy"] == s), 2)} for s in betting.STRATEGIES}
+    return {"name": BOT_NAMES[bot], "started": led.get("started"), "start_cash": start, "account_value": round(value, 2),
+            "earned": round(value - start, 2), "earned_pct": round((value / start - 1) * 100, 2) if start else None,
+            "placed": len(led["open"]) + len(closed), "open": len(led["open"]),
+            "won": sum(b["how"] == "won" for b in closed), "lost": sum(b["how"] == "lost" for b in closed),
+            "sold": sum(b["how"] == "sold" for b in closed), "realised_pnl": round(sum(b["pnl"] for b in closed), 2),
+            "by_strategy": by}
+
+
+def test_view(now: datetime, bots: dict, has_review: bool | None = None) -> dict:
+    """The side-by-side test: when it started (the bots' first scan) and when Claude's review compares them (review None
+    where there is no review: a public install)."""
+    has_review = HAS_REVIEW if has_review is None else has_review
+    started = min((b["started"] for b in bots.values() if b.get("started")), default=None)
+    review = datetime.fromisoformat(betting.TEST_REVIEW + "T09:15:00").replace(tzinfo=ZoneInfo("America/New_York"))
+    begun = datetime.fromisoformat(started) if started else now
+    total = max(1.0, (review - begun).total_seconds() / 86400)
+    return {"started": started, "review": betting.TEST_REVIEW if has_review else None, "gates": gates.ON,
+            "progress": round(min(1.0, max(0.0, (now - begun).total_seconds() / 86400 / total)), 2),
+            "days_left": max(0, round((review - now).total_seconds() / 86400))}
+
+
+def test_milestones(bots: dict, test: dict) -> list:
+    """Self-Tune during the test: per strategy, the settled bets each bot has toward the review; then the review itself."""
+    out = []
+    for k, (name, _) in STRATEGY_INFO.items():
+        c, e = bots["charles"]["by_strategy"][k], bots["evil"]["by_strategy"][k]
+        n = min(c["settled"], e["settled"])
+        out.append({"key": k, "name": f"{name}: betting in both books", "level": "normal",
+                    "progress": round(min(1.0, n / REVIEW_EVIDENCE), 2),
+                    "about": f"Both bots bet on it from the first scan. Under {REVIEW_EVIDENCE} settled bets each, its results are a hint, not a verdict.",
+                    "needs": f"{REVIEW_EVIDENCE} settled each",
+                    "detail": f"{n} settled each · Charles {sgn(c['pnl'])} · Evil Charles {sgn(e['pnl'])}"})
+    if not test["review"]:
+        return out
+    day = datetime.fromisoformat(test["review"]).strftime("%a %b %-d")
+    out.append({"key": "review", "name": "Test review",
+                "about": "Claude compares Charles and Evil Charles and suggests what should change for each. Nothing is tuned until then.",
+                "progress": test["progress"], "needs": day,
+                "detail": day + (f" · in {test['days_left']} days" if test["days_left"] > 1 else " · this week" if test["days_left"] else " · today")})
+    return out
+
+
+def tagged_equity(eq: list, st: dict) -> list:
+    """[[ts, account value, "charles" | "evil"], ...]: who the account was following at each point. Points from before
+    2026-11-03 carry no tag, so the saved flips say."""
+    return [[e["ts"], e["account_value"], e.get("mode") or mode.followed_at(e["ts"], st)] for e in eq]
 
 
 # Levels (gates.py, owner 2026-10-15): what each strategy may bet, and what it shows on the Self-Tune tab
@@ -203,11 +267,14 @@ def betting_state(now: datetime) -> dict:
     graded = predictions.load_graded(os.path.join(DATA, "predictions_graded.jsonl"))
     levels = gates.progress(betting.STRATEGIES, graded, now, os.path.join(DATA, "levels.json"))
     strategies = [{"key": k, "name": n, "about": d, **st[k], **{"data": status.get(k, {})},
-                   "level": levels[k]["level"], "predictions": levels[k]["card"],
+                   "level": levels[k]["level"] if gates.ON else "normal", "predictions": levels[k]["card"],
                    "min_edge": betting.RULES["min_edge"][k], "trust": betting.RULES["trust_model"][k],
                    "cap_pct": betting.RULES["strategy_cap_pct"][k]} for k, (n, d) in STRATEGY_INFO.items()]
     wins = [b["pnl"] for b in closed if b["pnl"] > 0]
     losses = [b["pnl"] for b in closed if b["pnl"] < 0]
+    switch = mode.load()
+    bots = {b: bot_view(b) for b in betting.BOTS}
+    test = test_view(now, bots)
     return {
         "account": {**acct, "start_cash": start, "at_cost": at_cost,
                     "avg_win": round(sum(wins) / len(wins), 2) if wins else None,
@@ -221,7 +288,7 @@ def betting_state(now: datetime) -> dict:
                     "placed": len(led["open"]) + len(closed),
                     "won": sum(b["how"] == "won" for b in closed), "lost": sum(b["how"] == "lost" for b in closed),
                     "sold": sum(b["how"] == "sold" for b in closed)},
-        "equity": [[e["ts"], e["account_value"]] for e in eq[-3000:]],
+        "equity": tagged_equity(eq[-3000:], switch),
         "pnl_lines": pnl_lines(closed),
         "calibration": calibration(closed),
         "open": sorted(led["open"], key=lambda b: b["opened"], reverse=True),
@@ -230,9 +297,11 @@ def betting_state(now: datetime) -> dict:
         "watching": latest.get("top_edges", [])[:12],
         "last": latest.get("summary"),
         "rules": {k: v for k, v in betting.RULES.items() if not isinstance(v, dict)},
-        "milestones": milestones(now, led, st, levels),
-        "mode": {k: v for k, v in mode.load().items() if k != "history"},
+        "milestones": milestones(now, led, st, levels) if gates.ON else test_milestones(bots, test),
+        "mode": {**{k: v for k, v in switch.items() if k != "history"}, "follows": "evil" if switch["evil"] else "charles"},
         "evil_record": evil_record(graded, now),
+        "bots": bots,
+        "test": test,
     }
 
 

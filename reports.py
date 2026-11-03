@@ -90,8 +90,12 @@ def plan_lines(start_dt: datetime, end_dt: datetime, data_dir: str = None, spy=N
     after = [p["value"] for p in curve if p["ts"][:10] >= started]
     vals = before[-1:] + after
     since = datetime.fromisoformat(started).strftime("%b %-d, %Y")
+    # Charles's end: the last close in market hours, never an after-hours or weekend mark.
+    import plan_vs_spy
+    closes = plan_vs_spy.close_points(curve)
+    last = closes[max(closes)]["value"] if closes and max(closes) >= started else None
     if after and len(vals) >= 2 and vals[0]:
-        mine = (vals[-1] / vals[0] - 1) * 100
+        mine = ((last or vals[-1]) / vals[0] - 1) * 100
         theirs = spy(started, end_day)
         icon = "✅" if mine >= theirs else "⚠️"
         lines.append(f"Plan since {since}: {mine:+.2f}% vs SPY {theirs:+.2f}% {icon}")

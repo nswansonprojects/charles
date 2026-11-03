@@ -212,6 +212,7 @@ def _picks():
 
 
 def test_predict_level_bets_nothing_but_logs_every_prediction(monkeypatch, tmp_path):
+    monkeypatch.setattr(gates, "ON", True)          # the levels, as they work when the owner turns them back on
     monkeypatch.setattr(betting, "TUNING", str(tmp_path / "t.json"))
     monkeypatch.setattr(betting, "gather", betting.gather)
     markets = {p["ticker"]: mkt(p["ticker"], 0.38, 0.40) for p in _picks()}
@@ -222,6 +223,7 @@ def test_predict_level_bets_nothing_but_logs_every_prediction(monkeypatch, tmp_p
 
 
 def test_small_level_bets_at_most_five_dollars(monkeypatch, tmp_path):
+    monkeypatch.setattr(gates, "ON", True)          # the levels, as they work when the owner turns them back on
     monkeypatch.setattr(betting, "TUNING", str(tmp_path / "t.json"))
     monkeypatch.setattr(betting, "gather", betting.gather)
     markets = {p["ticker"]: mkt(p["ticker"], 0.38, 0.40) for p in _picks()}

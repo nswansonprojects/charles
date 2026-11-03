@@ -17,6 +17,10 @@ from datetime import datetime
 
 import predictions
 
+# Owner 2026-11-03: no waiting. While Charles and Evil Charles are tested side by side, every strategy bets at the normal
+# rules from the first scan and nothing here is checked (betting.run). The levels stay for later: bringing them back
+# (ON = True) is the owner's call, after the test review.
+ON = False
 STATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "levels.json")
 LEVELS = ("predict", "small", "normal")
 GATES = {

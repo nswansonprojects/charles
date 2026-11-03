@@ -99,8 +99,12 @@ def live(plan_path: str, curve_path: str) -> dict:
     if not before or not after:
         return {"started": started, "note": "not enough history yet"}
     import yfinance as yf
-    spy = yf.Ticker("SPY").history(start=started)["Close"]
-    prior = yf.Ticker("SPY").history(period="10d", end=started)["Close"]
+    import plan_vs_spy
+    from datetime import date, timedelta
+    s = yf.Ticker("SPY").history(start=str(date.fromisoformat(started[:10]) - timedelta(days=10)))["Close"]
+    same = plan_vs_spy.since_started(curve, started, [(str(i.date()), float(c)) for i, c in s.items()])
+    if not same:
+        return {"started": started, "note": "not enough history yet"}
     start_val, vals = before[-1]["value"], [p["value"] for p in after]
     peak, worst = start_val, 0.0
     for x in vals:
@@ -108,8 +112,8 @@ def live(plan_path: str, curve_path: str) -> dict:
         worst = min(worst, x / peak - 1)
     days = (datetime.now(timezone.utc) - datetime.fromisoformat(started).replace(tzinfo=timezone.utc)).days
     return {"started": started, "days": days,
-            "charles_pct": round((vals[-1] / start_val - 1) * 100, 2),
-            "spy_pct": round((float(spy.iloc[-1]) / float(prior.iloc[-1]) - 1) * 100, 2) if len(spy) and len(prior) else None,
+            # Both at the same close (after-hours and weekend curve points left out).
+            "charles_pct": same["charles_pct"], "spy_pct": same["spy_pct"], "as_of_close": same["as_of_close"],
             "charles_worst_drop_pct": round(worst * 100, 2),
             "trusted": days >= 180,
             "note": "Live results count for tuning from 6 months on; before that only the backtest does."}

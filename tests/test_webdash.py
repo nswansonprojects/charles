@@ -253,6 +253,7 @@ class AddonTabs(BotTestCase):
                 self.assertIn('href="/settings"', out)
                 self.assertIn('class=on aria-current=page', out)
                 self.assertIn('src="/shell.js"', out)
+                self.assertIn('src="/tour.js"', out)
 
     def test_old_addresses_lead_to_their_new_pages(self):
         self.assertEqual(wd.PAGES["/"], "home.html")
@@ -465,6 +466,13 @@ class HomeFeed(BotTestCase):
         self.assertEqual(v["total"]["start"], 3000)
         self.assertEqual(v["series"][-1][1], v["total"]["earned"])          # the chart ends on the big number
         self.assertEqual(by["crypto"]["note"], "Holding bitcoin")
+        self.assertEqual(by["kalshi"]["note"], "Following Charles · 9 open bets")       # who the account copies (2026-11-03)
+        k = self.kalshi()
+        k["betting"]["mode"] = {"evil": True}
+        k["betting"]["equity"] = [r + ["evil"] for r in k["betting"]["equity"]]         # Kalshi's points now say who it followed
+        by = {b["id"]: b for b in self.view(self.stocks(), self.crypto(), k)["bots"]}
+        self.assertEqual(by["kalshi"]["note"], "Following Evil Charles · 9 open bets")
+        self.assertEqual(by["kalshi"]["curve"][-1], ["2026-10-31T03:15:00+00:00", 560.69])
 
     def test_an_add_on_that_is_off_or_silent_counts_for_nothing(self):
         v = self.view(self.stocks(), None, None, on={"crypto": False, "kalshi": False})
@@ -552,13 +560,44 @@ class PauseButton(BotTestCase):
         i = page.index('if (!!D.paused === (action === "pause"))')
         self.assertIn("renderRun()", page[i:page.index("return;", i)])
 
-    def test_the_tour_survives_its_own_end_and_a_card_that_hid(self):
-        """Pressing Done left two delayed place() calls with nothing to place: a page error on every first visit."""
-        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "shell.js")) as f:
+    def test_the_tour_survives_its_own_end_and_a_part_that_isnt_there(self):
+        """Pressing Done left two delayed place() calls with nothing to place: a page error on every first visit. A part of the page
+        that isn't there (no leaderboard, nobody to copy) is skipped after a short wait, never pointed at."""
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "tour.js")) as f:
             js = f.read()
         i = js.index("function place()")
-        self.assertIn("if (!stops[i]", js[i:i + 120])
-        self.assertIn("stops.splice(i, 1)", js)
+        self.assertIn("if (!cur || cur.dlg || ended) return;", js[i:i + 120])
+        self.assertIn("if (!ok) return go(st.miss || after(st));", js)
+
+    def test_the_tour_starts_by_itself_only_on_a_new_install(self):
+        """Owner 2026-11-03: the tour came back on every new network, phone or browser. It starts by itself only while Home's
+        Get started is there (a new install); one under way or replayed from Settings (which sets the step) goes on."""
+        web = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web")
+        with open(os.path.join(web, "tour.js")) as f:
+            js = f.read()
+        with open(os.path.join(web, "home.html")) as f:
+            home = f.read()
+        with open(os.path.join(web, "settings.html")) as f:
+            settings = f.read()
+        i = js.index("const begin = () => {")
+        self.assertIn('if (!at && !window.homeNew) { put(DONE, "1");', js[i:i + 200])
+        self.assertIn("window.homeNew = !!D.setup; window.homeReady = true;", home)
+        self.assertIn('localStorage.setItem("charles-tour-at", "hi")', settings)
+        self.assertIn('{id: "hi", page: "home"', js)
+        old = {"equity": [["2026-06-03T18:56:23+00:00", 1042.6]], "account": {"total_value": 1000}}
+        self.assertIsNone(wd.setup_view(old, False, datetime(2026, 11, 3, tzinfo=timezone.utc)))   # months old: no Get started, no tour
+        self.assertIsNotNone(wd.setup_view({}, False, datetime(2026, 11, 3, tzinfo=timezone.utc), new=True))
+
+    def test_the_tour_only_asks_for_real_changes_where_a_refusal_has_a_way_on(self):
+        """Every step that waits on the leaderboard has somewhere to go when the board says no, or the dialog is closed."""
+        with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "web", "tour.js")) as f:
+            js = f.read()
+        steps = js[js.index("const STEPS = ["):js.index("const byId")]
+        for line in [x for x in steps.split("{id: ")[1:] if "dlg: true" in x.split("say:")[0]]:
+            self.assertIn("closed:", line, line[:40])
+        for line in [x for x in steps.split("{id: ")[1:] if "do: true" in x.split("say:")[0]]:
+            self.assertIn("skip:", line, line[:40])
+            self.assertIn("miss:", line, line[:40])
 
 
 class Alerts(BotTestCase):
@@ -584,6 +623,25 @@ class Alerts(BotTestCase):
         self.assertEqual(by["AI skipped MRNA"]["sub"], "Fraud probe")
         for a in out:
             self.assertEqual(set(a), {"ts", "bot", "kind", "title", "sub", "amount", "pnl", "href"})
+
+    def test_home_drops_a_daily_pause_once_its_market_day_is_over(self):
+        with open(os.path.join(os.path.dirname(os.path.abspath(wd.__file__)), "web", "home.html")) as f:
+            page = f.read()
+        self.assertIn('n.title.startsWith("Buys paused") && marketDay(n.ts) !== marketDay(Date.now())', page)
+        self.assertIn("!overToday(n)", page)
+
+    def test_a_restart_alarm_goes_once_a_later_notice_clears_it(self):
+        now = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+        rows = [{"ts": "2026-11-01T04:00:00+00:00", "title": "Buys paused", "level": "error"},
+                {"ts": "2026-11-01T05:00:00+00:00", "title": "Charles restart needs a look", "level": "error"},
+                {"ts": "2026-11-01T06:00:00+00:00", "title": "Charles restart checked: all clear", "level": "info"},
+                {"ts": "2026-11-01T07:00:00+00:00", "title": "Charles restart needs a look", "level": "error"}]
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "n.json")
+            with open(path, "w") as f:
+                json.dump(rows, f)
+            got = wd.notices(path, now)["notices"]
+        self.assertEqual([n["ts"][11:13] for n in got], ["07", "06", "04"])
 
     def test_notices_lose_their_emoji_and_errors_stand_out(self):
         out = wd.alert_events({}, {}, {}, [{"ts": "2026-10-20T10:00:00+00:00", "title": "🎛️ Settings changed: Picks 4 → 6", "message": "", "level": "info"},

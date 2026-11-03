@@ -222,7 +222,7 @@ async function load() {
     show();
   });
   show();
-  $("tour-again").onclick = () => { try { localStorage.removeItem("charles-tour-v2"); } catch (e) {} location.href = "/"; };
+  $("tour-again").onclick = () => { try { localStorage.removeItem("charles-tour-v2"); localStorage.setItem("charles-tour-at", "hi"); } catch (e) {} location.href = "/"; };
 })();
 load();
 </script>
