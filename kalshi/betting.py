@@ -268,10 +268,43 @@ def take(side: str, book: dict, dollars: float, cap: float | None = None) -> dic
     return {"side": side, "contracts": n, "avg_price": round(cost / n, 4), "fee": f, "cost": round(cost + f, 2)}
 
 
+def take_exact(side: str, book: dict, dollars: float) -> dict | None:
+    """Buy `side` for exactly `dollars` (fee included), in part-contracts (owner 2026-11-03: a copied bet costs exactly what
+    the bet it copies cost, so both bots' values match to the cent; these are practice books). Walks the offers like take().
+    Returns {side, contracts, avg_price, fee, cost} or None."""
+    levels = [(p, q) for p, q in evaluate.asks(book, side) if RULES["price_range"][0] <= p <= RULES["price_range"][1]]
+    dollars = round(dollars, 2)
+    if not levels or dollars <= 0:
+        return None
+    top = levels[0][0]
+
+    def buy(stake):                                # part-contracts that `stake` buys, walking the offers; None if too thin
+        n, left = 0.0, stake
+        for p, q in levels:
+            if p > top + RULES["max_walk"] + 1e-9:
+                break
+            k = min(q * RULES["fill_share"], left / p)
+            n, left = n + k, left - k * p
+            if left <= 1e-9:
+                return n
+        return None
+
+    f = 0.0
+    for _ in range(4):                             # the fee depends on the size, and the size on what the fee leaves
+        n = buy(dollars - f)
+        if not n:
+            return None
+        f = fee(n, (dollars - f) / n)
+    n = buy(dollars - f)
+    if not n or dollars - f <= 0:
+        return None
+    return {"side": side, "contracts": round(n, 4), "avg_price": round((dollars - f) / n, 4), "fee": f, "cost": dollars}
+
+
 def flip(fill: dict, book: dict, cap: float | None = None) -> dict | None:
     """Evil Charles: the same dollars as Charles's `fill`, on the other side. Skips the edge and min_win_ratio checks: by
     Charles's own numbers this bet is a loser, and that's the point. `fair` stays Charles's view of that side."""
-    got = take("no" if fill["side"] == "yes" else "yes", book, fill["cost"], cap)
+    got = take_exact("no" if fill["side"] == "yes" else "yes", book, fill["cost"])
     if not got:
         return None
     fair = 1 - fill["fair"]
@@ -514,7 +547,7 @@ def copy_bets(led: dict, placed: list, src_bank: float, opposite: bool, by_ticke
         if opposite:
             fill = flip({"side": src["side"], "cost": dollars, "fair": src["fair"]}, book, room)
         else:
-            got = take(src["side"], book, dollars, room)
+            got = take_exact(src["side"], book, dollars)
             fill = got and {**got, "fair": src["fair"], "edge": round(src["fair"] - got["cost"] / got["contracts"], 4),
                             "expected_profit": round(got["contracts"] * src["fair"] - got["cost"], 2),
                             **({"evil": True, "charles_side": src["charles_side"]} if src.get("evil") else {})}

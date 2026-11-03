@@ -575,12 +575,12 @@ const SHEETS = {
     if (b.closed) {
       return head + `<div class="sh-hero num ${cls(b.pnl)}">${sgnUsd(b.pnl)}</div>
         <div class="sh-line">${HOW[b.how] || "CLOSED"} · ${new Date(b.closed).toLocaleString("en-US", {month: "short", day: "numeric", hour: "numeric", minute: "2-digit"})}</div>
-        ${facts([["Bet", usd(b.cost)], ["Got back", usd(b.received)], ["Contracts", `${b.contracts} at ${cents(b.avg_price)}`], ["Placed", day(b.opened)]])}` + why;
+        ${facts([["Bet", usd(b.cost)], ["Got back", usd(b.received)], ["Contracts", `${+(+b.contracts).toFixed(2)} at ${cents(b.avg_price)}`], ["Placed", day(b.opened)]])}` + why;
     }
     const v = valueNow(b), pnl = v - b.cost;
     return head + `<div class="sh-hero num up">${sgnUsd(b.contracts - b.cost)}</div>
       <div class="sh-line">if it wins · ${sure(p)} likely · settles ${inTime(b.close_time)}</div>
-      ${facts([["Bet", usd(b.cost)], ["Contracts", `${b.contracts} at ${cents(b.avg_price)}`],
+      ${facts([["Bet", usd(b.cost)], ["Contracts", `${+(+b.contracts).toFixed(2)} at ${cents(b.avg_price)}`],
         ["If it wins", `${sgnUsd(b.contracts - b.cost)} (pays ${usd(b.contracts)})`, "up"], ["If it loses", sgnUsd(-b.cost), "down"],
         ["Bot's odds now", `${sure(p)}${b.fair_now != null && b.fair_now !== b.fair ? ` (was ${sure(b.fair)})` : ""}`],
         ["Expected", sgnUsd(expected(b)), cls(expected(b))],

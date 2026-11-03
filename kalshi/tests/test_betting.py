@@ -345,7 +345,7 @@ def test_evil_charles_bets_the_other_side_with_the_same_dollars(tmp_path, monkey
     evil = _run_with(tmp_path / "e", monkeypatch, picks, markets)["open"][0]
     assert charles["side"] == "no" and evil["side"] == "yes"
     assert evil["evil"] and evil["charles_side"] == "no"
-    assert abs(evil["cost"] - charles["cost"]) <= 0.5 * evil["avg_price"] + 0.02     # the closest whole number of contracts
+    assert evil["cost"] == charles["cost"]                                             # to the cent: part-contracts
     assert evil["fair"] == round(1 - charles["fair"], 4)     # Charles's own view of the evil side
 
 
@@ -475,7 +475,7 @@ def test_evil_charles_bets_against_exactly_what_charles_placed(tmp_path, monkeyp
     assert sorted(b["ticker"] for b in evil) == sorted(b["ticker"] for b in charles)
     for c in charles:
         e = next(b for b in evil if b["ticker"] == c["ticker"])
-        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and abs(e["cost"] - c["cost"]) <= 0.5 * e["avg_price"] + 0.02
+        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and e["cost"] == c["cost"]
 
 
 def test_the_account_scales_the_bots_bets_to_its_own_money(tmp_path, monkeypatch):
@@ -526,3 +526,12 @@ def test_a_new_books_line_starts_at_its_starting_money(tmp_path, monkeypatch):
     _run_with(tmp_path, monkeypatch, [dict(PICK, ticker=f"{ev}-GSW", event=ev, fair_yes=0.30)], {f"{ev}-GSW": _mkt(0.55, 0.45)})
     pts = [json.loads(x) for x in (tmp_path / "e.jsonl").read_text().splitlines()]
     assert pts[0]["account_value"] == 1000.0 and pts[0]["ts"] < pts[1]["ts"] and pts[1]["account_value"] < 1000.0
+
+
+def test_a_copied_bet_costs_exactly_the_same_in_part_contracts():
+    book = {"no": [(0.10, 1000)]}                                                       # YES offered at 0.90
+    got = betting.take_exact("yes", book, 18.70)
+    assert got["cost"] == 18.70 and got["contracts"] != int(got["contracts"])
+    assert abs(got["contracts"] * got["avg_price"] + got["fee"] - 18.70) < 0.005
+    assert got["fee"] == betting.fee(got["contracts"], got["avg_price"])
+    assert betting.take_exact("yes", {"no": [(0.10, 5)]}, 18.70) is None               # too thin to fill

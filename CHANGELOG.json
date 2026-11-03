@@ -2,6 +2,14 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.2.2",
+   "date": "2026-11-03",
+   "kind": "rule",
+   "notes": [
+    "Kalshi: a copied bet now costs exactly what the bet it copies cost, using part-contracts in the practice books, so Charles, Evil Charles and your account match to the cent until bets finish."
+   ]
+  },
+  {
    "version": "v1.2.1",
    "date": "2026-11-03",
    "kind": "rule",
