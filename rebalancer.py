@@ -84,9 +84,16 @@ def decide(today: str, closes: dict[str, list[float]], state: dict, s: dict, vet
                 mode = al.AGGRESSIVE
     switched = bool(prev) and mode != prev
     full = bool(reb or switched or not prev or state.get("pending"))
+    if abs(state.get("invested", 1.0) - s.get("INVESTED", 1.0)) > 1e-9:
+        full = True                           # the Invested slider moved: every holding is resized at this check
     # stocks are re-picked monthly, or when coming out of / going into safety; a swap between
     # invest and aggressive only changes the core fund
     repick = bool(reb or not prev or state.get("pending") or (switched and al.SAFETY in (prev, mode)))
+    if s.get("BLOCKS"):
+        return _decide_custom(closes, state, s, veto, rank_always, {"mode": mode, "prev": prev, "trend": info, "vol": vol,
+                                                                     "full": full, "switched": switched}, repick)
+    if state.get("blocks_sig"):               # back from the user's own blocks: Charles's own picks again, at once
+        full = repick = True
     ranked = al.rank({k: closes[k] for k in (universe or al.UNIVERSE) if k in closes}, s) \
         if repick or rank_always else []
     for i, r in enumerate(ranked):
@@ -113,8 +120,29 @@ def decide(today: str, closes: dict[str, list[float]], state: dict, s: dict, vet
             "picks": picks, "targets": al.targets(mode, picks, s), "ranked": ranked, "vetoes": vetoes}
 
 
+def _decide_custom(closes: dict, state: dict, s: dict, veto, rank_always: bool, d: dict, repick: bool) -> dict:
+    """decide() for a Custom Plan (portfolio.py): the same market modes, the user's own blocks. A change to the blocks
+    rebuilds the holdings at the next check."""
+    import portfolio
+    sig = portfolio.signature(s)
+    if state.get("blocks_sig") != sig:
+        d["full"] = repick = True
+    if d["mode"] == al.SAFETY:
+        ch = {"held": {b["name"]: [] for b in s["BLOCKS"]}, "vetoes": [], "ranked": []}
+    else:
+        ch = portfolio.choose(closes, state.get("blocks_held"), repick, s, veto, rank_always)
+    picks = [t for b in s["BLOCKS"] if b["type"] == "momentum" for t in ch["held"].get(b["name"], [])]
+    for i, r in enumerate(ch["ranked"]):
+        r["rank_all"] = i + 1
+    return {**d, "picks": picks, "targets": portfolio.targets(d["mode"], ch["held"], s), "ranked": ch["ranked"],
+            "vetoes": ch["vetoes"], "blocks_held": ch["held"], "blocks_sig": sig}
+
+
 def reason(order: dict, d: dict, state: dict, s: dict, first_run: bool) -> str:
     """Why this order, in one plain sentence (Activity tab, notices)."""
+    if s.get("BLOCKS"):
+        import portfolio
+        return portfolio.reason(order, d, state, s)
     sym, side = order["symbol"], order["side"]
     rank = {r["symbol"]: r for r in d["ranked"]}
     tw = round(d["targets"].get(sym, 0) * 100)
@@ -216,7 +244,9 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
         log.error("  ❌ Account unreadable — no rebalance")
         return {"skipped": "account unreadable"}
     state = load_state(plan_path)
-    closes, as_of = closes_for(sorted(set(al.UNIVERSE) | {s["CORE"], s["SAFE"], s.get("AGG_CORE", s["CORE"])}), today)
+    import portfolio
+    wanted = set(portfolio.symbols(s)) if s.get("BLOCKS") else set(al.UNIVERSE)      # a custom plan needs only its own tickers
+    closes, as_of = closes_for(sorted(wanted | {s["CORE"], s["SAFE"], s.get("AGG_CORE", s["CORE"])}), today)
     if s["CORE"] not in closes or len(closes[s["CORE"]]) < s["TREND_DAYS"]:
         log.error(f"  ❌ No {s['CORE']} history — no rebalance")
         return {"skipped": "no price history"}
@@ -238,8 +268,10 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
     if not dry_run:
         rm.check_day_change(acct.get("day_change") or 0, acct.get("total_value"))
     pause = control.paused()                  # the owner's pause: no orders at all until resume
+    import live
+    hold = live.problem()                     # live trading with a step missing: no orders at all (fails closed)
     halted = rm.is_trading_halted()
-    blocked = list(todo) if pause else [o for o in todo if o["side"] == "buy"] if halted else []
+    blocked = list(todo) if (pause or hold) else [o for o in todo if o["side"] == "buy"] if halted else []
     todo = [o for o in todo if o not in blocked]
     first = not state.get("mode")
     for o in todo + blocked:
@@ -286,22 +318,32 @@ def run(dry_run: bool = False, plan_path: str = PLAN_FILE, now: datetime | None 
         "last_rebalance": today if d["full"] and not blocked else state.get("last_rebalance"),
         "pending": bool(blocked),
         "next_rebalance": next_rebalance(today),
-        "summary": al.describe({**d["trend"], "mode": d["mode"]} if d["trend"] else None, d["picks"], s),
+        "summary": (portfolio.describe(d["mode"] if d["trend"] else None, d["blocks_held"], s) if s.get("BLOCKS") else
+                    al.describe({**d["trend"], "mode": d["mode"]} if d["trend"] else None, d["picks"], s)),
+        "blocks_held": d.get("blocks_held"), "blocks_sig": d.get("blocks_sig"), "invested": s.get("INVESTED", 1.0),
         "ranked": d["ranked"][:RANKED_SHOWN], "universe_n": len(d["ranked"]),
         "vetoes": d["vetoes"] or (state.get("vetoes", []) if not d["full"] else []),
         "switches": state.get("switches", []) + ([{"date": today, "to": d["mode"]}] if d["switched"] else []),
         "started": state.get("started") or today,
         "last_orders": (done if not dry_run else todo) or state.get("last_orders", []),
         "last_orders_date": today if (done or dry_run) else state.get("last_orders_date"),
-        "halted_buys": bool(blocked) and not pause,
+        "halted_buys": bool(blocked) and not pause and not hold,
         "paused": pause,
+        "live_hold": hold,
         "settings": {k: s[k] for k in ("CORE", "SAFE", "CORE_PCT", "PICKS", "PICK_PCT", "TREND_DAYS",
                                        "SWITCH_CHECK", "SAFETY_SWITCH", "AGGRESSIVE", "AGG_CORE", "AGG_VOL_MAX",
-                                       "AGG_VOL_EXIT", "VOL_DAYS") if k in s},
+                                       "AGG_VOL_EXIT", "VOL_DAYS", "INVESTED", "BLOCKS") if k in s},
     }
     if dry_run:
         return {"state": new_state, "orders": todo, "blocked": blocked, "equity": equity, "held": held}
     state_io.write_json(plan_path, new_state, indent=1)
+    if hold and blocked:
+        log.error(f"  ⛔ Live trading on hold: {hold}")
+        try:
+            import alerts
+            alerts.error_alert(f"Live trading is on hold, so no orders were placed: {hold}.")
+        except Exception:
+            pass
     if done or d["switched"]:
         _tell(new_state, done, d, blocked)
     return {"state": new_state, "done": done, "blocked": blocked}

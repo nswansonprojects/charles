@@ -32,7 +32,7 @@ REQ_DIR = os.path.join(ROOT, "data", "requests")
 PAUSE_FILE = os.path.join(ROOT, "data", "paused.json")
 LOG_FILE = os.path.join(ROOT, "data", "control.jsonl")
 ACTIONS = ("pause", "resume", "update", "restore", "check-updates", "apply-settings", "undo-settings", "backtest-settings", "copy-config")
-MAX_REQUEST = 4096                       # bytes; a request is a few dozen
+MAX_REQUEST = 65536                      # bytes; most are a few dozen, a custom plan with its saved presets a few thousand
 
 log = logging.getLogger(__name__)
 

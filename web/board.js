@@ -10,6 +10,8 @@
       SWITCH_CHECK: ["Switch checked", v => v], AGGRESSIVE: ["Aggressive mode", v => v ? "On" : "Off"],
       AGG_CORE: ["Aggressive fund", v => v === "UPRO" ? "UPRO (3×)" : "SSO (2×)"],
       AGG_VOL_MAX: ["Aggressive below", v => Math.round(v * 100) + "% swings"], AGG_VOL_EXIT: ["Aggressive off above", v => Math.round(v * 100) + "% swings"],
+      INVESTED: ["Invested", v => Math.round(v * 100) + "%"],
+      BLOCKS: ["Stocks", v => !v ? "Charles's picks" : `your ${v.length} block${v.length === 1 ? "" : "s"}`],
     },
     crypto: {
       BTC_PCT: ["Bitcoin", v => Math.round(v * 100) + "%"], ETH_PCT: ["Ether", v => Math.round(v * 100) + "%"],
@@ -72,6 +74,12 @@
 
   function renderMe() {
     const box = $("me");
+    if (M && M.custom) {            // the user's own tickers (or part kept aside) stay off the board: Reset is the way back
+      box.innerHTML = `<div style="min-width:0"><b>Your own plan isn't shared</b><div class="small muted">${esc(M.message)}</div></div>
+        ${offPlan().length ? `<div class="acts"><button class="btn small" type="button" id="me-reset" aria-label="Reset to the default plan">Reset</button></div>` : ""}`;
+      if ($("me-reset")) $("me-reset").onclick = openReset;
+      return;
+    }
     if (!M || !M.ok) { box.innerHTML = `<div class="muted">${esc((M && M.message) || "The leaderboard isn't answering right now.")}</div>`; return; }
     const mine = (M.entries || []).find(x => x.status === "active");
     const reset = offPlan().length ? `<button class="btn small" type="button" id="me-reset" aria-label="Reset to the default plan">Reset</button>` : "";
@@ -146,7 +154,8 @@
   }
 
   /* Reset: back to the default plan. The same request as the Plan tab's sliders, so it's checked the same way and can be undone. */
-  const same = (a, b) => typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-9 : a === b;
+  const same = (a, b) => typeof a === "number" && typeof b === "number" ? Math.abs(a - b) < 1e-9
+    : (a && typeof a === "object") || (b && typeof b === "object") ? JSON.stringify(a ?? null) === JSON.stringify(b ?? null) : a === b;
   const offPlan = () => P && P.ok && P.defaults ? Object.keys(P.defaults).filter(k => !same(P.settings[k], P.defaults[k])) : [];
   function openReset() {
     const diffs = offPlan();

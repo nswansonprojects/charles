@@ -32,9 +32,12 @@ def simulate(dates: list[str], opens: dict[str, list], closes: dict[str, list], 
     """Run the live decision rules (rebalancer.decide + allocator.orders) day by day.
     opens/closes: {symbol: [price or None per date]}. Returns {"dates", "values", "trades",
     "switches", "picks_log"} from `start` on."""
+    import portfolio
     import rebalancer
     s = settings
     core, safe = s["CORE"], s["SAFE"]
+    if s.get("BLOCKS"):                       # a Custom Plan holds only its own tickers
+        universe = portfolio.symbols(s)
     universe = universe if universe is not None else [k for k in closes if k not in (core, safe)]
     syms = [k for k in {core, safe, *universe} if k in closes]
     # each symbol's closes without gaps, and how many of them exist up to each day
@@ -67,8 +70,10 @@ def simulate(dates: list[str], opens: dict[str, list], closes: dict[str, list], 
             switches += 1
         if d["full"]:
             picks_log.append([day, d["mode"], list(d["picks"])])
-        state = {"mode": d["mode"], "picks": d["picks"],
+        state = {"mode": d["mode"], "picks": d["picks"], "invested": s.get("INVESTED", 1.0),
                  "last_rebalance": day if d["full"] else state.get("last_rebalance")}
+        if d.get("blocks_sig"):
+            state.update(blocks_held=d["blocks_held"], blocks_sig=d["blocks_sig"])
         px = {k: opens[k][i] for k in set(shares) | set(d["targets"]) if opens.get(k) and opens[k][i]}
         held = {k: n * px[k] for k, n in shares.items() if k in px}
         equity = cash + sum(held.values())

@@ -193,7 +193,8 @@ def due(state: dict, numbers: dict | None = None) -> list[dict]:
         out.append(("veto", f"It skipped {plan['vetoes'][0].get('symbol', 'a pick')} this month."))
     if recent(plan.get("last_rebalance")):
         out.append(("repick", f"Charles re-picked on {_day(plan['last_rebalance'])}."))
-    out.append(("paper", "Every bot here runs on practice money."))
+    out.append(("paper", "Stocks trade real money here (live trading is on); crypto and Kalshi stay practice money."
+                if (state.get("trading") or {}).get("mode") == "live" else "Every bot here runs on practice money."))
     if mode == "aggressive" or agg in roles.get("core", []):
         out.append(("aggressive", f"The core is {agg} right now."))
     if roles.get("core"):

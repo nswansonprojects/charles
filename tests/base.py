@@ -18,7 +18,9 @@ if ROOT not in sys.path:
 import config            # noqa: E402
 import control           # noqa: E402
 import equity_tracker    # noqa: E402
+import live              # noqa: E402
 import risk_manager      # noqa: E402
+import terms             # noqa: E402
 
 _PROTECTED = (os.path.join(ROOT, "data") + os.sep, os.path.join(ROOT, "logs") + os.sep,
               os.path.join(ROOT, ".env"))
@@ -85,6 +87,8 @@ class BotTestCase(unittest.TestCase):
         patch(control, "REQ_DIR", os.path.join(self.tmp, "requests"))
         patch(control, "PAUSE_FILE", os.path.join(self.tmp, "paused.json"))
         patch(control, "LOG_FILE", os.path.join(self.tmp, "control.jsonl"))
+        patch(live, "DATA", self.tmp)            # paper unless a test writes a trading_mode.json there
+        patch(terms, "DATA", self.tmp)
         # no real notices
         self.alerts = FakeAlerts()
         self._saved_alerts = sys.modules.get("alerts")

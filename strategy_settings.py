@@ -28,6 +28,32 @@ LIMITS = {
     "AGG_VOL_MAX":   (0.10, 0.25, float),
     "AGG_VOL_EXIT":  (0.15, 0.35, float),
 }
+# Beyond the numbers above (owner 2026-11-03): the Custom Plan (portfolio.py) and the user's own choices. These are never
+# shared on the leaderboard or copied from it; the chat can't propose them (only the sliders can).
+CUSTOM = ("INVESTED", "BLOCKS")      # how much is invested at all, and the user's own blocks
+OWN = ("SELF_TUNE", "PRESETS")       # self-tune on or off, and the user's saved presets
+KEYS = tuple(LIMITS) + CUSTOM + OWN
+INVESTED_RANGE = (0.10, 1.0)
+
+
+def _custom(name: str, value, out: dict):
+    if name == "INVESTED":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            log.warning(f"🎛️  strategy.json: INVESTED={value!r} is not a number — ignored")
+            return
+        out[name] = min(max(float(value), INVESTED_RANGE[0]), INVESTED_RANGE[1])
+    elif name == "SELF_TUNE":
+        if isinstance(value, bool):
+            out[name] = value
+        else:
+            log.warning(f"🎛️  strategy.json: SELF_TUNE={value!r} is not true/false — ignored")
+    elif name == "BLOCKS":
+        import portfolio
+        try:
+            out[name] = portfolio.check_blocks(value)
+        except ValueError as e:
+            log.warning(f"🎛️  strategy.json: the custom plan's blocks are ignored ({e}): using the default plan")
+    # PRESETS are only for the dashboard
 
 
 def load(path: str = PATH) -> dict:
@@ -39,6 +65,9 @@ def load(path: str = PATH) -> dict:
         return {}
     out = {}
     for name, value in raw.items():
+        if name in CUSTOM + OWN:
+            _custom(name, value, out)
+            continue
         if name not in LIMITS:
             log.warning(f"🎛️  strategy.json: unknown setting {name} ignored")
             continue

@@ -36,6 +36,7 @@ import crypto_settings
 import equity_tracker
 import feed
 import lessons
+import live
 import news_feed
 import report_view
 import state_io
@@ -64,7 +65,7 @@ CSRF_JS = ("<script>(function(){var f=window.fetch;window.fetch=function(u,o){o=
            "return f.call(this,u,o);};})();</script>" % CSRF_COOKIE).encode()
 MANIFEST = json.dumps({
     "name": "Charles", "short_name": "Charles", "start_url": "/", "scope": "/", "display": "standalone",
-    "background_color": "#f4f4f2", "theme_color": "#2a78d6",
+    "background_color": "#f3f4f6", "theme_color": "#2a78d6",
     "icons": [{"src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
               {"src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"}],
 }).encode()
@@ -141,9 +142,13 @@ def spy_return_since(spy: list, day: str):
     return round((spy[-1][1] / start - 1) * 100, 2) if start else None
 
 
+BLOCK_ROLE = {"long": "core", "sector": "sector", "momentum": "pick"}      # a Custom Plan's block types, as holding roles
+
+
 def holdings(positions: list, plan: dict, total: float) -> list:
-    """Account positions with their role in the plan (core / pick / safety / leaving), their target
-    and actual share of the account, and the pick's momentum rank. Biggest first."""
+    """Account positions with their role in the plan (core / pick / safety / leaving; with the user's own blocks also
+    sector, and the block's name), their target and actual share of the account, and the pick's momentum rank. Biggest first."""
+    import portfolio
     s = plan.get("settings") or {}
     core, safe, agg = s.get("CORE", "SPY"), s.get("SAFE", "SGOV"), s.get("AGG_CORE", "SSO")
     targets, picks = plan.get("targets") or {}, plan.get("picks") or []
@@ -152,13 +157,17 @@ def holdings(positions: list, plan: dict, total: float) -> list:
     for p in positions:
         sym = p["symbol"]
         in_plan = sym in targets or not targets
-        role = ("core" if sym in (core, agg) and in_plan else "safety" if sym == safe else
-                "pick" if sym in picks else "leaving")
+        block = portfolio.block_of(sym, {"CORE": core, "AGG_CORE": agg, **s}) if s.get("BLOCKS") and sym != safe else None
+        if s.get("BLOCKS"):
+            role = "safety" if sym == safe else BLOCK_ROLE[block["type"]] if block and in_plan else "leaving"
+        else:
+            role = ("core" if sym in (core, agg) and in_plan else "safety" if sym == safe else
+                    "pick" if sym in picks else "leaving")
         r = ranked.get(sym, {})
         out.append({**p, "role": role, "target_pct": round(targets.get(sym, 0) * 100, 1) if plan else None,
                     "actual_pct": round(p["market_value"] / total * 100, 1) if total else None,
-                    "momentum": r.get("momentum"), "rank": r.get("rank")})
-    order = {"core": 0, "pick": 1, "safety": 2, "leaving": 3}
+                    "momentum": r.get("momentum"), "rank": r.get("rank"), **({"block": block["name"]} if block and role != "leaving" else {})})
+    order = {"core": 0, "sector": 1, "pick": 2, "safety": 3, "leaving": 4}
     out.sort(key=lambda h: (order[h["role"]], -h["market_value"]))
     return out
 
@@ -181,7 +190,8 @@ def evaluation_view(ev: dict | None) -> dict | None:
         return None
     rows = ev.get("variants") or []
     return {"generated": ev.get("generated"), "tested": len(rows), "passing": sum(r.get("passes", False) for r in rows),
-            "candidate": ev.get("candidate"), "live": ev.get("live") or {}}
+            "candidate": ev.get("candidate"), "live": ev.get("live") or {}, "custom": bool(ev.get("custom")),
+            "self_tune_said": ev.get("self_tune_said")}
 
 
 def evaluation_tests(ev: dict | None) -> list:
@@ -245,8 +255,8 @@ def backtest_view(bt: dict) -> dict | None:
 
 
 def checkup_installed(path: str = CHECKUP) -> bool:
-    """Is Claude's daily check-up set up here? Public installs have only the monthly rule check
-    (evaluate.py), which never changes the plan by itself, so the page mustn't say Claude does."""
+    """Is Claude's daily check-up set up here? Public installs have only the monthly rule check (evaluate.py), which
+    applies a passing change by itself while self-tune is on (SELF_TUNE), so the page mustn't say Claude does."""
     return os.path.exists(path)
 
 
@@ -551,6 +561,9 @@ def accounts_state(on: dict | None = None, new: bool = False) -> dict:
     acct_ok = bool((acct or {}).get("total_value")) and not new
     view = accounts_view(connections.public_status(_read("connections.json", {}, connections.DIR), server_alpaca=acct_ok),
                          addons.enabled() if on is None else on, [{**r, "on": False, "command": f"charles-addon on {r['id']}"} if on is not None and not on[r["id"]] else r for r in addons.status()])
+    view["trading"] = (st.get("trading") if STATE_FROM else None) or live.dashboard(DATA)
+    if new:
+        view["trading"] = {"mode": "paper", "since": None, "hold": None, "terms": "Not accepted yet. Run charles-terms to read and accept it."}
     return view
 
 
@@ -641,22 +654,134 @@ def _test_files(bot: str) -> tuple[str, str]:
             os.path.join(LEADERBOARD_BOT_DIR, f"{bot}_settings_history.jsonl"))
 
 
+PLAN_KEYS = tuple(strategy_settings.LIMITS) + strategy_settings.CUSTOM      # what the Plan tab moves; presets and self-tune have their own controls
+
+
+def _own_file(bot: str) -> dict:
+    """The stock plan's file as it stands (the preview's test copy on a preview), for the user's own choices."""
+    test, (path, _) = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)
+    try:
+        return chat.current_settings(path if test and os.path.exists(path) else None)
+    except (OSError, ValueError):
+        return {}
+
+
 def plan_now(bot: str) -> dict:
     """Every setting of a bot's plan as it stands. A preview starts from what the live bot uses, then keeps its own test copy."""
     test, (path, _) = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)
     if bot == "crypto":
         return crypto_settings.current(path if test else crypto_settings.PATH)
     if test and os.path.exists(path):
-        return chat.current_settings(path)
+        return {k: v for k, v in {**allocator.DEFAULTS, **chat.current_settings(path)}.items() if k in PLAN_KEYS}
     rules = ((_cached("state", 10, _stocks_state) or {}).get("rules") or {}).get("settings") if STATE_FROM else None
-    return {k: v for k, v in {**allocator.DEFAULTS, **(rules or chat.current_settings())}.items() if k in strategy_settings.LIMITS}
+    return {k: v for k, v in {**allocator.DEFAULTS, **(rules or chat.current_settings())}.items() if k in PLAN_KEYS}
+
+
+# ── The ticker search (the Custom Plan's "Add a ticker") ──
+TICKERS_FILE = os.path.join(ROOT, "tickers.json")
+_FUND_WORDS = re.compile(r"\b(ETF|ETN|Fund|Trust|iShares|SPDR|Vanguard|Invesco|ProShares)\b", re.I)
+# A fund named for one part of the market goes in a sector block, any other fund in a long-term one, a single stock in a momentum
+# one: only where the search puts it first (owner: "categorized by stock type"); the user can move it.
+_SECTOR_WORDS = re.compile(r"\b(Sector|Semiconductors?|Biotech\w*|Bank\w*|Energy|Health ?Care|Technology|Tech|Software|Real Estate|REIT|"
+                           r"Utilities|Financials?|Industrials?(?! Average)|Materials|Consumer|Aerospace|Defense|Oil|Gas|Mining|Metals|Solar|Uranium|"
+                           r"Homebuilders|Retail|Internet|Cyber\w*|Robotics|Transport\w*|Communications?|Pharma\w*|Medical|Insurance|Jets|Airlines?)\b", re.I)
+
+
+def block_type(row: dict) -> str:
+    if row.get("kind") != "fund":
+        return "momentum"
+    return "sector" if _SECTOR_WORDS.search(row.get("name") or "") else "long"
+
+
+_NAME_TAIL = re.compile(r"\s+(Class [A-C] )?(Common Stock|Ordinary Shares|American Depositary Shares?|Common Shares)\b.*$", re.I)
+
+
+def plain_name(name: str) -> str:
+    """'NVIDIA Corporation Common Stock' → 'NVIDIA Corporation'; an all-capitals name in ordinary capitals."""
+    n = _NAME_TAIL.sub("", " ".join(str(name).split())) or str(name)
+    return n.title() if n.replace("Class", "").isupper() and len(n) > 5 else n
+
+
+def _alpaca_assets() -> list:
+    """Every US stock and fund Alpaca can trade in dollar amounts (fractional), from the user's own account: [{symbol, name, kind}].
+    Read raw: alpaca-py's own Asset model refuses the whole list when Alpaca adds an exchange it doesn't know (TXSE, 2026-11)."""
+    import alpaca_executor
+    rows = alpaca_executor._client().get("/assets", {"status": "active", "asset_class": "us_equity"})
+    out = []
+    for a in rows if isinstance(rows, list) else []:
+        sym, name = a.get("symbol"), a.get("name")
+        if a.get("tradable") and a.get("fractionable") and sym and name:
+            out.append({"symbol": sym.replace("/", "."), "name": plain_name(name), "kind": "fund" if _FUND_WORDS.search(name) else "stock"})
+    return out
+
+
+_BUILTIN = []
+
+
+def _builtin_tickers() -> list:
+    """tickers.json, read once (it only changes with a release)."""
+    if not _BUILTIN:
+        try:
+            with open(TICKERS_FILE) as f:
+                _BUILTIN.extend(json.load(f)["tickers"])
+        except (OSError, ValueError, KeyError) as e:
+            log.warning(f"tickers.json unreadable: {e}")
+    return _BUILTIN
+
+
+def ticker_search(q: str, lists: tuple | None = None, limit: int = 12) -> list:
+    """GET /api/tickers?q=: tickers matching the words typed, the symbol first, then names. Alpaca's own list when the keys
+    work (so anything found can be bought), else the built-in one. Plain names from allocator.NAMES where it has one."""
+    q = " ".join(str(q or "").split())[:40]
+    if not q:
+        return []
+    if lists is None:
+        lists = (_cached("alpaca_assets", 86400, _alpaca_assets) or [], _builtin_tickers())
+    import portfolio
+    rows = [r for r in _merged(lists) if portfolio.SYMBOL.match(r["symbol"])]      # only what a block can hold (no preferred shares)
+    up, low = q.upper(), q.lower()
+    known = {r["symbol"] for r in _builtin_tickers()} | set(allocator.NAMES)      # the familiar ones first among look-alikes
+
+    def score(r):
+        sym, name = r["symbol"], (allocator.NAMES.get(r["symbol"]) or r["name"]).lower()
+        boost = 3 if sym in known else 0
+        if sym == up:                         # typing "nvd" on the way to NVDA shouldn't put an obscure NVD first
+            return 0 if boost else 2.5
+        if sym.startswith(up):
+            return 1 + len(sym) - boost
+        if name.startswith(low):
+            return 20 - 5 * boost
+        if (" " + low) in (" " + name):       # a word of the name: "energy" finds XLE before small companies called Energy
+            return 30 - 5 * boost
+        return None
+    hits = sorted(((score(r), r) for r in rows), key=lambda x: (x[0] if x[0] is not None else 99, x[1]["symbol"]))
+    return [{"symbol": r["symbol"], "name": allocator.NAMES.get(r["symbol"]) or r["name"], "kind": r.get("kind", "stock"), "type": block_type(r)}
+            for sc, r in hits if sc is not None][:limit]
+
+
+def _merged(lists) -> list:
+    seen, rows = set(), []
+    for lst in lists:
+        for r in lst:
+            if r["symbol"] not in seen:
+                seen.add(r["symbol"])
+                rows.append(r)
+    return rows
+
+
+def ticker_names(symbols) -> dict:
+    """{symbol: plain name} for the Plan tab's ticker chips. Never waits on Alpaca: its list counts only once a search loaded it."""
+    with _lock:
+        hit = _cache.get("alpaca_assets")
+    rows = {r["symbol"]: r["name"] for r in _merged(((hit[1] or []) if hit and isinstance(hit[1], list) else [], _builtin_tickers()))}
+    return {s: allocator.NAMES.get(s) or rows.get(s) or s for s in symbols}
 
 
 def _check_change(bot: str, changes) -> dict:
     test, path = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)[0]
     if bot == "crypto":
         return crypto_settings.check(changes, path if test else crypto_settings.PATH)
-    return chat.check_settings(changes, path if test and os.path.exists(path) else None)
+    return chat.check_settings(changes, path if test and os.path.exists(path) else None, custom=True)
 
 
 def settings_change_test(bot: str, changes, reason: str = "", source: str = "the sliders") -> tuple[bool, str]:
@@ -666,14 +791,14 @@ def settings_change_test(bot: str, changes, reason: str = "", source: str = "the
         return crypto_settings.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False)
     if not os.path.exists(path):
         state_io.write_json(path, {"settings": plan_now("stocks")}, indent=2)
-    return chat.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False)
+    return chat.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False, custom=source == "the sliders")
 
 
 def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
     """What the sliders start from: the plan now, the default plan, each setting's limits, and whether this browser may change it."""
     if bot not in ("stocks", "crypto"):
         return {"ok": False, "error": "Unknown bot."}
-    limits, defaults = (strategy_settings.LIMITS, {k: allocator.DEFAULTS[k] for k in strategy_settings.LIMITS}) if bot == "stocks" \
+    limits, defaults = (strategy_settings.LIMITS, {k: allocator.DEFAULTS[k] for k in PLAN_KEYS}) if bot == "stocks" \
         else (crypto_settings.LIMITS, crypto_settings.defaults())
     test, history = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)[1]
     changed = chat.last_change(history if test else None) if bot == "stocks" else crypto_settings.last_change(history if test else crypto_settings.HISTORY)
@@ -685,9 +810,22 @@ def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
             why = "Changing settings needs the dashboard login. Turn it on over SSH: charles-login"
         elif not auth.check(cfg, auth.cookies(cookie).get(SESSION_COOKIE)):
             why = "Log in to change settings: run charles-login on your server and open its link."
-    return {"ok": True, "bot": bot, "settings": plan_now(bot), "defaults": defaults, "test": test, "can": why is None, "why": why,
-            "limits": {k: {"min": v[0], "max": v[1]} for k, v in limits.items() if v[2] in (int, float)},
-            "can_undo": bool(changed), "changed_at": (changed or {}).get("at")}
+    out = {"ok": True, "bot": bot, "settings": plan_now(bot), "defaults": defaults, "test": test, "can": why is None, "why": why,
+           "limits": {k: {"min": v[0], "max": v[1]} for k, v in limits.items() if v[2] in (int, float)},
+           "can_undo": bool(changed), "changed_at": (changed or {}).get("at")}
+    if bot == "stocks":                  # the Custom Plan, the presets and self-tune (owner 2026-11-03)
+        import portfolio
+        own = _own_file(bot)
+        lo, hi = strategy_settings.INVESTED_RANGE
+        out["limits"]["INVESTED"] = {"min": lo, "max": hi}
+        presets = own.get("PRESETS") or []
+        out.update(self_tune=own.get("SELF_TUNE", True) is not False, presets=presets, charles_presets=portfolio.PRESETS,
+                   custom={"types": portfolio.TYPE_NAMES, "max_blocks": portfolio.MAX_BLOCKS, "max_tickers": portfolio.MAX_TICKERS,
+                           "max_picks": portfolio.MAX_PICKS, "max_presets": portfolio.MAX_PRESETS, "name_max": portfolio.NAME_MAX,
+                           "core": allocator.DEFAULTS["CORE"]},
+                   names=ticker_names(portfolio.symbols(out["settings"]) + [t for p in presets for t in portfolio.symbols(p["settings"])]),
+                   checkup=checkup_installed())
+    return out
 
 
 def settings_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
@@ -747,7 +885,7 @@ def accounts_view(rows: list, on: dict, addon_rows: list) -> dict:
     return {"bots": [b for b in rows if on.get(b["id"], True)], "addons": addon_rows}
 
 
-FONTS = "https://fonts.googleapis.com/css2?family=Archivo:wght@700;800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"
+FONTS = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
 _I = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">%s</svg>'
 NAV = (("home", "/", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
        ("stocks", "/stocks", "Stocks", '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>'),
@@ -889,6 +1027,7 @@ def build_state() -> dict:
         "preview": os.environ.get("WEBDASH_PREVIEW") == "1",
         "bot_running": _bot_running(),
         "paused": control.paused(),
+        "trading": live.dashboard(DATA),            # paper, or live (charles-live) and whether it's on hold; never a key
         "market": market_status(now),
         "account": {k: acct.get(k) for k in ("total_value", "cash", "invested", "total_return",
                                               "total_return_pct", "open_positions", "day_change")} if acct else None,
@@ -1035,16 +1174,17 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
             (f"Following {'Evil Charles' if (k.get('mode') or {}).get('evil') else 'Charles'}" + (f" · {n} open bet{'' if n == 1 else 's'}" if n is not None else ""))
             if k else "No word from it yet",
             bool(kalshi) and not (kalshi.get("scanner") or {}).get("healthy", True))
-    live = [b for b in bots if b["value"] is not None]
-    earned = round(sum(b["earned"] for b in live), 2)
-    start = sum(b["start"] for b in live)
+    counted = [b for b in bots if b["value"] is not None]
+    earned = round(sum(b["earned"] for b in counted), 2)
+    start = sum(b["start"] for b in counted)
     series = earnings_series(books, now)
     if series:
         series.append([now.isoformat(timespec="seconds"), earned])
     return {"generated_at": now.isoformat(timespec="seconds"), "preview": bool(STATE_FROM), "running": stocks.get("bot_running"), "paused": stocks.get("paused"),
+            "trading": stocks.get("trading") or {"mode": "paper"},
             "halted": {"limit": (stocks.get("today") or {}).get("limit")} if (stocks.get("today") or {}).get("halted") else None,
             "next_repick": plan.get("next_rebalance"), "total": {"earned": earned, "earned_pct": round(earned / start * 100, 2) if start else None,
-            "today": round(sum(b["today"] or 0 for b in live), 2), "value": round(sum(b["value"] for b in live), 2), "start": start},
+            "today": round(sum(b["today"] or 0 for b in counted), 2), "value": round(sum(b["value"] for b in counted), 2), "start": start},
             "series": series, "bots": bots, "notices": noted,
             "can_add": [{"id": k, "name": a["short"], "about": a["pitch"]} for k, a in addons.ADDONS.items() if not on.get(k)]}
 
@@ -1271,7 +1411,8 @@ def leaderboard_mine(bot: str) -> dict:
     try:
         out["preview"] = client.preview(bot, LEADERBOARD_BOT_DIR)
     except ValueError as e:
-        return {**out, "ok": False, "message": f"This bot's settings can't be shared as they are ({e})."}
+        return {**out, "ok": False, "custom": str(e) == client.NOT_SHARED,
+                "message": str(e) if str(e) == client.NOT_SHARED else f"This bot's settings can't be shared as they are ({e})."}
     try:
         out["entries"] = [x for x in client.mine(DATA, LEADERBOARD_URL) if x["bot"] == bot]
     except Exception as e:
@@ -1465,6 +1606,8 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, challenge_view(self.path.partition("bot=")[2].split("&")[0]))
         elif path == "/api/settings":
             self._json(200, settings_view(parse_qs(query).get("bot", [""])[0], _cached("auth", 5, auth.load), self.headers.get("Cookie")))
+        elif path == "/api/tickers":
+            self._json(200, {"ok": True, "tickers": ticker_search(parse_qs(query).get("q", [""])[0])})
         elif path == "/api/accounts":
             self._json(200, accounts_state(self._on(), as_new(self.headers)))
         elif path == "/api/updates":
@@ -1513,7 +1656,7 @@ class Handler(BaseHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = -1
-        if not 0 < n <= {"/api/chat": 64_000, "/api/chat/apply": 2048, "/api/settings": 2048}.get(path, 256):
+        if not 0 < n <= {"/api/chat": 64_000, "/api/chat/apply": 2048, "/api/settings": 60_000}.get(path, 256):
             return self._send(413, b"too big", "text/plain")
         body = self.rfile.read(n)
         if path == "/login":

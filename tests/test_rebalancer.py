@@ -253,6 +253,18 @@ class Run(BotTestCase):
         self.assertFalse(st["pending"])
         self.assertIsNone(st["paused"])
 
+    def test_live_on_hold_places_nothing_and_says_why(self):
+        import live
+        live.set_mode("live", "test")             # live, but no License Agreement on file: it fails closed
+        rb.run(plan_path=self.plan, now=datetime(2026, 10, 19, 14, 0, tzinfo=timezone.utc))
+        self.assertEqual(self.calls, [])
+        with open(self.plan) as f:
+            st = json.load(f)
+        self.assertTrue(st["pending"])
+        self.assertIn("charles-terms", st["live_hold"])
+        self.assertFalse(st["halted_buys"])
+        self.assertIn("error_alert", [c[0] for c in self.alerts.calls])
+
     def test_market_closed_does_nothing(self):
         self.patch(ex, "market_open", lambda c=None: False)
         self.assertEqual(rb.run(plan_path=self.plan), {"skipped": "market closed"})

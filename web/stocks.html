@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#131311" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#fafbfc">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Charles">
 <title>Stocks · Charles</title>
@@ -19,13 +18,14 @@
 <body class="loading">
 <header></header>
 <main>
+  <div class="page-head"><div><h1 class="page-title">Stocks</h1><p class="page-sub">Paper trading on Alpaca</p></div></div>
   <div class="seg" id="seg" role="group" aria-label="Stocks sections"></div>
 
   <section class="view on" id="v-home">
    <div class="feed-page">
     <div class="feed-main">
       <div class="card ink" id="t-hero">
-        <div class="hero-head"><div class="eyebrow">Stocks earned so far</div><button class="chip practice" type="button" data-open="lesson" data-k="paper" title="What practice money means">Practice money</button></div>
+        <div class="hero-head"><div class="eyebrow">Stocks earned so far</div><button class="chip practice" id="money-chip" type="button" data-open="lesson" data-k="paper" title="What practice money means">Practice money</button></div>
         <div class="big num" id="value">$0.00</div>
         <div class="sub num" id="ret">&nbsp;</div>
         <div id="halt"></div>
@@ -80,6 +80,7 @@
         <div class="label tests-label" id="tests-label" hidden>What each change did in its worst test, per year</div>
         <div class="tests" id="tests"></div>
       </div>
+      <div class="card st-card" id="selftune" hidden></div>
       <div class="card span" id="cl-card">
         <div class="card-head"><h2>What Claude found</h2><span class="aside" id="cl-when"></span><button class="link-btn" id="cl-full" type="button" hidden>Full report</button></div>
         <div id="findings" data-bot="stocks"></div>
@@ -106,8 +107,12 @@
 window.SHEETS_LESSONS = true;      // the sliders (tune.js) can open a lesson on this page
 const TABS = [["home", "Overview"], ["plan", "Plan"], ["tune", "Self-Tune"]];
 const RANGES = [["1W", 7], ["1M", 30], ["3M", 91], ["Plan", "plan"], ["All", 1e5]];   // "Plan": since data/plan.json "started"
-const ROLE = {core: ["Whole market", "--core"], pick: ["Momentum picks", "--pick"], safety: ["T-bills (safety)", "--safe"],
-              leaving: ["Being sold", "--leaving"], cash: ["Cash", "--cash"]};
+const ROLE_PLAN = {core: ["Whole market", "--core"], pick: ["Momentum picks", "--pick"], safety: ["T-bills (safety)", "--safe"],
+              leaving: ["Being sold", "--leaving"], cash: ["Cash", "--cash"], sector: ["Sector funds", "--sector"]};
+// with the user's own blocks (portfolio.py): the roles are the blocks' kinds
+const ROLE_OWN = {...ROLE_PLAN, core: ["Long term", "--core"], pick: ["Momentum", "--pick"], sector: ["Sector", "--sector"], safety: ["T-bills", "--safe"]};
+let ROLE = ROLE_PLAN;
+const ROLES = ["core", "sector", "pick", "safety", "leaving"];
 let S = null, tab = "home", range = "All", NEWS = null, newsAt = 0, chartShown = false;
 try { range = localStorage.getItem("stocks-range") || range; } catch (e) {}
 // Always opens on Overview, with nothing remembered (owner 2026-10-31). A link can ask for a tab once: /stocks#plan.
@@ -223,12 +228,17 @@ const SHEETS = {
     const h = S.positions.find(x => x.symbol === sym);
     if (!h) return "";
     const buy = S.trades.find(t => t.symbol === sym && (t.action || "").startsWith("BUY"));
-    const role = ROLE[h.role][0];
-    const why = h.why ? esc(h.why) : {core: h.symbol === SET().AGG_CORE ? "Aggressive mode's core: a fund that moves twice as much as the S&P 500 each day, up and down. Charles holds it only while the market is calm and rising, and swaps back to plain SPY on any choppy day." : "This is the core of the plan: an index fund that owns the 500 biggest US companies. It's never traded except to keep it near its target share.",
+    const role = h.block ? `${h.block} · ${ROLE[h.role][0].toLowerCase()}` : ROLE[h.role][0];
+    const why = h.why ? esc(h.why) : SET().BLOCKS ? {core: h.symbol === SET().AGG_CORE ? `Aggressive mode's stand-in for ${SET().CORE} in your ${h.block || "long-term"} block: a fund that moves twice as much as the S&P 500 each day, up and down. Charles holds it only while the market is calm and rising.`
+        : `In your long-term block ${h.block || ""}: held all the time, its share split evenly with the block's other tickers.`,
+      sector: `In your sector block ${h.block || ""}: held while it's above its ${SET().TREND_DAYS}-day average. Below it, its share waits in T-bills.`,
+      pick: `One of the strongest tickers of your momentum block ${h.block || ""}${h.rank ? `, ranked ${h.rank} by its past-year gain` : ""}. Charles keeps it until the next monthly re-pick.`,
+      safety: "T-bills are short US government loans: steady, about 4% a year. What your blocks don't use waits here, and everything does in safety mode.",
+      leaving: "It isn't in any of your blocks now, so Charles sells it at its next check."}[h.role] : {core: h.symbol === SET().AGG_CORE ? "Aggressive mode's core: a fund that moves twice as much as the S&P 500 each day, up and down. Charles holds it only while the market is calm and rising, and swaps back to plain SPY on any choppy day." : "This is the core of the plan: an index fund that owns the 500 biggest US companies. It's never traded except to keep it near its target share.",
       pick: `One of this month's ${SET().PICKS} momentum picks${h.rank ? `: ranked ${h.rank} of ${P().universe_n || 100} by its past-year gain` : ""}. Charles keeps it until the next monthly re-pick, then keeps it only if it still ranks near the top and stays above its 200-day average.`,
       safety: "T-bills are short US government loans: steady, about 4% a year. Charles parks money here in safety mode, or when no stock qualifies for a pick slot.",
       leaving: "Bought by Charles's old trading rules. It isn't part of the new plan, so Charles sells it at its next check."}[h.role];
-    return `<div class="sh-title" id="sh-title">${esc(h.symbol)} <span class="tag ${h.role === "pick" ? "pick" : h.role === "leaving" ? "old" : ""}">${role}</span></div>
+    return `<div class="sh-title" id="sh-title">${esc(h.symbol)} <span class="tag ${h.role === "pick" ? "pick" : h.role === "leaving" ? "old" : ""}">${esc(role)}</span></div>
       <div class="sh-sub">${esc(nameOf(h.symbol))}</div>
       <div class="sh-hero num">${usd(h.market_value)}</div>
       <div class="sh-line num ${cls(h.unrealized_pnl)}">${arrow(h.unrealized_pnl)}${sgnUsd(h.unrealized_pnl)} (${pct(h.unrealized_pct, 1)}) since bought</div>
@@ -237,7 +247,7 @@ const SHEETS = {
         h.momentum != null && ["Past-year gain", pct(h.momentum, 0), cls(h.momentum)], h.day_change != null && ["Today", sgnUsd(h.day_change), cls(h.day_change)]])}
       <div class="sh-h">Why Charles holds it</div><p class="sh-p">${why}</p>
       ${buy && buy.source === "rebalance" ? `<div class="sh-h">At the last buy · ${dayFmt(buy.timestamp)}</div><p class="sh-p">${esc(buy.reasoning)}</p>` : ""}
-      ${learnLink({core: h.symbol === SET().AGG_CORE ? "aggressive" : "index-fund", pick: "momentum", safety: "tbills"}[h.role])}
+      ${learnLink(SET().BLOCKS ? {pick: "momentum", safety: "tbills", sector: "trend-line"}[h.role] : {core: h.symbol === SET().AGG_CORE ? "aggressive" : "index-fund", pick: "momentum", safety: "tbills"}[h.role])}
       ${(((NEWS || {}).by_symbol || {})[sym] || []).length ? `<div class="sh-h">In the news · not advice</div>${NEWS.by_symbol[sym].map(newsRow).join("")}` : ""}`;
   },
   lesson(id) {
@@ -479,13 +489,26 @@ function renderPlanPicture(p, s) {
   const core = (S.positions || []).find(h => h.role === "core"), safe = p.mode === "safety";
   const names = {aggressive: "Aggressive mode", invest: "Invest mode", safety: "Safety mode"};
   $("plan-mode").hidden = !p.mode; $("plan-mode").textContent = names[p.mode] || "";
-  const corePct = Math.round(s.CORE_PCT * 100), pickPct = +(s.PICK_PCT * 100).toFixed(1);
-  $("plan-title").textContent = safe ? "Waiting in T-bills until the trend recovers." : p.mode ? `${corePct}% the whole market, ${s.PICKS} picks at ${pickPct}% each.` : "It starts at the first check.";
+  const corePct = Math.round(s.CORE_PCT * 100), pickPct = +(s.PICK_PCT * 100).toFixed(1), inv = s.INVESTED ?? 1;
   const holding = sym => (S.positions || []).some(h => h.symbol === sym);
   const tile = (sym, pc, cls_, sub) => holding(sym) ? `<button class="pm ${cls_}" type="button" ${tapAttrs("pos", sym)}><b class="num">${pc}%</b><span>${esc(sym)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</button>`
     : `<div class="pm ${cls_}"><b class="num">${pc}%</b><span>${esc(sym)}</span>${sub ? `<small>${esc(sub)}</small>` : ""}</div>`;
+  $("planmap").className = s.BLOCKS && p.mode && !safe ? "pm-blocks" : "planmap";
+  if (s.BLOCKS) {           // the user's own blocks: each with what it holds now
+    const tg = p.targets || {}, held = p.blocks_held || {}, kind = {long: "pm-core", sector: "pm-sector", momentum: "pm-pick"};
+    const share = v => +(v * 100).toFixed(1);
+    $("plan-title").textContent = safe ? "Waiting in T-bills until the trend recovers." : p.mode ? `Your own plan: ${s.BLOCKS.length} block${s.BLOCKS.length === 1 ? "" : "s"}${inv < .9995 ? `, ${Math.round(inv * 100)}% invested` : ""}.` : "It starts at the first check.";
+    $("planmap").innerHTML = !p.mode ? "" : safe ? `<div class="pm-all">${tile(s.SAFE, 100, "pm-safe", "T-bills: short US government loans")}</div>`
+      : s.BLOCKS.map(b => {
+        const syms = (held[b.name] || []).map(x => p.mode === "aggressive" && b.type === "long" && x === s.CORE && tg[s.AGG_CORE] ? s.AGG_CORE : x);
+        return `<div class="pm-group" style="--g:${Math.max(1, Math.round(b.pct * inv * 100))}"><div class="pm-gh">${esc(b.name)}<span>${Math.round(b.pct * inv * 100)}% · ${esc({long: "long term", sector: "sector", momentum: `momentum, best ${b.picks}`}[b.type])}</span></div>
+          <div class="pm-row">${syms.map(x => tile(x, share(tg[x] || 0), kind[b.type], nameOf(x))).join("") || `<div class="pm-none">Nothing qualifies right now: its share waits in T-bills.</div>`}</div></div>`;
+      }).join("") + (tg[s.SAFE] > 0.0005 ? `<div class="pm-group" style="--g:${Math.max(1, Math.round(tg[s.SAFE] * 100))}"><div class="pm-gh">T-bills<span>what the blocks don't use</span></div><div class="pm-row">${tile(s.SAFE, share(tg[s.SAFE]), "pm-safe", "Short US government loans")}</div></div>` : "");
+  } else {
+  $("plan-title").textContent = safe ? "Waiting in T-bills until the trend recovers." : p.mode ? `${Math.round(corePct * inv)}% the whole market, ${s.PICKS} picks at ${+(pickPct * inv).toFixed(1)}% each${inv < .9995 ? ` (${Math.round(inv * 100)}% invested)` : ""}.` : "It starts at the first check.";
   $("planmap").innerHTML = !p.mode ? "" : safe ? `<div class="pm-all">${tile(s.SAFE, 100, "pm-safe", "T-bills: short US government loans")}</div>`
-    : `${tile(core ? core.symbol : s.CORE, corePct, "pm-core", p.mode === "aggressive" ? "A 2× S&P 500 fund, while it's calm" : "An S&P 500 fund: 500 big US companies")}<div class="pm-picks">${(p.picks || []).map(k => tile(k, pickPct, "pm-pick", nameOf(k))).join("") || `<div class="pm pm-safe"><b>T-bills</b><small>No stock qualified this month</small></div>`}</div>`;
+    : `${tile(core ? core.symbol : s.CORE, Math.round(corePct * inv), "pm-core", p.mode === "aggressive" ? "A 2× S&P 500 fund, while it's calm" : "An S&P 500 fund: 500 big US companies")}<div class="pm-picks">${(p.picks || []).map(k => tile(k, +(pickPct * inv).toFixed(1), "pm-pick", nameOf(k))).join("") || `<div class="pm pm-safe"><b>T-bills</b><small>No stock qualified this month</small></div>`}</div>`;
+  }
   $("plan-next").innerHTML = [["Checks", "Weekdays, 10 AM ET"], ["Next re-pick", p.next_rebalance ? dayFmt(p.next_rebalance, {month: "short", day: "numeric"}) : "—"], ["Safety switch", !p.mode ? "—" : s.SAFETY_SWITCH === false ? "Turned off" : safe ? "Tripped" : "Not tripped"]]
     .map(([l, v]) => `<div><span>${l}</span><b>${v}</b></div>`).join("");
   const t = p.trend || {}, g = t.gap_pct, v = p.vol, lim = s.AGG_VOL_MAX || .2, exit = s.AGG_VOL_EXIT || .25;
@@ -501,6 +524,10 @@ function renderPlanPicture(p, s) {
 
 function render() {
   const a = S.account, p = P(), s = SET();
+  const live = (S.trading || {}).mode === "live", mc = $("money-chip");
+  mc.className = "chip " + (live ? "live" : "practice");
+  mc.textContent = live ? ((S.trading || {}).hold ? "Live: on hold" : "Real money") : "Practice money";
+  mc.title = live ? "Live trading is on: this is your real Alpaca account (charles-live)." : "What practice money means";
 
   // portfolio
   if (a) {
@@ -527,21 +554,25 @@ function render() {
 
   // holdings
   const H = S.positions, total = a ? a.total_value : 0;
+  ROLE = s.BLOCKS ? ROLE_OWN : ROLE_PLAN;
   $("pos-count").textContent = H.length ? `${H.length} holding${H.length === 1 ? "" : "s"}` : "";
   const sum = role => H.filter(h => h.role === role).reduce((x, h) => x + h.market_value, 0);
-  const now = ["core", "pick", "safety", "leaving"].map(r => [r, sum(r)]).concat([["cash", a ? Math.max(0, a.cash) : 0]]);
-  const tg = p.targets || {}, planParts = [["core", (tg[s.CORE] || 0) + (tg[s.AGG_CORE] || 0)], ["pick", (p.picks || []).reduce((x, k) => x + (tg[k] || 0), 0)], ["safety", tg[s.SAFE] || 0]];
+  const now = ROLES.map(r => [r, sum(r)]).concat([["cash", a ? Math.max(0, a.cash) : 0]]);
+  const tg = p.targets || {}, kindOf = {long: "core", sector: "sector", momentum: "pick"};
+  const planParts = s.BLOCKS ? ["core", "sector", "pick"].map(r => [r, s.BLOCKS.filter(b => kindOf[b.type] === r).reduce((x, b) => x + ((p.blocks_held || {})[b.name] || [])
+      .reduce((y, k) => y + (tg[k] || 0) + (k === s.CORE && b.type === "long" ? tg[s.AGG_CORE] || 0 : 0), 0), 0)]).filter(([r, v]) => v > 0 || s.BLOCKS.some(b => kindOf[b.type] === r)).concat([["safety", tg[s.SAFE] || 0]])
+    : [["core", (tg[s.CORE] || 0) + (tg[s.AGG_CORE] || 0)], ["pick", (p.picks || []).reduce((x, k) => x + (tg[k] || 0), 0)], ["safety", tg[s.SAFE] || 0]];
   const bar = (parts, tot) => parts.filter(([, v]) => v > 0).map(([r, v]) => `<i style="width:${v / tot * 100}%;background:var(${ROLE[r][1]})" title="${ROLE[r][0]} ${(v / tot * 100).toFixed(0)}%"></i>`).join("");
   $("alloc-now").innerHTML = total ? bar(now, total) : "";
   $("alloc-now").setAttribute("aria-label", "Now: " + now.filter(([, v]) => v > 0).map(([r, v]) => `${ROLE[r][0]} ${(v / total * 100).toFixed(0)}%`).join(", "));
-  $("alloc-keys").innerHTML = ["core", "pick", "safety", "leaving", "cash"].filter(r => now.find(x => x[0] === r)[1] > 0 || planParts.find(x => x[0] === r)?.[1] > 0)
+  $("alloc-keys").innerHTML = [...ROLES, "cash"].filter(r => now.find(x => x[0] === r)[1] > 0 || planParts.find(x => x[0] === r)?.[1] > 0)
     .map(r => `<span><span class="sw" style="background:var(${ROLE[r][1]})"></span>${ROLE[r][0]} <b class="num">${total ? (now.find(x => x[0] === r)[1] / total * 100).toFixed(0) : 0}%</b>${planParts.find(x => x[0] === r) ? ` <span class="muted">/ ${(planParts.find(x => x[0] === r)[1] * 100).toFixed(0)}%</span>` : ""}</span>`).join("");
   $("alloc-note").hidden = !sum("leaving");
-  $("alloc-note").textContent = "\"Being sold\" are stocks from Charles's old rules. They go at the next check.";
-  $("positions").innerHTML = H.length ? ["core", "pick", "safety", "leaving"].flatMap(r => H.filter(h => h.role === r).map(h => `<div class="row-i tap" ${tapAttrs("pos", h.symbol)}>
+  $("alloc-note").textContent = s.BLOCKS ? "\"Being sold\" are holdings that aren't in your blocks now. They go at the next check." : "\"Being sold\" are stocks from Charles's old rules. They go at the next check.";
+  $("positions").innerHTML = H.length ? ROLES.flatMap(r => H.filter(h => h.role === r).map(h => `<div class="row-i tap" ${tapAttrs("pos", h.symbol)}>
       <div style="min-width:0"><span class="sw" style="background:var(${ROLE[r][1]})"></span><span class="sym">${esc(h.symbol)}</span></div>
       <b class="right num" style="font-weight:500">${usd(h.market_value)}</b>
-      <div class="nm">${esc(nameOf(h.symbol))}</div>
+      <div class="nm">${h.block ? `${esc(h.block)} · ` : ""}${esc(nameOf(h.symbol))}</div>
       <div class="right small num ${cls(h.unrealized_pnl)}">${sgnUsd(h.unrealized_pnl)}</div></div>`)).join("") : `<div class="empty">${a || S.equity.length ? "Nothing held right now. It's all cash." : "Nothing yet. It buys at its first check."}</div>`;
 
   renderPlanPicture(p, s);
@@ -550,9 +581,9 @@ function render() {
   // Self-Tune: the verdict and what was tried, Claude's findings, what's coming
   const E = S.evaluation, C = S.claude || {};
   const cand = E && E.candidate, fmtRule = (k, v) => k === "CORE_PCT" || k === "AGG_VOL_MAX" ? Math.round(v * 100) + "%" : typeof v === "boolean" ? (v ? "on" : "off") : String(v);
-  $("tune-title").textContent = !E ? "The first rule check is coming" : cand ? `Considering: ${cand.label.toLowerCase()} ${fmtRule(cand.setting, cand.from)} → ${fmtRule(cand.setting, cand.to)}` : "No change needed";
-  $("tune-sub").textContent = !E ? "It tests small changes to the plan's numbers on 19 years of history." : cand ? cand.why
-    : `${E.passing || 0} of ${E.tested} alternatives beat the current rules in every test.`;
+  $("tune-title").textContent = !E ? "The first rule check is coming" : cand ? `Considering: ${cand.setting === "BLOCKS" ? cand.label : cand.label.toLowerCase()} ${fmtRule(cand.setting, cand.from)} → ${fmtRule(cand.setting, cand.to)}` : "No change needed";
+  $("tune-sub").textContent = (!E ? "It tests small changes to the plan's numbers on 19 years of history." : cand ? cand.why
+    : `${E.passing || 0} of ${E.tested} alternatives beat the current rules in every test.`) + (E && E.self_tune_said && !C.checkup ? " " + E.self_tune_said : "");
   $("tune-when").hidden = !E; if (E) $("tune-when").textContent = `Checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}`;
   TESTS = (E && E.tests) || [];
   $("tests-label").hidden = !TESTS.length;
@@ -560,8 +591,8 @@ function render() {
       <b class="num ${t.worst == null ? "" : cls(t.worst)}">${t.worst == null ? "—" : pct(t.worst, 1)}</b><span class="test-t"><b>${esc(t.label)}</b><span class="num">${esc(fmtRule(t.setting, t.from))} → ${esc(fmtRule(t.setting, t.to))}</span></span></button>`).join("");
   $("miles").closest(".card").hidden = !(S.milestones || []).length;
   $("miles").innerHTML = (S.milestones || []).map(m => ring(m.progress, m.detail.replace(/^in /, "").replace(" to go", ""), m.name, m.needs)).join("");
-  $("rules-note").textContent = (C.checkup ? "Claude may change one number a quarter, only when the change wins every test."
-    : "A change that wins every test shows up here. Nothing changes on its own.") +
+  $("rules-note").textContent = (C.checkup ? "Claude may change one number a quarter, only when the change wins every test and self-tune is on."
+    : "With self-tune on, one number a quarter may change, only when the change wins every test.") +
     ((S.rules || {}).last_change ? ` Last change: ${S.rules.last_change.split(":")[0]}.` : "");
   $("cl-card").hidden = !C.checkup && !C.report;
 

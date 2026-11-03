@@ -1,5 +1,6 @@
 """
-alpaca_executor.py — the Alpaca paper account: read it, and place the rebalancer's orders.
+alpaca_executor.py — the Alpaca account (paper unless the user turned live on: live.py): read it, and place the
+rebalancer's orders.
 
 Orders are notional (dollar) market orders, so fractional shares work on a small account. Every
 order the bot places carries a client_order_id starting with ORDER_TAG. Option positions are left
@@ -26,8 +27,14 @@ _FINAL = ("canceled", "filled", "expired", "rejected")
 
 
 def _client():
+    """The paper account, unless the user turned live trading on themselves (live.py: 18+, the License Agreement,
+    their live keys, typing LIVE). Live uses its own key pair, never the paper one; the rebalancer also refuses to
+    place orders while live.problem() finds anything missing."""
     from alpaca.trading.client import TradingClient
-    # Paper only, on purpose. Real money needs live keys and a deliberate change here.
+    import live
+    if live.is_live():
+        key, secret = live.keys()
+        return TradingClient(key, secret, paper=False)
     return TradingClient(sec.alpaca_key(), sec.alpaca_secret(), paper=True)
 
 

@@ -24,58 +24,59 @@
      dlg: said inside the dialog; `on` as above, `closed` when the dialog closes, `fail` when board.js reports a refusal. */
   const STEPS = [
     {id: "hi", page: "home", mood: "happy", reply: "Show me around", skip: ["Not now", "end"],
-     say: "Woof! I'm Charles, your new trading bot. Got two minutes? I'll show you around."},
-    {id: "todo", page: "home", sel: "#t-setup", need: "#t-setup", miss: "score", reply: "Okay",
-     say: () => keysIn() ? "Here's your to-do list. Your keys are in, so that's one down. The plan's next, and I'll show you the lazy way in a minute."
-       : "Here's your to-do list. Start with your keys. I can't fetch a thing without them."},
-    {id: "score", page: "home", sel: "#t-earn", mood: "wink", reply: "Ha, okay",
-     say: "This is the scoreboard. It's all practice money, so the worst I can do is embarrass us both."},
-    {id: "run", page: "home", sel: "#t-run", mood: "happy", reply: "Good dog",
-     say: () => running() ? "I check the plan once a day, at 10 AM Eastern on weekdays. Most days I do nothing, on purpose. Press Pause and I'll sit. Sitting never sells anything."
-       : "I start once your keys are in. Then I check the plan once a day, at 10 AM Eastern on weekdays. Most days I do nothing, on purpose."},
-    {id: "bots", page: "home", sel: "#t-bots", mood: "think", reply: "Noted",
-     say: "Tap me for my chart and what I'm holding. My Plan tab has the sliders, if you like to micromanage."},
-    {id: "help", page: "home", sel: "#t-help", reply: "Got it",
-     say: "The bell is what I've been up to. The bubble is for questions, which I love. The gear has your keys and updates."},
+     say: "Hi, I'm Charles, your trading bot. Got two minutes? I'll show you around."},
+    {id: "todo", page: "home", sel: "#t-setup", need: "#t-setup", miss: "score", reply: "Next",
+     say: () => keysIn() ? "Here's your setup list. Your keys are in, so that step is done. The plan is next, and I'll show you the quickest way in a minute."
+       : "Here's your setup list. Start with your keys: I can't trade without them."},
+    {id: "score", page: "home", sel: "#t-earn", mood: "wink", reply: "Next",
+     say: () => window.tradingLive ? "This is what I've earned so far, across all your bots. Stocks trade real money here, so keep an eye on it."
+       : "This is what I've earned so far, across all your bots. It's practice money, so nothing real is at risk."},
+    {id: "run", page: "home", sel: "#t-run", mood: "happy", reply: "Next",
+     say: () => running() ? "I check the plan once a day, at 10 AM Eastern on weekdays. Most days I change nothing, on purpose. Pause stops new orders and never sells anything."
+       : "I start once your keys are in. Then I check the plan once a day, at 10 AM Eastern on weekdays. Most days I change nothing, on purpose."},
+    {id: "bots", page: "home", sel: "#t-bots", mood: "think", reply: "Next",
+     say: "Open a bot for its chart and holdings. Its Plan tab has the sliders, if you want to fine-tune."},
+    {id: "help", page: "home", sel: "#t-help", reply: "Next",
+     say: "The bell lists what I've done. The chat is for questions. The gear has your keys and updates."},
     {id: "board", page: "home", sel: "#t-board", need: "#t-board", miss: "bye", mood: "wow", reply: "Take me there", skip: ["Skip this part", "bye"],
-     say: "Now the fun part. Other people run me too, with their own settings. Let's go sniff around."},
+     say: "Next, the leaderboard. Other people run me too, each with their own settings. Let's take a look."},
 
-    {id: "lb", page: "leaderboard", sel: "#list", need: "#list > li", mood: "think", reply: "Nice",
-     say: () => anyone() ? "Everyone's settings, all run on the same public prices. So nobody can fib about their returns. Not even me."
+    {id: "lb", page: "leaderboard", sel: "#list", need: "#list > li", mood: "think", reply: "Next",
+     say: () => anyone() ? "Everyone's settings, run on the same public prices, so every return here is measured the same way."
        : "Nobody's been here 20 days yet, so the board is still warming up. Once it fills, this is where you copy people."},
     {id: "copy", page: "leaderboard", do: true, sel: ".lb-row:nth-child(-n+3)", need: ".lb-row", miss: "share", allow: ".lb-row", skip: ["Skip this part", "share"], on: {"open-copy": "copy-check"},
-     say: "Let's borrow someone's homework. Press Copy next to anyone who looks smart."},
+     say: "You can copy anyone's settings. Press Copy next to one you like."},
     {id: "copy-check", dlg: true, closed: "copy", fail: "share", on: {copied: "copy-done"},
-     say: () => $("d-go") ? "I always show you what changes before anything happens. Like it? Press Copy these settings."
-       : "Ha, you're already using those. Close this and pick someone else."},
+     say: () => $("d-go") ? "I always show you what changes before anything happens. If it looks right, press Copy these settings."
+       : "You're already using those settings. Close this and pick someone else."},
     {id: "copy-done", dlg: true, mood: "proud", closed: "reset", on: {undone: "undo-done"},
-     say: "Done! I'll use those at my next check, and I may trade to match. Press Done."},
+     say: "Done. I'll use those at my next check, and I may trade to match. Press Done."},
     {id: "undo-done", dlg: true, mood: "wink", closed: "share",
-     say: "Undone, just like that. Your old settings are back. Press Done."},
+     say: "Undone. Your previous settings are back. Press Done."},
     {id: "reset", page: "leaderboard", do: true, sel: "#me", need: "#me-reset", miss: "share", allow: "#me-reset", skip: ["Skip this part", "share"], on: {"open-reset": "reset-check"},
-     say: "Want the default plan back? Reset does it, any time, and shows you what changes first. Try it."},
+     say: "Want the default plan back? Reset does it any time, and shows you what changes first. Try it."},
     {id: "reset-check", dlg: true, closed: "reset", fail: "share", on: {reset: "reset-done"},
-     say: "Same deal: here's what changes back. Press Reset."},
+     say: "Here's what changes back. Press Reset."},
     {id: "reset-done", dlg: true, mood: "wink", closed: "share",
-     say: "Back on the default plan. No hard feelings. Press Done."},
+     say: "You're back on the default plan. Press Done."},
     {id: "share", page: "leaderboard", do: true, sel: "#me", need: "#me-share", miss: "ch", allow: "#me-share", skip: ["Skip this part", "ch"], on: {"open-share": "share-check"},
-     say: "Think you can beat them? Share puts your settings up on the board. This part's optional."},
+     say: "Share puts your settings on the board, so others can see and copy them. This step is optional."},
     {id: "share-check", dlg: true, closed: "share", fail: "ch", on: {shared: "share-wait"},
-     say: "Only these settings go up. Never your money, keys, holdings or trades. Add a name if you want the glory, then press Share publicly."},
-    {id: "share-wait", dlg: true, mood: "proud", closed: "shared", say: "Woof! Up it goes."},
-    {id: "shared", page: "leaderboard", sel: "#me", need: "#me", mood: "proud", reply: "Can't wait",
-     say: "You're on the board! You get ranked after 20 days. Change your mind? Withdraw retires your entry."},
+     say: "Only these settings go up. Never your money, keys, holdings or trades. Add a name if you like, then press Share publicly."},
+    {id: "share-wait", dlg: true, mood: "proud", closed: "shared", say: "Sharing your settings now."},
+    {id: "shared", page: "leaderboard", sel: "#me", need: "#me", mood: "proud", reply: "Next",
+     say: "You're on the board. Entries are ranked after 20 days. If you change your mind, Withdraw retires yours."},
     {id: "ch", page: "leaderboard", do: true, sel: "#ch-box", need: "#ch-box", miss: "bye", allow: "#ch-enter", skip: ["Skip this part", "bye"], on: {"open-enter": "ch-check"},
      before: () => { $("ch-box").open = true; },
      say: () => `One more. Every month has a challenge with its own rules. This one's “${challengeName()}”. Your bot keeps its settings, and only your entry follows the rules. Press Enter.`},
     {id: "ch-check", dlg: true, closed: "ch", fail: "bye", on: {entered: "ch-wait"},
-     say: "These are the settings I'd enter. There are no prizes, only bragging rights. Press Enter publicly."},
-    {id: "ch-wait", dlg: true, mood: "proud", closed: "ch-done", say: "You're in!"},
-    {id: "ch-done", page: "leaderboard", sel: "#ch-box", need: "#ch-box", miss: "bye", mood: "proud", reply: "Let's win",
+     say: "These are the settings I'd enter. There are no prizes. Press Enter publicly."},
+    {id: "ch-wait", dlg: true, mood: "proud", closed: "ch-done", say: "You're entered."},
+    {id: "ch-done", page: "leaderboard", sel: "#ch-box", need: "#ch-box", miss: "bye", mood: "proud", reply: "Next",
      say: "All set. You can enter again or withdraw until it starts. Everyone runs the same days, so no head starts."},
 
-    {id: "bye", mood: "happy", reply: "Thanks, Charles", last: true,
-     say: "That's the whole tour! I'll take it from here and check the plan at 10 AM Eastern on weekdays. Settings can replay this tour any time."},
+    {id: "bye", mood: "happy", reply: "Finish", last: true,
+     say: "That's the tour. I'll take it from here and check the plan at 10 AM Eastern on weekdays. Settings can replay this tour any time."},
   ];
   const byId = id => STEPS.find(s => s.id === id);
   const after = st => st.then || (STEPS[STEPS.indexOf(st) + 1] || {}).id || "end";
@@ -272,8 +273,8 @@
       const fail = cur.fail;
       cur = {dlg: true, closed: fail};
       return sayInDialog({dlg: true, mood: "think", closed: fail, say: what === "failed-same"
-        ? "Someone's already sharing exactly these settings, so there's no new spot for them. Move a slider on my Plan tab first, and the spot's yours. Close this and let's keep going."
-        : "Hmm. That didn't go through, and the message below says why. Close this and we'll move on."});
+        ? "Someone's already sharing exactly these settings, so there's no new spot for them. Move a slider on the Plan tab first, and the spot is yours. Close this and let's keep going."
+        : "That didn't go through, and the message below says why. Close this and we'll move on."});
     }
     const to = cur.on && cur.on[what];
     if (to) go(to);

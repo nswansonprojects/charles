@@ -53,12 +53,20 @@ def identity(data_dir: str):
     return key
 
 
+NOT_SHARED = ("A plan with your own tickers, or with part of the money kept aside, can't be shared: anyone can copy what's "
+              "on the board, and a list of tickers there could be used to push their prices. To share, set the Plan tab "
+              "to Charles's picks with 100% invested.")
+
+
 def current_settings(bot: str, root: str = ROOT) -> dict:
-    """Every setting the bot is using now (file over defaults), limited to the shareable keys."""
+    """Every setting the bot is using now (file over defaults), limited to the shareable keys. A Custom Plan
+    (portfolio.py) isn't shareable at all: ValueError."""
     if bot == "stocks":
         import allocator
         import strategy_settings
         s = {**allocator.DEFAULTS, **strategy_settings.load(os.path.join(root, FILES[bot]))}
+        if s.get("BLOCKS") or s.get("INVESTED", 1.0) != 1.0:
+            raise ValueError(NOT_SHARED)
         return {k: s[k] for k in strategy_settings.LIMITS}
     import crypto_plan
     import crypto_settings
@@ -177,8 +185,12 @@ def install(cfg: dict, root: str = ROOT, now: datetime | None = None) -> str:
     with open(backup, "w") as f:
         f.write(old_text)
     note = f"{(now or datetime.now()).date()}: copied leaderboard config {cfg['id']} ({cfg['name']})."
+    try:                                # the user's own choices stay; their own blocks go (a copy is that plan)
+        own = {k: v for k, v in (json.loads(old_text).get("settings") or {}).items() if k in ("SELF_TUNE", "PRESETS")}
+    except (ValueError, AttributeError):
+        own = {}
     with open(path + ".tmp", "w") as f:
-        json.dump({"settings": cfg["settings"], "last_change": note}, f, indent=2)
+        json.dump({"settings": {**cfg["settings"], **own}, "last_change": note}, f, indent=2)
         f.write("\n")
     os.replace(path + ".tmp", path)
     return backup

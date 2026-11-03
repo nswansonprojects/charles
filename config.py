@@ -8,7 +8,7 @@
 # Leave these empty — keys are loaded from .env by credential_manager.
 ALPACA_API_KEY    = ""
 ALPACA_SECRET_KEY = ""
-# Paper trading is fixed in alpaca_executor._client() (paper=True); there is no switch here.
+# Paper unless the user turned live trading on over SSH (live.py, charles-live): alpaca_executor._client() decides.
 
 # --- AI (the news veto only) ---------------------------------
 # Free key at console.groq.com, set as GROQ_API_KEY in .env. Without it Charles runs the plan

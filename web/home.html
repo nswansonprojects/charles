@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#131311" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#fafbfc">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Charles">
 <title>Charles</title>
@@ -18,11 +17,12 @@
 <body class="loading">
 <header></header>
 <main>
+  <div class="page-head"><div><h1 class="page-title">Home</h1><p class="page-sub num" id="home-sub">&nbsp;</p></div></div>
   <div class="card attention" id="attention" hidden></div>
   <section class="card setup" id="t-setup" aria-label="Get started" hidden></section>
   <div class="home">
     <section class="card ink home-hero" id="t-earn" aria-label="What your bots have earned">
-      <div class="hero-head"><div class="eyebrow">Earned so far</div><span class="chip practice" title="Paper accounts: no real dollars move">Practice money</span></div>
+      <div class="hero-head"><div class="eyebrow">Earned so far</div><span class="chip practice" id="money-chip" title="Paper accounts: no real dollars move">Practice money</span></div>
       <div class="big num" id="earned">$0.00</div>
       <div class="sub num" id="earned-sub">&nbsp;</div>
       <div class="chart hero-chart" id="chart"></div>
@@ -141,7 +141,7 @@ function addTile() {
 function renderBots() {
   $("t-bots").innerHTML = D.bots.map(b => `<a class="card bot" href="${esc(b.href)}">
       <div class="bot-name">${esc(b.name)}${b.late ? ' <span class="chip">Needs a look</span>' : ""}</div>
-      <div class="bot-earned ${cls(b.earned)}">${b.earned == null ? "—" : sgnUsd(b.earned)}</div>
+      <div class="bot-earned ${cls(b.earned)}">${b.earned == null ? '<span class="muted">—</span>' : sgnUsd(b.earned)}</div>
       <div class="bot-line num">${b.value == null ? "Not started" : `${usd(b.value)} · <span class="${cls(b.today)}">${sgnUsd(b.today)}</span> today`}</div>
       <div class="bot-note">${esc(b.note)}</div>
       <div class="bot-chart" data-bot="${esc(b.id)}"></div></a>`).join("") + addTile();
@@ -169,8 +169,8 @@ function renderAttention() {
   if (hot.length) $("notice-got").onclick = () => { try { localStorage.setItem(NOTICE_SEEN, hot[0].ts); } catch (e) {} box.hidden = true; };
 }
 
-// A card going away (no leaderboard to show) widens the panel after its chart was drawn.
-if (window.ResizeObserver) { let w = 0; new ResizeObserver(es => { const n = Math.round(es[0].contentRect.width), was = w; w = n; if (was && n !== was && D) renderChart(); }).observe($("chart")); }
+// A card going away (no leaderboard to show) widens the panel after its chart was drawn, and the leaderboard arriving makes it taller.
+if (window.ResizeObserver) { let w = ""; new ResizeObserver(es => { const r = es[0].contentRect, n = Math.round(r.width) + "x" + Math.round(r.height), was = w; w = n; if (was && n !== was && D) renderChart(); }).observe($("chart")); }
 
 async function loadBoard() {
   let B, M;
@@ -190,10 +190,20 @@ async function loadBoard() {
   me.innerHTML = mine ? `You're on it as <a href="/leaderboard">${esc(mine.name || "Anonymous")}</a>` : `You're not on it yet. <a href="/leaderboard">Share your settings</a>`;
 }
 
+/* Paper by default; live only after the user's own steps over SSH (charles-live). Only stocks can go live. */
+function moneyChip() {
+  const live = (D.trading || {}).mode === "live", c = $("money-chip");
+  window.tradingLive = live;
+  c.className = "chip " + (live ? "live" : "practice");
+  c.textContent = live ? ((D.trading || {}).hold ? "Live: on hold" : "Stocks: real money") : "Practice money";
+  c.title = live ? "Live trading is on for stocks (charles-live). Crypto and Kalshi are practice money." : "Paper accounts: no real dollars move";
+}
 async function load() {
   try {
     D = await getJSON("/api/home");
     document.body.classList.remove("loading");
+    moneyChip();
+    $("home-sub").textContent = "Updated " + new Date(D.generated_at).toLocaleTimeString([], {hour: "numeric", minute: "2-digit"});
     renderHero();
     if (!busy) renderRun();
     renderSetup();

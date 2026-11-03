@@ -472,10 +472,31 @@ def test_evil_charles_bets_against_exactly_what_charles_placed(tmp_path, monkeyp
                "KXCPI-26NOV-T0.4": _mkt(0.30, 0.72), "KXCPI-26OCT-T0.1": _mkt(0.96, 0.05)}
     _scan(tmp_path, monkeypatch, picks, markets)
     charles, evil = (betting.load(betting.bot_paths(b)[0])["open"] for b in betting.BOTS)
-    assert sorted(b["ticker"] for b in evil) == sorted(b["ticker"] for b in charles)
-    for c in charles:
-        e = next(b for b in evil if b["ticker"] == c["ticker"])
-        assert e["side"] != c["side"] and e["charles_side"] == c["side"] and e["cost"] == c["cost"]
+    # Owner 2026-11-03: a flip must stand to win half its stake, and both bots place the same bets, so Charles skips
+    # his 5c, 28c and 30c buys, whose other side (96c, 72c, 70c) Evil Charles couldn't take, and bets the 41c one instead.
+    assert [(b["ticker"], b["side"]) for b in charles] == [("KXCPIYOY-26NOV-T3.9", "yes")]
+    assert [(b["ticker"], b["side"]) for b in evil] == [("KXCPIYOY-26NOV-T3.9", "no")]
+    assert evil[0]["cost"] == charles[0]["cost"]
+    assert [b["ticker"] for b in betting.load()["open"]] == ["KXCPIYOY-26NOV-T3.9"]
+
+
+def test_evil_charles_flips_only_what_pays_half_its_stake(tmp_path, monkeypatch):
+    picks = [dict(PICK, strategy="econ", ticker=t, event=t.rsplit("-", 1)[0], fair_yes=f) for t, f in
+             (("KXCPIYOY-26NOV-T3.9", 0.68), ("KXCPI-26OCT-T0.1", 0.10))]
+    markets = {"KXCPIYOY-26NOV-T3.9": _mkt(0.41, 0.60), "KXCPI-26OCT-T0.1": _mkt(0.96, 0.05)}
+    _scan(tmp_path, monkeypatch, picks, markets)
+    charles, evil = (betting.load(betting.bot_paths(b)[0])["open"] for b in betting.BOTS)
+    assert [b["ticker"] for b in charles] == ["KXCPIYOY-26NOV-T3.9"]              # not the 5c buy: its other side (96c) fails
+    assert [b["ticker"] for b in evil] == ["KXCPIYOY-26NOV-T3.9"]                  # NO at ~59c pays: the same bets, both bots
+    e, c = evil[0], next(b for b in charles if b["ticker"] == "KXCPIYOY-26NOV-T3.9")
+    assert e["side"] != c["side"] and e["charles_side"] == c["side"] and e["cost"] == c["cost"]
+    for bet in charles + evil + betting.load()["open"]:
+        assert bet["contracts"] - bet["cost"] >= 0.5 * bet["cost"] - 1e-6
+
+
+def test_pays_half():
+    assert betting.pays_half({"contracts": 100, "cost": 66.0})
+    assert not betting.pays_half({"contracts": 100, "cost": 70.0})
 
 
 def test_the_account_scales_the_bots_bets_to_its_own_money(tmp_path, monkeypatch):

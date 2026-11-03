@@ -65,6 +65,9 @@ RULES = {
     # Settled bets bought at 50-67c had done best (3 of 4 won); those under 34c went 0 for 4.
     # 2026-10-15 owner raised it to 1.0: a win must at least match the stake, so buys <=~49c.
     "min_win_ratio": 1.0,
+    # Owner 2026-11-03: every bet, Evil Charles's flips and the account's copies too, must stand to win at least half its
+    # stake after fees (cost incl. fee <= ~67c a contract). Flips and copies skip min_win_ratio, so this is their only bar.
+    "min_payout_any": 0.5,
     "min_expected_profit": 0.10,  # $ per bet
     "cash_reserve_pct": 0.10,
     "max_books_per_strategy": 15, # order books fetched per scan, best edges first
@@ -186,6 +189,11 @@ def pays_enough(p: float) -> bool:
     return (1 - p - fee(1, p) / 2) >= RULES["min_win_ratio"] * (p + fee(1, p) / 2)
 
 
+def pays_half(fill: dict) -> bool:
+    """A filled bet (cost includes the fee) wins at least min_payout_any of its cost if it's right."""
+    return fill["contracts"] - fill["cost"] >= RULES["min_payout_any"] * fill["cost"] - 1e-9
+
+
 def quick_edge(pick: dict, m: dict):
     """(side, edge) at the top-of-book offer from market data, before fetching the book."""
     best = None
@@ -229,7 +237,8 @@ def size(pick: dict, side: str, book: dict, budget: float, bank: float) -> dict 
     f = fee(n, cost / n)
     avg = cost / n
     exp = n * fair - cost - f
-    if exp < RULES["min_expected_profit"] or n - cost - f < RULES["min_win_ratio"] * (cost + f):
+    if (exp < RULES["min_expected_profit"] or n - cost - f < RULES["min_win_ratio"] * (cost + f)
+            or n - cost - f < RULES["min_payout_any"] * (cost + f)):
         return None
     return {"side": side, "contracts": n, "avg_price": round(avg, 4), "fee": f, "cost": round(cost + f, 2),
             "fair": round(fair, 4), "edge": round(fair - (cost + f) / n, 4), "expected_profit": round(exp, 2)}
@@ -513,6 +522,11 @@ def bet(led: dict, scored: list, by_ticker: dict, levels: dict, book_of, now: da
         fill = size(p, p["side"], book, budget, bank)
         if not fill:
             continue
+        other = flip(fill, book)                   # owner 2026-11-03: both bots place the same bets, so Charles bets only
+        if not other or not pays_half(other):      # where Evil Charles can take the other side under the payout floor
+            why = "no offers" if not other else other["side"].upper() + " would win less than half its stake"
+            log.info(f"skip [{name}] {p['ticker']}: Evil Charles couldn't take the other side ({why})")
+            continue
         rec = place(led, p, fill, by_ticker[p["ticker"]], now, lvl, bot="charles")
         placed.append(rec)
         held.add(p["ticker"])
@@ -551,7 +565,10 @@ def copy_bets(led: dict, placed: list, src_bank: float, opposite: bool, by_ticke
             fill = got and {**got, "fair": src["fair"], "edge": round(src["fair"] - got["cost"] / got["contracts"], 4),
                             "expected_profit": round(got["contracts"] * src["fair"] - got["cost"], 2),
                             **({"evil": True, "charles_side": src["charles_side"]} if src.get("evil") else {})}
-        if not fill:
+        if not fill or not pays_half(fill):
+            if fill:
+                log.info(f"skip [{name}] {src['ticker']}: {fill['side'].upper()} at {fill['cost'] / fill['contracts']:.2f} would win "
+                         f"less than {RULES['min_payout_any']:.0%} of its stake")
             continue
         pick = {k: src[k] for k in ("strategy", "ticker", "event", "category", "title", "sub", "source", "fair_yes")}
         pick["model_yes"] = src.get("model_yes", src["fair_yes"])

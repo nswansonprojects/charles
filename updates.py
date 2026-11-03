@@ -41,7 +41,8 @@ PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
 ET = ZoneInfo("America/New_York")
 VERSION_RE = re.compile(r"^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})\Z")
 SETTINGS_FILES = ("strategy.json", "crypto.json")     # the user's own settings: an update keeps their changes
-SOURCES = ("the chat", "the sliders")                 # where a settings change came from, for its note in the file
+SOURCES = ("the chat", "the sliders", "self-tune")    # where a settings change came from, for its note in the file
+CUSTOM_SOURCES = ("the sliders", "self-tune")         # these may change the Custom Plan; the chat never can
 # Anything here can change what gets bought or sold, so moving across it needs the confirm screen,
 # whatever the changelog calls the release.
 RULE_FILES = ("allocator.py", "rebalancer.py", "risk_manager.py", "news_veto.py", "alpaca_executor.py", "config.py",
@@ -51,7 +52,8 @@ HEALTH_WAIT, HEALTH_SETTLE = 120, 20                  # watch for 2 minutes; hea
 LABELS = {"CORE_PCT": "Share in the S&P 500 core", "PICKS": "Momentum picks", "PICK_PCT": "Size of each pick",
           "DRIFT_PCT": "Fix drift over", "TREND_DAYS": "Trend line (days)", "SAFETY_SWITCH": "Safety switch",
           "SWITCH_CHECK": "Safety switch checked", "AGGRESSIVE": "Aggressive mode", "AGG_CORE": "Aggressive fund",
-          "AGG_VOL_MAX": "Aggressive mode's calm limit", "AGG_VOL_EXIT": "Aggressive mode's exit limit"}
+          "AGG_VOL_MAX": "Aggressive mode's calm limit", "AGG_VOL_EXIT": "Aggressive mode's exit limit",
+          "INVESTED": "Invested", "BLOCKS": "Your blocks", "SELF_TUNE": "Self-tune", "PRESETS": "Saved presets"}
 
 log = logging.getLogger(__name__)
 
@@ -275,7 +277,8 @@ def queue(action: str, by: str, version=None, confirm: bool = False, settings=No
             if action != "undo-settings":
                 import chat
                 import crypto_settings
-                job.update(settings=(chat.check_settings if bot == "stocks" else crypto_settings.check)(settings), reason=str(reason or "")[:300])
+                job.update(settings=chat.check_settings(settings, custom=source in CUSTOM_SOURCES) if bot == "stocks" else crypto_settings.check(settings),
+                           reason=str(reason or "")[:300])
         elif action == "copy-config":
             if not isinstance(config, str) or not re.fullmatch(r"lb-[0-9a-f]{6}", config):
                 raise UpdateError("Leaderboard ids look like lb-1a2b3c.")
@@ -304,9 +307,14 @@ def copy_config(entry: str, by: str, now: datetime | None = None, fetch=None, ro
         import chat
         now_set = chat.current_settings()
         changes = {k: v for k, v in cfg["settings"].items() if now_set.get(k) != v}
+        # a copy is that plan: the user's own blocks and the money they kept aside go (Undo brings them back)
+        if now_set.get("BLOCKS"):
+            changes["BLOCKS"] = None
+        if now_set.get("INVESTED", 1.0) != 1.0:
+            changes["INVESTED"] = 1.0
         if not changes:
             return True, "You already use these settings."
-        return chat.apply_settings(changes, by, reason, now, source="the leaderboard")
+        return chat.apply_settings(changes, by, reason, now, source="the leaderboard", custom=True)
     import crypto_settings
     path, history = os.path.join(root, "crypto.json"), os.path.join(root, "data", "crypto_settings_history.jsonl")
     now_set = crypto_settings.current(path)
@@ -417,7 +425,7 @@ def move(version: str, by: str, confirm: bool, now: datetime | None = None, *, i
          restart_=restart, health=healthy) -> tuple[bool, str]:
     """Go to `version`, keeping data/ and the user's settings. Any failure goes back to where it started."""
     now = now or datetime.now(timezone.utc)
-    e = _check_target("update", version, confirm, None)         # checked again: the tags may have moved since the request
+    e = _check_target("update", version, confirm, now)          # checked again: the tags may have moved since the request
     from_rev, from_name = git("rev-parse", "HEAD"), current() or "the previous code"
     restarted = False
 
@@ -471,13 +479,14 @@ def run_job(now: datetime | None = None, **steps) -> str | None:
                     if action == "apply-settings" else crypto_settings.undo_settings(who, now)
             else:
                 import chat
-                ok, said = chat.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the chat") \
+                ok, said = chat.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the chat",
+                                               custom=job.get("source") in CUSTOM_SOURCES) \
                     if action == "apply-settings" else chat.undo_settings(who, now)
         elif action == "copy-config":
             ok, said = copy_config(job.get("config"), job.get("by") or "the dashboard", now)
         elif action == "backtest-settings":
             import chat
-            extra["backtest"] = chat.backtest(job.get("settings"))
+            extra["backtest"] = chat.backtest(job.get("settings"), custom=job.get("source") in CUSTOM_SOURCES)
             ok, said = True, "The backtest is done."
         else:
             ok, said = True, "Checked for updates."

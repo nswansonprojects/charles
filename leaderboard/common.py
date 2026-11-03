@@ -34,10 +34,29 @@ def _limits(bot: str) -> dict:
     raise ValueError(f"unknown bot {bot!r}")
 
 
-def validate_settings(bot: str, settings) -> dict:
+def _custom_value(name: str, value):
+    """The Custom Plan and the user's own choices (strategy_settings.CUSTOM + OWN), as strictly as the rest."""
+    import portfolio
+    import strategy_settings
+    if name == "INVESTED":
+        lo, hi = strategy_settings.INVESTED_RANGE
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not lo <= value <= hi:
+            raise ValueError(f"INVESTED must be between {lo} and {hi}")
+        return float(value)
+    if name == "SELF_TUNE":
+        if not isinstance(value, bool):
+            raise ValueError("SELF_TUNE must be true or false")
+        return value
+    if name == "BLOCKS":
+        return portfolio.check_blocks(value)
+    return portfolio.check_presets(value, lambda s: validate_settings("stocks", s, custom=True))
+
+
+def validate_settings(bot: str, settings, custom: bool = False) -> dict:
     """The settings exactly as given if every key is known and every value is the right type and in
     range; raises ValueError otherwise. Stricter than strategy_settings.load(), which clamps: a shared
-    config is rejected, never quietly changed."""
+    config is rejected, never quietly changed. `custom` also allows the Custom Plan and the user's own
+    choices (the Plan tab's sliders, undo); the leaderboard never does."""
     if bot not in BOTS:
         raise ValueError(f"unknown bot {bot!r}")
     if not isinstance(settings, dict) or not settings:
@@ -45,6 +64,11 @@ def validate_settings(bot: str, settings) -> dict:
     limits = _limits(bot)
     out = {}
     for name, value in settings.items():
+        if custom and bot == "stocks":
+            import strategy_settings
+            if name in strategy_settings.CUSTOM + strategy_settings.OWN:
+                out[name] = _custom_value(name, value)
+                continue
         if name not in limits:
             raise ValueError(f"unknown setting {name!r}")
         lo, hi, typ = limits[name]

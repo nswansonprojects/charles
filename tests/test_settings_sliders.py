@@ -107,19 +107,21 @@ class Job(BotTestCase):
 
     def test_a_stock_job_from_the_sliders_says_so(self):
         applied = []
-        self.patch(chat, "check_settings", lambda c, *a: c)
+        self.patch(chat, "check_settings", lambda c, *a, **k: c)
         self.patch(chat, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
         self.queue("apply-settings", settings={"PICKS": 2}, source="the sliders")
         updates.run_job(NOW)
         self.assertEqual(applied[0]["source"], "the sliders")
+        self.assertTrue(applied[0]["custom"])                  # only the sliders may change the custom plan
 
     def test_the_chats_old_requests_still_work(self):
         applied = []
-        self.patch(chat, "check_settings", lambda c, *a: c)
+        self.patch(chat, "check_settings", lambda c, *a, **k: c)
         self.patch(chat, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
         self.queue("apply-settings", settings={"PICKS": 2})
         updates.run_job(NOW)
         self.assertEqual(applied[0]["source"], "the chat")
+        self.assertFalse(applied[0]["custom"])
 
     def test_crypto_undo_stays_on_crypto(self):
         undone = []

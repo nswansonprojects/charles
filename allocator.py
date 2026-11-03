@@ -80,6 +80,12 @@ DEFAULTS = {
                             # worst drop -39%/-35% vs -29%/-23%; better in both halves of history)
     "DRIFT_PCT": 0.03,      # between rebalances, fix a holding only when it's this far off target
     "MIN_ORDER": 1.00,      # Alpaca's minimum notional order ($)
+    # The user's own customisation (owner 2026-11-03; portfolio.py): how much of the account is invested at all (the
+    # rest waits in T-bills), the Custom Plan's blocks (None = this default plan), and whether self-tune may change
+    # the numbers.
+    "INVESTED": 1.0,
+    "BLOCKS": None,
+    "SELF_TUNE": True,
 }
 
 INVEST, SAFETY, AGGRESSIVE = "invest", "safety", "aggressive"
@@ -139,13 +145,15 @@ def pick(ranked: list[dict], n: int, vetoed: set | frozenset = frozenset()) -> l
 
 
 def targets(mode: str, picks: list[str], s: dict = DEFAULTS) -> dict[str, float]:
-    """Target weights (fractions of the account). Weights sum to 1 − CASH_PCT."""
+    """Target weights (fractions of the account). Weights sum to 1 − CASH_PCT. INVESTED below 1 scales the core and
+    the picks down, and the rest waits in T-bills (the whole-portfolio slider)."""
     invested = 1 - s["CASH_PCT"]
     if mode not in (INVEST, AGGRESSIVE):
         return {s["SAFE"]: round(invested, 4)}
-    out = {(s["AGG_CORE"] if mode == AGGRESSIVE else s["CORE"]): s["CORE_PCT"]}
+    k = s.get("INVESTED", 1.0)
+    out = {(s["AGG_CORE"] if mode == AGGRESSIVE else s["CORE"]): s["CORE_PCT"] * k}
     for sym in picks[: s["PICKS"]]:
-        out[sym] = s["PICK_PCT"]
+        out[sym] = s["PICK_PCT"] * k
     rest = round(invested - sum(out.values()), 4)    # empty pick slots
     if rest > 0.0005:
         out[s["SAFE"]] = rest

@@ -233,17 +233,32 @@ def current_settings(path: str | None = None) -> dict:
         return json.load(f).get("settings", {})
 
 
-def check_settings(changes, path: str | None = None) -> dict:
+def check_settings(changes, path: str | None = None, custom: bool = False) -> dict:
     """The changes exactly as given if the plan is valid with them in; ValueError saying why otherwise. Strict: a
-    bad value is refused, never clamped, and the daily loss limit isn't a setting here at all."""
+    bad value is refused, never clamped, and the daily loss limit isn't a setting here at all. `custom` (the Plan
+    tab's sliders only) also allows the Custom Plan, the presets and self-tune: the chat never picks tickers."""
     from leaderboard import common
     if not isinstance(changes, dict) or not changes:
         raise ValueError("no settings to change")
-    unknown = [k for k in changes if k not in strategy_settings.LIMITS]
+    allowed = strategy_settings.KEYS if custom else strategy_settings.LIMITS
+    unknown = [k for k in changes if k not in allowed]
     if unknown:
         raise ValueError(f"{unknown[0]} isn't a setting that can be changed here")
-    merged = common.validate_settings("stocks", {**current_settings(path), **changes})
+    merged = common.validate_settings("stocks", {**current_settings(path), **changes}, custom=True)
     return {k: merged[k] for k in changes}
+
+
+def _word(k: str, v) -> str:
+    """A setting's value in the change note and the notice."""
+    if k == "BLOCKS":
+        return "the default plan" if not v else f"{len(v)} block{'' if len(v) == 1 else 's'} ({', '.join(b['name'] for b in v)})"
+    if k == "PRESETS":
+        return f"{len(v or [])} saved" if v is not None else "none"
+    if k == "SELF_TUNE":
+        return "on" if v or v is None else "off"
+    if k == "INVESTED":
+        return f"{round((1.0 if v is None else v) * 100)}%"
+    return str(v)
 
 
 def diff(changes: dict, path: str | None = None) -> list[dict]:
@@ -273,16 +288,17 @@ def _tell(text: str):
 
 
 def apply_settings(changes, by: str, reason: str = "", now: datetime | None = None, path: str | None = None, source: str = "the chat",
-                   history: str | None = None, tell: bool = True) -> tuple[bool, str]:
+                   history: str | None = None, tell: bool = True, custom: bool = False) -> tuple[bool, str]:
     """Apply a confirmed change (charles-updater.service). The bot reads strategy.json at its next daily check.
-    `history` and `tell` are for a preview's test folder: its own record, and no notice about a change the bot never sees."""
+    `history` and `tell` are for a preview's test folder: its own record, and no notice about a change the bot never sees.
+    `custom`: the change may hold the Custom Plan, the presets or self-tune (from the sliders, or a copy clearing them)."""
     now = now or datetime.now(timezone.utc)
-    changes = check_settings(changes, path)
+    changes = check_settings(changes, path, custom)
     before = current_settings(path)
     after = {**before, **changes}
     if after == before:
         return True, "Those settings were already in place."
-    words = ", ".join(f"{LABELS.get(k, k)} {before.get(k)} → {v}" for k, v in changes.items())
+    words = ", ".join(f"{LABELS.get(k, k)} {_word(k, before.get(k))} → {_word(k, v)}" for k, v in changes.items())
     _write_settings(after, f"{now:%Y-%m-%d}: from {source}: {words}" + (f" ({reason})" if reason else ""), path)
     with open(history or _history_path(), "a") as f:
         f.write(json.dumps({"at": now.isoformat(timespec="seconds"), "by": by, "reason": reason, "changes": changes,
@@ -317,7 +333,7 @@ def undo_settings(by: str, now: datetime | None = None, path: str | None = None,
     if not row:
         return True, "There's no change to undo."
     from leaderboard import common
-    common.validate_settings("stocks", row["before"])
+    common.validate_settings("stocks", row["before"], custom=True)
     _write_settings(row["before"], f"{now:%Y-%m-%d}: undid the change of {row['at'][:10]}", path)
     with open(history or _history_path(), "a") as f:
         f.write(json.dumps({"at": now.isoformat(timespec="seconds"), "by": by, "undo": True, "before": row["after"],
@@ -328,15 +344,18 @@ def undo_settings(by: str, now: datetime | None = None, path: str | None = None,
     return True, said
 
 
-def backtest(changes, path: str | None = None) -> dict:
+def backtest(changes, path: str | None = None, custom: bool = False) -> dict:
     """The 19-year backtest of the plan now and with the change, on today's companies and on sector funds (which have
-    no survivor bias). Heavy: it downloads the prices, so it runs in charles-updater.service, on request."""
+    no survivor bias). A Custom Plan runs on its own tickers only (each from when it has prices). Heavy: it downloads
+    the prices, so it runs in charles-updater.service, on request."""
     import allocator as al
     import backtest_core as bc
-    changes = check_settings(changes, path)
+    import portfolio
+    changes = check_settings(changes, path, custom)
     cur = {**al.DEFAULTS, **strategy_settings.load(path or strategy_settings.PATH)}
     new = {**cur, **changes}
-    syms = sorted(set(al.UNIVERSE) | set(bc.SECTORS) | {"SPY", "BIL", cur["AGG_CORE"], new["AGG_CORE"]})
+    syms = sorted(set(al.UNIVERSE) | set(bc.SECTORS) | {"SPY", "BIL", cur["AGG_CORE"], new["AGG_CORE"]}
+                  | set(portfolio.symbols(cur)) | set(portfolio.symbols(new)))
     dates, opens, closes = bc._download(syms)
     stocks = [k for k in al.UNIVERSE if k in closes]
 
@@ -344,9 +363,11 @@ def backtest(changes, path: str | None = None) -> dict:
         r = bc.simulate(dates, opens, closes, dict(s, SAFE="BIL"), universe=universe)
         st = bc.stats(r["dates"], r["values"])
         return {"cagr_pct": st["cagr_pct"], "max_drawdown_pct": st["max_drawdown_pct"]}
-    return {"history": f"{bc.START[:4]} to {dates[-1]}", "changes": changes,
-            "now": {"stocks": run(cur, stocks), "sectors": run(cur, bc.SECTORS)},
-            "with_change": {"stocks": run(new, stocks), "sectors": run(new, bc.SECTORS)}}
+    out = {"history": f"{bc.START[:4]} to {dates[-1]}", "changes": changes,
+           "now": {"stocks": run(cur, stocks)}, "with_change": {"stocks": run(new, stocks)}}
+    if not cur.get("BLOCKS") and not new.get("BLOCKS"):         # the sector-fund check is for Charles's own stock list
+        out["now"]["sectors"], out["with_change"]["sectors"] = run(cur, bc.SECTORS), run(new, bc.SECTORS)
+    return out
 
 
 # ── Real prices and headlines ─────────────────────────────────────────────────

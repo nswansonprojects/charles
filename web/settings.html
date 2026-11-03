@@ -3,8 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#111110" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#f4f4f2" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#fafbfc">
 <meta name="referrer" content="no-referrer">
 <title>Settings · Charles</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -15,14 +14,16 @@
 <body>
 <header></header>
 <main class="narrow">
-  <h1 class="page-title">Settings</h1>
-  <h2 class="set-group" style="margin-top:6px">Your bots</h2>
+  <div class="page-head"><div><h1 class="page-title">Settings</h1><p class="page-sub">Your bots, paper or live, updates and this device</p></div></div>
+  <h2 class="set-group">Your bots</h2>
   <div class="card" id="bots"><div class="empty">Loading…</div></div>
+  <h2 class="set-group">Trading</h2>
+  <div class="card" id="trading"></div>
   <h2 class="set-group">Updates</h2>
   <div class="card" id="updates"></div>
   <h2 class="set-group">This device</h2>
   <div class="card">
-    <div class="set-row"><div><h3>Appearance</h3></div><div class="tabs" id="theme-set" role="group" aria-label="Appearance"><button type="button" data-th="">Auto</button><button type="button" data-th="light">Light</button><button type="button" data-th="dark">Dark</button></div></div>
+    <div class="set-row"><div><h3>Appearance</h3></div><div class="tabs" id="theme-set" role="group" aria-label="Appearance"><button type="button" data-th="">Light</button><button type="button" data-th="dark">Dark</button><button type="button" data-th="auto">Match device</button></div></div>
     <div class="set-row"><div><h3>Dashboard tour</h3></div><div class="acts"><button class="btn small" type="button" id="tour-again">Show it again</button></div></div>
     <div class="set-row" id="logout-row" hidden><div><h3>Logged in</h3></div><div class="acts"><a class="btn small" href="/logout">Log out</a></div></div>
   </div>
@@ -83,6 +84,37 @@ function render() {
     if (location.hash === "#keys" && stocks.length) { shownAsked = true; stepsSheet("charles"); }
   }
   $("logout-row").hidden = !SESSION.logged_in;
+  renderTrading();
+}
+
+// Paper by default. Live (stocks only) takes the user's own steps over SSH: 18+, the License Agreement, live keys, typing LIVE (live.py).
+const TERMS_URL = "https://charles-bot.xyz/terms.html";
+function renderTrading() {
+  const t = A.trading || {mode: "paper"}, live = t.mode === "live";
+  const row = (name, dot, state, btn) => `<div class="set-row"><div style="min-width:0"><h3>${name}</h3><div class="s"><span class="dot ${dot}"></span>${state}</div></div><div class="acts">${btn}</div></div>`;
+  $("trading").innerHTML =
+    row("Paper or live", live ? (t.hold ? "warn" : "bad") : "good",
+      live ? (t.hold ? `Live, on hold: ${esc(t.hold)}` : `Live: real money since ${esc(fmtDay(t.since))}. Crypto and Kalshi stay practice money.`)
+           : "Paper trading: practice money in your Alpaca paper account.",
+      `<button class="btn small" type="button" id="live-steps">${live ? "Back to paper" : "Trade real money"}</button>`) +
+    row("License Agreement", /accepted on/.test(t.terms || "") ? "good" : "warn", esc(t.terms || ""),
+      `<a class="btn small" href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">Read it</a>`);
+  $("live-steps").onclick = () => liveSheet(live);
+}
+function liveSheet(live) {
+  openSheet(live ? `<h2 class="sh-title" id="sh-title">Back to paper trading</h2><div class="sh-sub">Charles stops trading your live account</div>
+    <ol class="stepsl">
+      <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}</li>
+      <li><b>Turn live off:</b>${cmd("charles-live off")}<div class="muted">Charles goes back to your paper account and its history. What it bought in the live account stays there until you sell it in Alpaca.</div></li>
+    </ol><p class="sh-p muted">To stop new orders right away, use Pause on Home.</p>`
+    : `<h2 class="sh-title" id="sh-title">Trade real money</h2><div class="sh-sub">Stocks only, in your own Alpaca live account</div>
+    <p class="sh-p">Live trading is for adults (18 or older, or the age of majority where you live) who accept the <a href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">License Agreement</a>. Charles promises no gains, and you can lose money.</p>
+    <ol class="stepsl">
+      <li><b>Get live keys from Alpaca.</b><div class="muted">Switch to your live account, then API Keys → Generate. Live keys start with AK.</div></li>
+      <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}</li>
+      <li><b>Turn live on:</b>${cmd("charles-live on")}<div class="muted">It asks you to confirm your age and accept the agreement, checks your live keys with Alpaca, then asks you to type LIVE. Your paper history is kept for when you come back.</div></li>
+      <li><b>Come back here.</b><div class="muted">Home and Stocks then say real money. Charles trades at its next daily check, 10:00 AM ET on weekdays.</div></li>
+    </ol><p class="sh-p muted">Back to paper any time: <code>charles-live off</code>. Pause on Home stops new orders at once.</p>`);
 }
 
 let SESSION = {};
@@ -214,6 +246,7 @@ async function load() {
 }
 (function () {
   const show = () => { let t = ""; try { t = localStorage.getItem("charles-theme") || ""; } catch (e) {}
+    if (t === "light") t = "";
     document.querySelectorAll("[data-th]").forEach(b => b.classList.toggle("on", b.dataset.th === t)); };
   document.querySelectorAll("[data-th]").forEach(b => b.onclick = () => {
     const t = b.dataset.th;

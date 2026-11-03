@@ -2,6 +2,23 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.3.0",
+   "date": "2026-11-03",
+   "kind": "rule",
+   "notes": [
+    "A new look: one clean typeface, calmer cards, and a soft grey light mode (Dark and Match device are in Settings).",
+    "Your own plan: on the Plan tab, search any ticker Alpaca trades and put it in a long-term, sector or momentum block, with how much goes in each. Charles's own plan stays the default.",
+    "Presets: Default plan, 0.5× aggressive and 2× aggressive change only the amounts, never the tickers. Save and name your own.",
+    "Invested: choose how much of your buying power the plan uses; the rest sits in T-bills.",
+    "Self-tune has an on/off switch on the Self-Tune tab. While it's on, a change that passed every test of the monthly evaluation can be applied, at most one a quarter, and you can undo it.",
+    "Live trading for stocks, off by default and locked behind steps: charles-live on asks that you're 18 or older, accept the License Agreement, add your own live Alpaca keys and type LIVE. Crypto and Kalshi stay practice money.",
+    "The Charles License Agreement: the installer asks you to accept it before installing anything (charles-terms shows it).",
+    "A plan with your own tickers or money kept aside isn't shared on the leaderboard.",
+    "Kalshi: every bet must stand to win at least half of what it costs, fees included (at most about 67 cents a contract). Evil Charles now skips the other side of a bet when that side would pay less, and so does your account when it copies him.",
+    "Kalshi: Charles and Evil Charles place the same bets. Charles bets only where Evil Charles can take the other side and still win at least half his stake."
+   ]
+  },
+  {
    "version": "v1.2.3",
    "date": "2026-11-03",
    "kind": "fix",

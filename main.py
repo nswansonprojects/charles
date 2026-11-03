@@ -75,7 +75,13 @@ def check_llm() -> bool:
 
 
 def check_alpaca() -> bool:
-    if not sec.validate()["alpaca"]:
+    import live
+    if live.is_live():
+        if not all(live.keys()):
+            log.error("❌ Live trading is on, but the live Alpaca keys are missing (charles-live on)")
+            return False
+        log.info("🟢 LIVE trading: the user's own Alpaca live account (charles-live)")
+    elif not sec.validate()["alpaca"]:
         log.error("❌ Alpaca keys not set")
         return False
     s = alpaca.get_account_summary()
@@ -240,7 +246,8 @@ if __name__ == "__main__":
 
     # What returns are measured from, fixed at the first start (data/start.json): the launch flag's
     # balance on older installs, else the account's value now (a new Alpaca paper account holds $100,000).
-    start = equity_tracker.ensure_start((alpaca.get_account_summary() or {}).get("total_value"), balance)
+    import live          # a live account starts from its own value, never the paper install's launch balance
+    start = equity_tracker.ensure_start((alpaca.get_account_summary() or {}).get("total_value"), None if live.is_live() else balance)
     log.info(f"📏 Returns are measured from ${start:,.2f}")
 
     alerts.bot_started()

@@ -38,7 +38,7 @@ class Requests(BotTestCase):
 
     def test_junk_is_dropped_not_obeyed(self):
         for name, body in (("1-sell.json", '{"action": "sell_everything"}'), ("2-bad.json", "{oops"),
-                           ("3-big.json", json.dumps({"action": "pause", "pad": "x" * 5000}))):
+                           ("3-big.json", json.dumps({"action": "pause", "pad": "x" * 70000}))):
             with open(os.path.join(control.REQ_DIR, name), "w") as f:
                 f.write(body)
         self.assertEqual(control.run(), [])
