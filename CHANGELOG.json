@@ -2,6 +2,14 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.2.3",
+   "date": "2026-11-03",
+   "kind": "fix",
+   "notes": [
+    "Kalshi: the graph always spans at least $250 top to bottom, so a small dip no longer fills the whole chart, and the end of the line shows its amount."
+   ]
+  },
+  {
    "version": "v1.2.2",
    "date": "2026-11-03",
    "kind": "rule",

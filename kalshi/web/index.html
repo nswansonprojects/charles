@@ -172,6 +172,7 @@ button.banner { cursor: pointer; }
 .key svg { display: block; }
 .chart { position: relative; height: 220px; margin-top: 8px; }
 .chart > svg { width: 100%; height: 100%; display: block; touch-action: pan-y; }
+.chart .end-label { font-size: 12px; font-weight: 700; fill: var(--text); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
 .chart > svg:focus { outline: 2px solid var(--series-1); outline-offset: 2px; border-radius: 6px; }
 .axis text { fill: var(--muted); font: 400 11px var(--sans); }
 .mark text { fill: var(--text-2); font: 500 11px var(--sans); }
@@ -733,6 +734,10 @@ function renderChart() {
   const W = box.clientWidth, H = box.clientHeight, m = {l: 58, r: 10, t: 14, b: 24};
   let lo = Math.min(...vals, 0), hi = Math.max(...vals, 0);
   const padv = Math.max((hi - lo) * 0.12, 1); lo -= padv; hi += padv;
+  // At least a quarter of the starting money top to bottom (owner 2026-11-03): zoomed in any closer, a small dip filled the
+  // whole chart and looked like the account had hit bottom.
+  const minSpan = start * 0.25;
+  if (hi - lo < minSpan) { const extra = (minSpan - (hi - lo)) / 2; hi += extra; lo -= extra; }
   const X = i => m.l + i * (W - m.l - m.r) / Math.max(1, pts.length - 1);
   const Y = v => m.t + (hi - v) / (hi - lo) * (H - m.t - m.b);
   const line = arr => arr.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + "," + Y(v).toFixed(1)).join("");
@@ -771,6 +776,9 @@ function renderChart() {
     <line x1="${m.l}" x2="${W - m.r}" y1="${y0}" y2="${y0}" stroke="var(--ref)" stroke-width="1"/>
     <g${first ? ' class="plot-in"' : ""}><path d="${line(vals)}L${X(vals.length - 1)},${y0}L${X(0)},${y0}Z" fill="url(#g)" style="opacity:var(--chart-fill, .17)"/>
     ${runs.filter(([a, b]) => b > a).map(([a, b, w]) => `<path d="${seg(a, b)}" fill="none" stroke="var(${LINE[w]})" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>`).join("")}</g>
+    ${(() => { const xe = X(vals.length - 1), ye = Y(vals.at(-1)), up = ye - m.t > 26;   // where the line is now, said in numbers
+      return `<circle cx="${xe}" cy="${ye}" r="4" fill="var(${LINE[tint(vals.length - 1)]})" stroke="var(--surface)" stroke-width="2"/>
+      <text class="end-label num" x="${xe - 6}" y="${up ? ye - 10 : ye + 20}" text-anchor="end">${sgnUsd(vals.at(-1))}</text>`; })()}
     <line id="cross" y1="${m.t}" y2="${H - m.b}" stroke="var(--text-2)" stroke-width="1" opacity="0"/>
     <circle id="cdot" r="4.5" fill="var(--text)" stroke="var(--surface)" stroke-width="2" opacity="0"/>
   </svg><div class="tip" id="tip"></div>`;
