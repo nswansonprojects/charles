@@ -1,14 +1,14 @@
 /* Charles dashboard styles, shared by home, stocks, crypto, leaderboard and settings (the Kalshi page keeps a copy of
    the rules it needs). One typeface (Inter) with tabular numbers, cool neutral grays, one blue for what you can press,
    and red and green only for money going up or down. Cards are white on a light gray page, with hairline borders. */
-/* Light (the default for everyone, owner 2026-11-03: no eggshell, a soft grey, then "a little more grey"): a neutral light-grey
+/* Light (the default for everyone, owner 2026-11-03: no eggshell, a soft grey, then "a little more grey"; 2026-11-04 "more gray" again): a neutral light-grey
    page with near-white grey cards, softer than white on grey and far from dark, so the blue and the red/green stay the
    only colours. The website uses the same greys. */
 :root {
   color-scheme: light;
-  --bg: #ebedf0; --surface: #f6f7f9; --surface-2: #eceef1; --surface-3: #e1e4e8;
-  --border: #d9dde3; --border-strong: #c3c9d1;
-  --text: #15181e; --text-2: #484e58; --muted: #656b76; --grid: #e2e5e9;
+  --bg: #dfe2e6; --surface: #eceef1; --surface-2: #e3e6ea; --surface-3: #d7dbe0;
+  --border: #cdd2d9; --border-strong: #b6bdc7;
+  --text: #15181e; --text-2: #434953; --muted: #5c626d; --grid: #d6dae0;
   --brand: #2a78d6;                               /* the logo's blue */
   --accent: #1f6ad1; --accent-solid: #1f6ad1; --accent-hover: #1857b0;
   --series-1: #1f6ad1; --ref: #98a0ab;

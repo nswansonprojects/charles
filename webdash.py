@@ -1052,10 +1052,12 @@ def shell(page: bytes, on: dict, current: str) -> bytes:
     gear = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1A1.7 1.7 0 0 0 3 14H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'
     chat_ic = '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'
     bell = '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9zM10 20.5a2.2 2.2 0 0 0 4 0"/>'
+    moon = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'     # light and dark in one tap (owner 2026-11-04); Settings still has all three
     head = (f'<header class="shell" data-page="{current}"><div class="bar">'
             f'<a class="brand" href="/" aria-label="Charles: go to Home"><span class="logo">{LOGO}</span><span class="bname">Charles</span></a>'
             f'<nav class="topnav" aria-label="Main">{links}</nav>'
             f'<div class="bar-end" id="t-help"><a class="status" id="st-bot" href="/#t-run"><span class="dot"></span><span>…</span></a>'
+            f'<button class="ibtn" id="theme-tg" type="button" aria-label="Dark mode" title="Dark mode">{_I % moon}</button>'
             f'<button class="ibtn bell" id="bell" type="button" aria-label="Alerts" title="Alerts">{_I % bell}<span class="bell-n" id="bell-n" hidden></span></button>'
             f'<button class="ibtn" id="chat-open" type="button" aria-label="Ask Charles" title="Ask Charles">{_I % chat_ic}</button>'
             f'<a class="ibtn{" on" if current == "settings" else ""}" href="/settings" aria-label="Settings" title="Settings">{_I % gear}</a></div>'

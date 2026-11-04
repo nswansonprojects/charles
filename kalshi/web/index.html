@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#f6f7f9">
+<meta name="theme-color" content="#eceef1">
 <title>Kalshi Net</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 /* Charles's web/style.css, copied by ops/kalshi-css (the rules this page uses; don't edit them here). The page's own rules come after. */
-/* Light (the default for everyone, owner 2026-11-03: no eggshell, a soft grey, then "a little more grey"): a neutral light-grey
+/* Light (the default for everyone, owner 2026-11-03: no eggshell, a soft grey, then "a little more grey"; 2026-11-04 "more gray" again): a neutral light-grey
    page with near-white grey cards, softer than white on grey and far from dark, so the blue and the red/green stay the
    only colours. The website uses the same greys. */
 :root {
   color-scheme: light;
-  --bg: #ebedf0; --surface: #f6f7f9; --surface-2: #eceef1; --surface-3: #e1e4e8;
-  --border: #d9dde3; --border-strong: #c3c9d1;
-  --text: #15181e; --text-2: #484e58; --muted: #656b76; --grid: #e2e5e9;
+  --bg: #dfe2e6; --surface: #eceef1; --surface-2: #e3e6ea; --surface-3: #d7dbe0;
+  --border: #cdd2d9; --border-strong: #b6bdc7;
+  --text: #15181e; --text-2: #434953; --muted: #5c626d; --grid: #d6dae0;
   --brand: #2a78d6;                               /* the logo's blue */
   --accent: #1f6ad1; --accent-solid: #1f6ad1; --accent-hover: #1857b0;
   --series-1: #1f6ad1; --ref: #98a0ab;
@@ -396,7 +396,6 @@ body.evil .logo .ear-in { fill: #7f1d1d; stroke: #7f1d1d; }
           <div class="card-head"><h2>Charles vs Evil Charles</h2><span class="aside" id="evil-state"></span></div>
           <p class="small" id="evil-about" style="margin:0;color:var(--text-2)"></p>
           <div class="duel" id="evil-vs"></div>
-          <p class="note" id="evil-note"></p>
           <button class="evil-btn" id="evil-btn" type="button" aria-pressed="false" title="Pick whose bets your account copies. Both keep betting with their own practice money either way.">Toggle Evil Charles</button>
         </div>
         <div class="card">
@@ -439,7 +438,7 @@ body.evil .logo .ear-in { fill: #7f1d1d; stroke: #7f1d1d; }
         <div class="totals" id="pos-totals"></div>
         <div class="filters" id="pos-filter"></div>
         <div class="scroll" id="positions"></div>
-        <p class="note">Each contract pays $1 if its side wins. Tap a bet for the details.</p>
+        <p class="note">A bet buys contracts for under $1 each, and each one pays $1 if the bet wins. Tap a bet for the details.</p>
       </div>
     </div>
   </section>
@@ -890,7 +889,7 @@ function betRows(bets) {
     return `<div class="row-i tap" ${tapAttrs("bet", b.id)}>
       <div style="min-width:0"><span class="sym">${esc(b.sub || b.title)}</span> <span class="side ${b.side}">${b.side.toUpperCase()}</span></div>
       <div class="right num"><span style="font-weight:500">${usd(v)}</span> <span class="small ${cls(pnl)}">${sgnUsd(pnl)}</span></div>
-      <div class="bet-m num">Bet ${usd(b.cost)} · ${sure(p)} likely · settles ${day(b.close_time)}</div>
+      <div class="bet-m num">Bet ${usd(b.cost)} · <span class="up">wins ${sgnUsd(b.contracts - b.cost)}</span> · ${sure(p)} likely · settles ${day(b.close_time)}</div>
     </div>`; }).join("");
 }
 
@@ -963,7 +962,7 @@ function render() {
 
 function renderEvil() {
   // Both bots bet on every scan in their own books (owner 2026-11-03); the switch picks whose bets the account copies.
-  const m = B.mode || {evil: false}, on = !!m.evil, bots = B.bots || {}, r = B.evil_record;
+  const m = B.mode || {evil: false}, on = !!m.evil, bots = B.bots || {};
   document.body.classList.toggle("evil", on);
   $("evil-btn").setAttribute("aria-pressed", on ? "true" : "false");
   const since = m.since ? ` since ${new Date(m.since).toLocaleDateString("en-US", {month: "short", day: "numeric"})}` : "";
@@ -971,20 +970,12 @@ function renderEvil() {
   $("evil-about").textContent = "Both bet on every scan with their own practice $1,000, so each has a record of its own. "
     + "Your account copies the one you pick. Evil Charles bets the opposite of Charles.";
   const c = bots.charles, e = bots.evil;
-  if (!c || !e) { $("evil-vs").innerHTML = ""; $("evil-vs").hidden = true; $("evil-note").textContent = ""; return; }
+  if (!c || !e) { $("evil-vs").innerHTML = ""; $("evil-vs").hidden = true; return; }
   const settled = b => b.finished ?? b.won + b.lost + b.sold;
   const box = b => `<div><div class="label">${esc(b.name)}</div><div class="v num ${cls(b.earned)}">${sgnUsd(b.earned)}</div>`
     + `<div class="small muted">${settled(b) ? `won ${b.wins ?? b.won} of ${settled(b)} (${Math.round((b.wins ?? b.won) / settled(b) * 100)}%)` : "nothing settled yet"} · ${plural(b.open, "open bet")}</div></div>`;
   $("evil-vs").hidden = false;
   $("evil-vs").innerHTML = box(c) + box(e);
-  const day = s => s ? new Date(s).toLocaleDateString("en-US", {month: "short", day: "numeric"}) : "today";
-  let note = `Each from its own $1,000 on ${day(c.started || e.started)}.`;
-  if (!settled(c) && !settled(e) && r && r.bets) {
-    const pct = d => d.roi_pct == null ? "—" : (d.roi_pct > 0 ? "+" : d.roi_pct < 0 ? "−" : "") + Math.abs(d.roi_pct) + "%";
-    note += ` Before that, over ${r.days} days, Charles's would-be bets made ${pct(r.charles)} and the opposite ${pct(r.evil)}.`;
-  }
-  if (B.test && B.test.review) note += ` Claude's review compares them on ${new Date(B.test.review + "T12:00:00").toLocaleDateString("en-US", {weekday: "short", month: "short", day: "numeric"})}.`;
-  $("evil-note").textContent = note;
 }
 $("evil-btn").onclick = async () => {
   const btn = $("evil-btn"), want = btn.getAttribute("aria-pressed") !== "true";

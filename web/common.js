@@ -47,7 +47,12 @@ function zeroChart(box, rows, o = {}) {
   if (!box.clientWidth || !box.clientHeight) return;
   if (rows.length < 2) { box.innerHTML = `<div class="empty">${esc(o.empty || "Not enough history yet.")}</div>`; return; }
   const W = box.clientWidth, H = box.clientHeight, n = rows.length, m = o.axis ? {l: 52, r: 10, t: 10, b: 22} : {l: 1, r: 6, t: 6, b: 6};
-  const ts = rows.map(r => +new Date(dayRow(r[0]))), vals = rows.map(r => r[1]), t0 = ts[0], span = Math.max(1, ts[n - 1] - t0);
+  // Only a once-a-day row moves to midday: an hourly row at midnight UTC stays put, or the line would jump ahead and run
+  // back over itself (owner 2026-11-04: "going sideways and overlapping"). Time never goes backwards along the line.
+  const raw = rows.map(r => +new Date(r[0])), far = (i, j) => j < 0 || j >= n || Math.abs(raw[j] - raw[i]) >= 20 * 36e5;
+  const ts = rows.map((r, i) => far(i, i - 1) && far(i, i + 1) ? +new Date(dayRow(r[0])) : raw[i]);
+  for (let i = 1; i < n; i++) ts[i] = Math.max(ts[i], ts[i - 1]);
+  const vals = rows.map(r => r[1]), t0 = ts[0], span = Math.max(1, ts[n - 1] - t0);
   let lo = Math.min(0, ...vals), hi = Math.max(0, ...vals);
   const pad = Math.max((hi - lo) * .1, .5); lo -= pad; hi += pad;
   const X = i => m.l + (ts[i] - t0) * (W - m.l - m.r) / span, Y = v => m.t + (hi - v) * (H - m.t - m.b) / (hi - lo);

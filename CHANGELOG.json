@@ -2,6 +2,18 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.4.1",
+   "date": "2026-11-05",
+   "kind": "fix",
+   "notes": [
+    "Light mode is greyer on every page, the Kalshi page too.",
+    "A moon in the header switches between light and dark in one tap. Settings still has Light, Dark and Match device.",
+    "Fixed: charts no longer run back over themselves where hourly points meet midnight.",
+    "The Kalshi page drops the note under Charles vs Evil Charles.",
+    "Kalshi's open bets each show what they win, and the line under them explains contracts plainly."
+   ]
+  },
+  {
    "version": "v1.4.0",
    "date": "2026-11-03",
    "kind": "rule",
