@@ -97,6 +97,20 @@ def good_rows(n=60, strategy="weather", ts="2026-10-05T00:00:00+00:00"):
     return out
 
 
+def test_slim_rows_score_the_same_and_skip_unreadable_lines(tmp_path):
+    # kalshi-web reads the graded file slim (2026-11-05: whole rows of the ~60 MB file took ~300 MB)
+    rows = [{**r, "title": "a long title", "last": dict(r["first"]), "result": "yes" if r["y"] else "no"}
+            for r in good_rows(40) + good_rows(20, strategy="sports")]
+    path = tmp_path / "graded.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows) + "not json\n" + json.dumps({"strategy": "weather"}) + "\n")
+    slim = predictions.load_graded(str(path), slim_rows=True)
+    assert len(slim) == 60 and "title" not in slim[0] and "last" not in slim[0]
+    for s in ("weather", "sports"):
+        for since in (None, "2026-10-06"):
+            assert predictions.scorecard(slim, s, since=since) == predictions.scorecard(rows, s, since=since)
+    assert predictions.scorecard(slim, "weather", last=10) == predictions.scorecard(rows, "weather", last=10)
+
+
 def test_scorecard_measures_model_against_market():
     c = predictions.scorecard(good_rows(), "weather")
     assert c["graded"] == 60 and c["events"] == 20

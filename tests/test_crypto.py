@@ -62,6 +62,48 @@ class Paper(BotTestCase):
         self.assertEqual([t["side"] for t in b["trades"][2:]], ["SELL", "SELL"])
         self.assertEqual(b["targets"], {"BTC-USD": 0.0, "ETH-USD": 0.0})
 
+    def held(self, now):
+        """A book holding bitcoin and ether at their 60/40 targets ($994 after fees), its weekly check due at `now`."""
+        closes = {"BTC-USD": [1, 1, 1, 2], "ETH-USD": [1, 1, 1, 2]}
+        week_ago = now - timedelta(days=7)
+        return crypto_paper.step(crypto_paper.new_book(week_ago.isoformat()), closes, {"BTC-USD": 2.0, "ETH-USD": 2.0}, week_ago, S), closes
+
+    def test_a_missing_price_holds_the_check_back_and_never_counts_as_zero(self):
+        now = datetime(2026, 11, 11, 5, tzinfo=timezone.utc)
+        b, closes = self.held(now)
+        n, checked = len(b["trades"]), b["last_check"]
+        b = crypto_paper.step(b, {"BTC-USD": closes["BTC-USD"]}, {"BTC-USD": 2.0}, now, S)    # ether's feed is down
+        self.assertEqual(len(b["trades"]), n)              # it used to size bitcoin against half the book and sell some
+        self.assertEqual(b["last_check"], checked)         # still due
+        self.assertAlmostEqual(b["curve"][-1][1], 994.0)   # ether at its last price, not $0
+        b = crypto_paper.step(b, closes, {"BTC-USD": 2.0, "ETH-USD": 2.0}, now + timedelta(hours=1), S)
+        self.assertEqual(b["last_check"], (now + timedelta(hours=1)).isoformat(timespec="seconds"))
+        self.assertEqual(len(b["trades"]), n)              # both back at their targets: nothing to trade
+        self.assertNotIn("check_waiting", b)
+
+    def test_after_the_wait_the_others_never_buy_with_money_still_in_a_missing_coin(self):
+        now = datetime(2026, 11, 11, 5, tzinfo=timezone.utc)
+        b, closes = self.held(now)
+        b = crypto_paper.step(b, closes, {"BTC-USD": 2.0, "ETH-USD": 3.0}, now - timedelta(days=2), S)    # ether rose: half the book
+        n = len(b["trades"])
+        no_eth = {"BTC-USD": closes["BTC-USD"]}
+        b = crypto_paper.step(b, no_eth, {"BTC-USD": 2.0}, now, S)
+        later = now + timedelta(hours=crypto_paper.WAIT_HOURS)
+        b = crypto_paper.step(b, no_eth, {"BTC-USD": 2.0}, later, S)
+        self.assertEqual(b["last_check"], later.isoformat(timespec="seconds"))      # went ahead
+        self.assertEqual(len(b["trades"]), n)              # bitcoin wants 60%, but the money is in ether: no buy with cash it hasn't got
+        self.assertAlmostEqual(b["targets"]["ETH-USD"], 0.5)                        # ether left as it is
+        self.assertAlmostEqual(b["curve"][-1][1], 1192.8)
+
+    def test_a_start_price_that_did_not_come_is_filled_in_later(self):
+        now = datetime(2026, 10, 24, 6, tzinfo=timezone.utc)
+        b = crypto_paper.step(crypto_paper.new_book(now.isoformat()), {}, {}, now, S)
+        self.assertEqual((b["start_prices"], b["trades"], b["curve"][-1][1]), ({}, [], 1000.0))    # waits in cash
+        prices = {"BTC-USD": 2.0, "ETH-USD": 2.0}
+        b = crypto_paper.step(b, {p: [1, 1, 1, 2] for p in prices}, prices, now + timedelta(hours=1), S)
+        self.assertEqual(b["start_prices"], prices)
+        self.assertEqual(len(b["trades"]), 2)
+
     def test_save_and_load_round_trip(self):
         path = os.path.join(self.tmp, "crypto_paper.json")
         crypto_paper.save(crypto_paper.new_book("2026-10-24T00:00:00+00:00"), path)
@@ -103,6 +145,8 @@ class View(BotTestCase):
                 "trades": [{"product": "BTC-USD", "side": "BUY", "value": 600.0, "price": 100.0, "fee": 3.6}]}
         v = wd.crypto_view(book, {"BTC-USD": 110.0}, now)["book"]          # ETH price missing: no crash
         self.assertEqual(v["value"], 6 * 110 + 40 * 0)                     # ETH has no price and no fill → 0
+        seen = wd.crypto_view({**book, "last_prices": {"ETH-USD": 12.0}}, {"BTC-USD": 110.0}, now)["book"]
+        self.assertEqual(seen["value"], 6 * 110 + 40 * 12)                 # the book's last hourly price
         self.assertEqual(v["btc_pct"], 10.0)
         self.assertEqual(v["coins"][0]["gap_pct"], 37.5)
         self.assertEqual(v["check_progress"], round(1 / 7, 2))

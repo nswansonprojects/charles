@@ -32,20 +32,18 @@ def _load_equity() -> list:
     with open(p) as f: return json.load(f)
 
 
-def _spy_return(start_date: str, end_date: str) -> float:
-    """Get SPY return from start_date through end_date (both inclusive) via yfinance."""
+def _spy_closes(first: str, last: str) -> list:
+    """SPY's daily closes [(YYYY-MM-DD, close)] from ten days before `first` through `last` (both inclusive), via
+    yfinance; [] when they can't be had. The days before `first` hold the close a period is measured from."""
     try:
         import yfinance as yf
-        spy  = yf.Ticker("SPY")
-        # yfinance's end is exclusive: without the +1 day the last day is dropped, and
-        # start == end asks for nothing (logged as "$SPY: possibly delisted").
-        end_excl = (datetime.fromisoformat(end_date) + timedelta(days=1)).strftime("%Y-%m-%d")
-        hist = spy.history(start=start_date, end=end_excl)
-        if hist.empty or len(hist) < 2: return 0.0
-        return round((hist["Close"].iloc[-1] - hist["Close"].iloc[0])
-                     / hist["Close"].iloc[0] * 100, 2)
+        begin = (datetime.fromisoformat(first) - timedelta(days=10)).strftime("%Y-%m-%d")
+        # yfinance's end is exclusive: without the +1 day the last day is dropped
+        end_excl = (datetime.fromisoformat(last) + timedelta(days=1)).strftime("%Y-%m-%d")
+        hist = yf.Ticker("SPY").history(start=begin, end=end_excl)
+        return [(i.strftime("%Y-%m-%d"), float(c)) for i, c in hist["Close"].items()]
     except Exception:
-        return 0.0
+        return []
 
 
 _MODE_NAMES = {"invest": "invest", "safety": "safety (T-bills)", "aggressive": "aggressive (SSO)"}
@@ -73,32 +71,26 @@ def _read_vetoes(path: str) -> list:
 def plan_lines(start_dt: datetime, end_dt: datetime, data_dir: str = None, spy=None) -> list:
     """Plain-English lines about the plan for the monthly report: the plan vs SPY since it
     started (to end_dt), the current picks, the AI's vetoes and any mode switch in the window.
-    Read-only; [] before the plan has started. `spy(start, end) -> %` is for tests."""
+    Read-only; [] before the plan has started. `spy(first, last) -> [(day, close)]` is for tests."""
     data_dir = data_dir or DATA_DIR
     plan = _read_json(os.path.join(data_dir, "plan.json"), {})
     started = plan.get("started")
     if not started:
         return []
-    spy = spy or _spy_return
+    spy = spy or _spy_closes
     first, end_day = start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
     lines = []
 
-    # Like evaluate.live(): the last value before the start is the base (else the first one after).
-    curve = [p for p in _read_json(os.path.join(data_dir, "equity_curve.json"), [])
-             if p.get("ts", "")[:10] <= end_day]
-    before = [p["value"] for p in curve if p["ts"][:10] < started]
-    after = [p["value"] for p in curve if p["ts"][:10] >= started]
-    vals = before[-1:] + after
-    since = datetime.fromisoformat(started).strftime("%b %-d, %Y")
-    # Charles's end: the last close in market hours, never an after-hours or weekend mark.
+    # Like evaluate.live(): both from the last close before the start to the last close, never an after-hours mark.
     import plan_vs_spy
-    closes = plan_vs_spy.close_points(curve)
-    last = closes[max(closes)]["value"] if closes and max(closes) >= started else None
-    if after and len(vals) >= 2 and vals[0]:
-        mine = ((last or vals[-1]) / vals[0] - 1) * 100
-        theirs = spy(started, end_day)
-        icon = "✅" if mine >= theirs else "⚠️"
-        lines.append(f"Plan since {since}: {mine:+.2f}% vs SPY {theirs:+.2f}% {icon}")
+    same = plan_vs_spy.over(_read_json(os.path.join(data_dir, "equity_curve.json"), []), spy(started[:10], end_day),
+                            started[:10], end_day)
+    since = datetime.fromisoformat(started).strftime("%b %-d, %Y")
+    if same and same["spy_pct"] is not None:
+        icon = "✅" if same["charles_pct"] >= same["spy_pct"] else "⚠️"
+        lines.append(f"Plan since {since}: {same['charles_pct']:+.2f}% vs SPY {same['spy_pct']:+.2f}% {icon}")
+    elif same:
+        lines.append(f"Plan since {since}: {same['charles_pct']:+.2f}% (couldn't get SPY's prices)")
     else:
         lines.append(f"Plan since {since}: not enough history yet")
 
@@ -143,40 +135,43 @@ def _filter_by_period(trades: list, equity: list,
     return t_filtered, e_filtered
 
 
+SHARPE_DAYS = 15     # with fewer market days a yearly Sharpe ratio means nothing, so the report leaves it out
+
+
 def _compute_stats(trades: list, equity: list,
-                   start_value: float = 1000.0) -> dict:
-    """Compute performance statistics for a period."""
+                   start_value: float = 1000.0, same: dict | None = None) -> dict:
+    """Performance for a period. `same` is plan_vs_spy.over() for it: the account from the last close before the period to
+    its last close, the way SPY is measured. Without it (no closes yet) the period's first and last points in market hours
+    are used. "change" is the account's dollar change; "sales_pnl" only what sales made. Sharpe uses one return a market day."""
+    import plan_vs_spy
+    import statistics
     sells  = [t for t in trades if t["action"] == "SELL" and "pnl" in t]
     buys   = [t for t in trades if t["action"] == "BUY"]
     wins   = [t for t in sells if t["pnl"] > 0]
     losses = [t for t in sells if t["pnl"] <= 0]
 
-    total_pnl   = sum(t["pnl"] for t in sells)
-    start_val   = equity[0]["value"] if equity else start_value
-    end_val     = equity[-1]["value"] if equity else start_value
+    sales_pnl   = sum(t["pnl"] for t in sells)
+    pts         = [e for e in equity if plan_vs_spy.in_session(e["ts"])]     # after-hours and weekend marks left out
+    if same:
+        start_val, end_val, daily = same["start_value"], same["end_value"], same["values"]
+    else:
+        start_val   = pts[0]["value"] if pts else start_value
+        end_val     = pts[-1]["value"] if pts else start_value
+        daily       = [p["value"] for _, p in sorted(plan_vs_spy.close_points(pts).items())]
     period_ret  = (end_val - start_val) / start_val * 100 if start_val else 0
 
-    # Max drawdown
+    # Max drawdown: from the starting value through every point in market hours
     peak, max_dd = start_val, 0
-    for e in equity:
+    for e in pts:
         v = e["value"]
         if v > peak: peak = v
-        dd = (peak - v) / peak * 100
+        dd = (peak - v) / peak * 100 if peak else 0
         if dd > max_dd: max_dd = dd
 
-    # Sharpe (simplified — annualized from daily returns)
-    if len(equity) > 1:
-        daily_rets = []
-        for i in range(1, len(equity)):
-            r = (equity[i]["value"] - equity[i-1]["value"]) / equity[i-1]["value"]
-            daily_rets.append(r)
-        import statistics
-        if len(daily_rets) > 1 and statistics.stdev(daily_rets) > 0:
-            sharpe = (statistics.mean(daily_rets) / statistics.stdev(daily_rets)) * (252 ** 0.5)
-        else:
-            sharpe = 0.0
-    else:
-        sharpe = 0.0
+    # Sharpe: annualized from one return per market day, close to close
+    rets = [b / a - 1 for a, b in zip(daily, daily[1:]) if a]
+    sharpe = (statistics.mean(rets) / statistics.stdev(rets) * 252 ** 0.5
+              if len(rets) >= SHARPE_DAYS and statistics.stdev(rets) > 0 else None)
 
     # Best/worst trade
     best  = max(sells, key=lambda t: t["pnl"]) if sells else None
@@ -194,17 +189,18 @@ def _compute_stats(trades: list, equity: list,
         "start_value":   round(start_val, 2),
         "end_value":     round(end_val, 2),
         "period_return": round(period_ret, 2),
-        "total_pnl":     round(total_pnl, 2),
+        "change":        round(end_val - start_val, 2),
+        "sales_pnl":     round(sales_pnl, 2),
         "total_trades":  len(trades),
         "closed_trades": len(sells),
         "buy_trades":    len(buys),
         "win_count":     len(wins),
         "loss_count":    len(losses),
-        "win_rate":      round(len(wins)/len(sells)*100, 1) if sells else 0,
+        "win_rate":      round(len(wins)/len(sells)*100, 1) if sells else None,
         "avg_win":       round(sum(t["pnl"] for t in wins)/len(wins), 2) if wins else 0,
         "avg_loss":      round(sum(t["pnl"] for t in losses)/len(losses), 2) if losses else 0,
         "max_drawdown":  round(max_dd, 2),
-        "sharpe_ratio":  round(sharpe, 3),
+        "sharpe_ratio":  round(sharpe, 3) if sharpe is not None else None,
         "best_trade":    {"symbol": best["symbol"], "pnl": best["pnl"]} if best else None,
         "worst_trade":   {"symbol": worst["symbol"], "pnl": worst["pnl"]} if worst else None,
         "best_symbol":   best_sym,
@@ -264,14 +260,18 @@ def generate_report(period: str, custom_start: str = None,
     start_dt, end_dt, label, fname = report_window(period, now, previous,
                                                    custom_start, custom_end)
 
-    trades, equity = _filter_by_period(_load_trades(), _load_equity(),
+    all_equity = _load_equity()
+    trades, equity = _filter_by_period(_load_trades(), all_equity,
                                         start_dt, end_dt)
-    stats = _compute_stats(trades, equity)
+    first, last = start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d")
+    import plan_vs_spy
+    same = plan_vs_spy.over(all_equity, _spy_closes(first, last), first, last)
+    stats = _compute_stats(trades, equity, same=same)
 
-    # SPY benchmark
-    spy_ret = _spy_return(start_dt.strftime("%Y-%m-%d"), end_dt.strftime("%Y-%m-%d"))
+    # SPY benchmark: the same closes as the account; None when SPY's prices didn't come
+    spy_ret = same["spy_pct"] if same else None
     stats["spy_return"]   = spy_ret
-    stats["alpha"]        = round(stats["period_return"] - spy_ret, 2)
+    stats["alpha"]        = round(stats["period_return"] - spy_ret, 2) if spy_ret is not None else None
     stats["period"]       = period
     stats["label"]        = label
     stats["generated_at"] = now.isoformat()
@@ -312,6 +312,14 @@ def _save_trade_csv(trades: list, fname: str):
     log.info(f"  💾 Trade CSV: {path}")
 
 
+def _pct_or_na(v) -> str:
+    return "n/a" if v is None else f"{v:+.2f}%"
+
+
+def _money(v: float) -> str:
+    return f"{'+' if v >= 0 else '-'}${abs(v):,.2f}"
+
+
 def _save_summary_csv(stats: dict, fname: str):
     """Save summary statistics CSV."""
     path = os.path.join(REPORTS_DIR, f"{fname}_summary.csv")
@@ -322,17 +330,18 @@ def _save_summary_csv(stats: dict, fname: str):
             ("Period",          stats.get("label","")),
             ("Start Value",     f"${stats.get('start_value',0):,.2f}"),
             ("End Value",       f"${stats.get('end_value',0):,.2f}"),
-            ("Total P&L",       f"${stats.get('total_pnl',0):+,.2f}"),
+            ("Change",          f"${stats.get('change',0):+,.2f}"),
             ("Period Return",   f"{stats.get('period_return',0):+.2f}%"),
-            ("SPY Return",      f"{stats.get('spy_return',0):+.2f}%"),
-            ("Alpha vs SPY",    f"{stats.get('alpha',0):+.2f}%"),
+            ("SPY Return",      _pct_or_na(stats.get("spy_return"))),
+            ("Alpha vs SPY",    _pct_or_na(stats.get("alpha"))),
             ("Total Trades",    stats.get("total_trades",0)),
             ("Closed Trades",   stats.get("closed_trades",0)),
-            ("Win Rate",        f"{stats.get('win_rate',0):.1f}%"),
+            ("Sales P&L",       f"${stats.get('sales_pnl',0):+,.2f}"),
+            ("Win Rate",        "n/a" if stats.get("win_rate") is None else f"{stats['win_rate']:.1f}%"),
             ("Avg Win",         f"${stats.get('avg_win',0):,.2f}"),
             ("Avg Loss",        f"${stats.get('avg_loss',0):,.2f}"),
             ("Max Drawdown",    f"-{stats.get('max_drawdown',0):.2f}%"),
-            ("Sharpe Ratio",    stats.get("sharpe_ratio",0)),
+            ("Sharpe Ratio",    "n/a" if stats.get("sharpe_ratio") is None else stats["sharpe_ratio"]),
             ("Best Trade",      str(stats.get("best_trade",""))),
             ("Worst Trade",     str(stats.get("worst_trade",""))),
             ("Best Symbol",     stats.get("best_symbol","—")),
@@ -351,28 +360,31 @@ def post_report(stats: dict):
         period  = stats.get("period","").capitalize()
         label   = stats.get("label","")
         ret     = stats.get("period_return", 0)
-        pnl     = stats.get("total_pnl", 0)
-        spy     = stats.get("spy_return", 0)
-        alpha   = stats.get("alpha", 0)
-        wins    = stats.get("win_rate", 0)
-        sharpe  = stats.get("sharpe_ratio", 0)
+        spy     = stats.get("spy_return")
+        alpha   = stats.get("alpha")
+        sharpe  = stats.get("sharpe_ratio")
         dd      = stats.get("max_drawdown", 0)
-        trades  = stats.get("closed_trades", 0)
+        sales   = stats.get("closed_trades", 0)
         sign    = "+" if ret >= 0 else ""
         icon    = "📈" if ret >= 0 else "📉"
-        alpha_icon = "✅" if alpha >= 0 else "⚠️"
 
-        msg = (
-            f"{icon} {period} Report — {label}\n"
-            f"{'─'*30}\n"
-            f"Return:       {sign}{ret:.2f}%  (${pnl:+,.2f})\n"
-            f"vs SPY:       {spy:+.2f}%  {alpha_icon} Alpha: {alpha:+.2f}%\n"
-            f"Win rate:     {wins:.1f}%  ({trades} closed trades)\n"
-            f"Sharpe:       {sharpe:.3f}\n"
-            f"Max drawdown: -{dd:.2f}%\n"
-            f"Best sym:     {stats.get('best_symbol','—')}\n"
-            f"Worst sym:    {stats.get('worst_symbol','—')}"
-        )
+        lines = [f"{icon} {period} Report — {label}", "─" * 30,
+                 f"Return:       {sign}{ret:.2f}%  ({_money(stats.get('change', 0))})"]       # the account's change, not just sales
+        if spy is not None and alpha is not None:
+            lines.append(f"vs SPY:       {spy:+.2f}%  {'✅' if alpha >= 0 else '⚠️'} Alpha: {alpha:+.2f}%")
+        else:
+            lines.append("vs SPY:       couldn't get SPY's prices")
+        if sales:
+            lines.append(f"Win rate:     {stats.get('win_rate') or 0:.1f}%  "
+                         f"({sales} sale{'' if sales == 1 else 's'}, {_money(stats.get('sales_pnl', 0))})")
+        else:
+            lines.append("Sales:        none")
+        if sharpe is not None:
+            lines.append(f"Sharpe:       {sharpe:.3f}")
+        lines.append(f"Max drawdown: -{dd:.2f}%")
+        if sales:
+            lines += [f"Best sym:     {stats.get('best_symbol','—')}", f"Worst sym:    {stats.get('worst_symbol','—')}"]
+        msg = "\n".join(lines)
         if stats.get("plan_lines"):
             msg += f"\n{'─'*30}\n" + "\n".join(stats["plan_lines"])
         alerts.report(f"{period} report: {label}", msg)
@@ -432,7 +444,8 @@ def generate_sample_report_csv(period: str = "monthly") -> str:
         "label":          label,
         "start_value":    1000.00,
         "end_value":      1087.34,
-        "total_pnl":      87.34,
+        "change":         87.34,
+        "sales_pnl":      41.60,
         "period_return":  8.73,
         "spy_return":     3.21,
         "alpha":          5.52,

@@ -106,6 +106,16 @@ class Book(BotTestCase):
         self.assertEqual([t["side"] for t in b["trades"][n:]], ["SELL", "SELL"])
         self.assertIn("share of the book", b["trades"][-1]["reason"])
 
+    def test_a_change_saved_while_a_price_is_missing_still_brings_the_check_forward(self):
+        b = self.first()
+        n = len(b["trades"])
+        half = {**S, "INVESTED": 0.5}
+        no_eth = {p: v for p, v in self.prices.items() if p != "ETH-USD"}
+        b = crypto_paper.step(b, self.closes, no_eth, NOW + timedelta(hours=1), half)
+        self.assertEqual(len(b["trades"]), n)                                   # waits for ether's price
+        b = crypto_paper.step(b, self.closes, self.prices, NOW + timedelta(hours=2), half)
+        self.assertEqual([t["side"] for t in b["trades"][n:]], ["SELL", "SELL"])
+
     def test_no_change_waits_for_the_week(self):
         b = self.first()
         n = len(b["trades"])

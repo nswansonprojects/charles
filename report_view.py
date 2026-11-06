@@ -155,25 +155,19 @@ def _bars_from(spec: str) -> dict | None:
 
 
 def _vs_spy(state: dict) -> dict | None:
+    """The plan vs SPY since it started, both at the same market closes, as in the status the report quotes (plan_vs_spy):
+    from the last close before the start (else the first one after it) to the latest. Midnight and after-hours marks don't count."""
+    import plan_vs_spy
     started = str((state.get("plan") or {}).get("started") or "")[:10]
-    equity, spy = state.get("equity") or [], state.get("spy") or []
-    rows = [r for r in equity if str(r[0])[:10] >= started] if started else equity
-    if len(rows) < 2 or not spy:
+    closes = plan_vs_spy.close_points([{"ts": r[0], "value": r[1]} for r in state.get("equity") or []])
+    spy = {str(d)[:10]: c for d, c in state.get("spy") or [] if c and c == c}
+    days = sorted(d for d in closes if d in spy)
+    before = [d for d in days if d < started]
+    days = [d for d in days if d >= (before[-1] if before else started)]
+    if len(days) < 2 or not closes[days[0]]["value"]:
         return None
-    close = None
-    joined = []
-    i = 0
-    for r in rows:
-        day = str(r[0])[:10]
-        while i < len(spy) and spy[i][0] <= day:
-            close = spy[i][1]
-            i += 1
-        if close is not None:
-            joined.append((r[0], r[1], close))
-    if len(joined) < 2:
-        return None
-    a0, s0 = joined[0][1], joined[0][2]
-    joined = _thin(joined)
+    a0, s0 = closes[days[0]]["value"], spy[days[0]]
+    joined = _thin([(closes[d]["ts"], closes[d]["value"], spy[d]) for d in days])
     return {"type": "lines", "fmt": "pct", "series": [
         {"label": "Charles", "points": [[t, round((v / a0 - 1) * 100, 2)] for t, v, _ in joined]},
         {"label": "SPY", "dashed": True, "points": [[t, round((c / s0 - 1) * 100, 2)] for t, _, c in joined]}]}

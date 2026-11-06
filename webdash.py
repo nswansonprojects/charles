@@ -341,7 +341,7 @@ def crypto_shares(s: dict) -> dict:
 def crypto_view(book: dict | None, prices: dict, now: datetime, bt: dict | None = None, settings: dict | None = None,
                 names: dict | None = None) -> dict:
     """The crypto demo's paper book valued at live prices, each coin vs its trend line, the next
-    weekly check, and the backtest. Missing prices (feed down) fall back to the last fill price.
+    weekly check, and the backtest. Missing prices (feed down) fall back to the book's last hourly price, then the last fill.
     `settings`: the plan as it stands (your own coins too); a coin the book still holds but the plan dropped is listed too."""
     s = {**crypto_plan.DEFAULTS, **(settings or {})}
     names = {**crypto_plan.NAMES, **(names or {})}
@@ -351,7 +351,7 @@ def crypto_view(book: dict | None, prices: dict, now: datetime, bt: dict | None 
            "mom_days": crypto_plan.MOM_DAYS, "types": crypto_plan.TYPE_NAMES}
     if not book:
         return out
-    last = {t["product"]: t["price"] for t in book.get("trades", [])}
+    last = {**{t["product"]: t["price"] for t in book.get("trades", [])}, **(book.get("last_prices") or {})}   # the book's hourly price first
     qty = book.get("qty", {})
     listed = list(dict.fromkeys(crypto_plan.products(s) + [p for p, q in qty.items() if q > 1e-12]))
     px = {p: prices.get(p) or last.get(p) or (book.get("coins", {}).get(p) or {}).get("price") for p in listed}
@@ -1591,15 +1591,29 @@ def leaderboard_post(path: str, body: bytes):
         return 502, {"ok": False, "message": f"The leaderboard isn't answering right now ({type(e).__name__})."}
 
 
+def _settled(path: str) -> tuple[set, set]:
+    """(notices to hide, notices to show as plain notes), by their "ts", from notices_settled.json beside the notices:
+    warnings Claude dealt with or the owner didn't need (owner 2026-11-06: warnings only for real bugs). The notices
+    file itself is never edited."""
+    try:
+        with open(path) as f:
+            s = json.load(f)
+        return {str(t) for t in s.get("hide") or []}, {str(t) for t in s.get("note") or []}
+    except (OSError, ValueError, AttributeError, TypeError):
+        return set(), set()
+
+
 def notices(path: str | None = None, now=None) -> dict:
     """GET /api/notices: what the bot noted in the last 7 days, newest first (alerts.py)."""
     now = now or datetime.now(timezone.utc)
+    path = path or os.path.join(DATA, "notifications.json")
     try:
-        with open(path or os.path.join(DATA, "notifications.json")) as f:
+        with open(path) as f:
             rows = json.load(f)
     except (OSError, ValueError):
         return {"notices": []}
     rows = rows if isinstance(rows, list) else []
+    hide, note = _settled(os.path.join(os.path.dirname(path), "notices_settled.json"))
     # A restart alarm stops counting once a later restart went clean or Claude checked it. The file itself is never edited.
     clear = [i for i, r in enumerate(rows) if isinstance(r, dict) and str(r.get("title", "")).startswith(("Charles restarted", "Charles restart checked"))]
     keep = []
@@ -1607,9 +1621,11 @@ def notices(path: str | None = None, now=None) -> dict:
         try:
             if clear and i < clear[-1] and str(r.get("title", "")).startswith("Charles restart") and "needs a look" in str(r.get("title", "")):
                 continue
+            if str(r["ts"]) in hide:
+                continue
             if (now - datetime.fromisoformat(r["ts"])).total_seconds() <= 7 * 86400:
                 keep.append({"ts": r["ts"], "title": str(r.get("title", "")), "message": str(r.get("message", "")),
-                             "level": "error" if r.get("level") == "error" else "info"})
+                             "level": "error" if r.get("level") == "error" and str(r["ts"]) not in note else "info"})
         except (KeyError, TypeError, ValueError, AttributeError):
             continue
     return {"notices": keep[::-1][:20]}

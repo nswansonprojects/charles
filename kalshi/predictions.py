@@ -53,14 +53,27 @@ def save(book: dict, path: str | None = None):
     os.replace(path + ".tmp", path)
 
 
-def load_graded(path: str | None = None) -> list:
+SCORED = ("ts", "model_yes", "fair_yes", "market_yes")
+
+
+def slim(row: dict) -> dict:
+    """Only the part of a graded row that scorecard() reads. Whole rows of the ~60 MB file took ~300 MB to hold, which
+    kept kalshi-web at its memory cap and slowed every page (2026-11-05)."""
+    s = row.get("signal")
+    return {"strategy": row["strategy"], "key": row["key"], "y": row["y"],
+            "first": {k: row["first"][k] for k in SCORED},
+            "signal": {"cost": s["cost"], "pnl": s["pnl"]} if s else None}
+
+
+def load_graded(path: str | None = None, slim_rows: bool = False) -> list:
+    """Every graded row; with slim_rows only what scorecard() needs (a row it can't read is left out)."""
     out = []
     try:
         with open(path or GRADED) as f:
             for line in f:
                 try:
-                    out.append(json.loads(line))
-                except ValueError:
+                    out.append(slim(json.loads(line)) if slim_rows else json.loads(line))
+                except (ValueError, KeyError, TypeError, AttributeError):
                     pass
     except FileNotFoundError:
         pass

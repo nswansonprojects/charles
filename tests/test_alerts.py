@@ -31,15 +31,20 @@ class Notices(BotTestCase):
 
     def test_problems_ask_for_a_look_and_routine_notes_dont(self):
         alerts.error_alert("Rebalance error: boom")
-        alerts.daily_loss_halted(-2100.0, 2042.0)
+        alerts.daily_loss_halted(-2100.0, 2042.0)      # the safety rule working: a note, not a problem (owner 2026-11-06)
         alerts.bot_started()
-        self.assertEqual([r["level"] for r in self.rows()], ["error", "error", "info"])
+        self.assertEqual([r["level"] for r in self.rows()], ["error", "info", "info"])
 
     def test_ops_notes_set_their_own_level(self):
         for text, level in (("✅ Charles: all good\nValue $1,000", "info"), ("⚠️ Charles: needs you\n- a key expired", "error"),
-                            ("⚠️ Charles daily check-up failed to run (exit 1).", "error")):
+                            ("⚠️ Charles daily check-up failed to run (exit 1).", "error"),
+                            ("⚠️ Charles dev session failed to run twice in a row (exit 1) — needs a look", "error"),
+                            ("🛠️ Charles dev: fixed the failed-orders label — done", "info"),
+                            ("🛠️ Charles dev: didn't run today (exit 1); it tries again the next weekday.", "info"),
+                            ("📋 Kalshi: test review ready\n- proposals for each bot", "info")):
             alerts.notice(text)
-            self.assertEqual(self.rows()[-1]["level"], level)
+            self.assertEqual(self.rows()[-1]["level"], level, text)
+        self.assertEqual(self.rows()[-1]["title"], "Kalshi: test review ready")
         self.assertEqual(self.rows()[0]["title"], "Charles: all good")
         self.assertEqual(self.rows()[1]["message"], "- a key expired")
 
@@ -58,6 +63,27 @@ class Notices(BotTestCase):
         got = wd.notices(self.file, now)["notices"]
         self.assertEqual([n["title"] for n in got], ["second", "first"])
         self.assertEqual([n["level"] for n in got], ["info", "error"])
+
+    def test_settled_warnings_are_hidden_or_shown_as_notes_and_the_file_is_untouched(self):
+        now = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+        rows = [{"ts": (now - timedelta(hours=h)).isoformat(), "title": t, "message": "", "level": "error"}
+                for h, t in ((30, "Charles dev: nothing on the roadmap to do — needs you"), (20, "Buys paused for today"),
+                             (10, "Charles hit an error"))]
+        with open(self.file, "w") as f:
+            json.dump(rows, f)
+        before = open(self.file).read()
+        settled = os.path.join(self.tmp, "notices_settled.json")
+        for broken in (None, "not json", "[1, 2]", '{"hide": 5}'):
+            if broken is not None:
+                with open(settled, "w") as f:
+                    f.write(broken)
+            got = wd.notices(self.file, now)["notices"]
+            self.assertEqual([n["level"] for n in got], ["error"] * 3, broken)
+        with open(settled, "w") as f:
+            json.dump({"why": "test", "hide": [rows[0]["ts"]], "note": [rows[1]["ts"]]}, f)
+        got = wd.notices(self.file, now)["notices"]
+        self.assertEqual([(n["title"], n["level"]) for n in got], [("Charles hit an error", "error"), ("Buys paused for today", "info")])
+        self.assertEqual(open(self.file).read(), before)
 
     def test_no_file_is_no_notices(self):
         self.assertEqual(wd.notices(self.file + ".missing")["notices"], [])

@@ -211,11 +211,12 @@ def _add_spend(usd: float, data_dir: str | None, now: datetime):
 
 
 def cost(usage, model: str) -> float:
-    """Dollars for one reply, from the usage Anthropic reports."""
+    """Dollars for one reply, from the usage Anthropic reports. After a fallback, usage.iterations has every attempt (a model that
+    declined partway is billed too) and the top-level usage only the last one, so the attempts are added up, at this chat's prices."""
     inp, out, read, write = PRICES[model]
-    g = lambda name: getattr(usage, name, 0) or 0
-    return (g("input_tokens") * inp + g("output_tokens") * out + g("cache_read_input_tokens") * read
-            + g("cache_creation_input_tokens") * write) / 1_000_000
+    g = lambda u, name: getattr(u, name, 0) or 0
+    return sum(g(u, "input_tokens") * inp + g(u, "output_tokens") * out + g(u, "cache_read_input_tokens") * read
+               + g(u, "cache_creation_input_tokens") * write for u in (getattr(usage, "iterations", None) or [usage])) / 1_000_000
 
 
 def status(access: str, logged_in: bool, data_dir: str | None = None, now: datetime | None = None, key_path: str | None = None) -> dict:
@@ -699,6 +700,13 @@ def _call(client, model: str, convo: list, now: datetime):
                                        betas=["server-side-fallback-2026-07-01"], fallbacks="default")
 
 
+def _kept(content) -> list:
+    """The reply's blocks to send back and act on. After a fallback (the asked model declined partway and another went on),
+    the declined part's thinking and tool calls are left out, as Anthropic's API asks; its text and all after it stay."""
+    cut = max((i for i, b in enumerate(content) if b.type == "fallback"), default=-1)
+    return [b for i, b in enumerate(content) if i > cut or b.type not in ("thinking", "redacted_thinking", "tool_use")]
+
+
 def _answer(anthropic, client, model, convo, state_fn, data_dir, now, cap) -> dict:
     found: dict = {}
     for _ in range(MAX_ROUNDS):
@@ -711,9 +719,10 @@ def _answer(anthropic, client, model, convo, state_fn, data_dir, now, cap) -> di
             if r.stop_reason == "max_tokens":
                 text += "\n\n(That answer was cut off for length. Ask for the rest if you need it.)"
             return {"text": text or "I don't have an answer for that.", **found}
-        convo.append({"role": "assistant", "content": r.content})
+        kept = _kept(r.content)
+        convo.append({"role": "assistant", "content": kept})
         results = []
-        for b in (x for x in r.content if x.type == "tool_use"):
+        for b in (x for x in kept if x.type == "tool_use"):
             try:
                 results.append({"type": "tool_result", "tool_use_id": b.id, "content": run_tool(b.name, b.input, state_fn, found)})
             except (ChatError, ValueError, TypeError, OSError) as e:

@@ -229,31 +229,30 @@ def calibration(closed: list) -> list:
     return out
 
 
-def evil_record(rows: list, now: datetime, days: int = 30) -> dict:
-    """Charles's shadow bets of the last `days` (where it would have bet) vs the opposite bet on each.
-    Older signals have no opposite price saved: those are estimated from the spread at the time."""
-    since = (now - timedelta(days=days)).isoformat()
-    sig = [r for r in rows if r.get("signal") and r["first"]["ts"] >= since]
-    c = {"won": 0, "cost": 0.0, "pnl": 0.0}
-    e = {"won": 0, "cost": 0.0, "pnl": 0.0}
-    estimated = 0
-    for r in sig:
-        s = r["signal"]
-        cost = s.get("opp_cost")
-        if cost is None:
-            mid = r["first"]["market_yes"] if s["side"] == "yes" else 1 - r["first"]["market_yes"]
-            ask = min(0.99, 1 - mid + max(s["ask"] - mid, 0.005))
-            cost, estimated = ask + betting.fee(100, ask) / 100, estimated + 1
-        won = s["side"] == r["result"]
-        c["won"] += won
-        c["cost"] += s["cost"]
-        c["pnl"] += s["pnl"]
-        e["won"] += not won
-        e["cost"] += cost
-        e["pnl"] += (0.0 if won else 1.0) - cost
-    view = lambda d: {"won": d["won"], "roi_pct": round(d["pnl"] / d["cost"] * 100, 1) if d["cost"] else None}
-    return {"days": days, "bets": len(sig), "events": len({r["key"] for r in sig}), "estimated": estimated,
-            "charles": view(c), "evil": view(e)}
+_LEVELS = {"stamp": None, "value": None}
+
+
+def _stamp(path: str):
+    try:
+        st = os.stat(path)
+        return st.st_size, st.st_mtime_ns
+    except OSError:
+        return None
+
+
+def levels_view(now: datetime) -> dict | None:
+    """Each strategy's level and scorecard (gates.progress), or None while levels are off (gates.ON, off during the
+    test). Only levels need predictions_graded.jsonl (~60 MB and growing): reading it whole on every rebuild took ~3 s
+    and ~300 MB, which kept kalshi-web at its memory cap and made pages slow (2026-11-05). So: not read while levels are
+    off (like the scans), and when on, read slim and again only after the file or levels.json changed."""
+    if not gates.ON:
+        return None
+    graded, path = os.path.join(DATA, "predictions_graded.jsonl"), os.path.join(DATA, "levels.json")
+    stamp = (_stamp(graded), _stamp(path), now.date())
+    if _LEVELS["stamp"] != stamp:
+        _LEVELS["value"] = gates.progress(betting.STRATEGIES, predictions.load_graded(graded, slim_rows=True), now, path)
+        _LEVELS["stamp"] = stamp
+    return _LEVELS["value"]
 
 
 def betting_state(now: datetime) -> dict:
@@ -270,10 +269,9 @@ def betting_state(now: datetime) -> dict:
     closed = led["closed"]
     st = betting.stats(led)
     status = (latest.get("summary") or {}).get("strategies", {})
-    graded = predictions.load_graded(os.path.join(DATA, "predictions_graded.jsonl"))
-    levels = gates.progress(betting.STRATEGIES, graded, now, os.path.join(DATA, "levels.json"))
+    levels = levels_view(now)
     strategies = [{"key": k, "name": n, "about": d, **st[k], **{"data": status.get(k, {})},
-                   "level": levels[k]["level"] if gates.ON else "normal", "predictions": levels[k]["card"],
+                   "level": levels[k]["level"] if levels else "normal",
                    "min_edge": betting.RULES["min_edge"][k], "trust": betting.RULES["trust_model"][k],
                    "cap_pct": betting.RULES["strategy_cap_pct"][k]} for k, (n, d) in STRATEGY_INFO.items()]
     wins = [b["pnl"] for b in closed if b["pnl"] > 0]
@@ -307,9 +305,8 @@ def betting_state(now: datetime) -> dict:
         "watching": latest.get("top_edges", [])[:12],
         "last": latest.get("summary"),
         "rules": {k: v for k, v in betting.RULES.items() if not isinstance(v, dict)},
-        "milestones": milestones(now, led, st, levels) if gates.ON else test_milestones(bots, test),
+        "milestones": milestones(now, led, st, levels) if levels else test_milestones(bots, test),
         "mode": {**{k: v for k, v in switch.items() if k != "history"}, "follows": "evil" if switch["evil"] else "charles"},
-        "evil_record": evil_record(graded, now),
         "bots": bots,
         "test": test,
     }
@@ -387,9 +384,9 @@ def state(now: datetime | None = None) -> dict:
     }
 
 
-# state() re-reads every data file, predictions_graded.jsonl (42 MB and growing) included, so a few pages open at once used to
-# fill this service's 300 MB cap and stall it (found 2026-10-31: the /kalshi/ tab stopped answering). One build at a time;
-# everyone else gets the last one, and only the very first look waits.
+# state() re-reads the data files, so a few pages open at once used to fill this service's 300 MB cap and stall it (found
+# 2026-10-31: the /kalshi/ tab stopped answering). One build at a time; everyone else gets the last one, and only the very
+# first look waits. The graded predictions (~60 MB) are read only for levels, see levels_view (2026-11-06).
 STATE_TTL = 30
 _state_lock = threading.Lock()
 _state_body: bytes | None = None

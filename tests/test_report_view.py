@@ -116,6 +116,16 @@ class Guessed(BotTestCase):
         self.assertEqual(c["series"][0]["points"][0][1], 0.0)
         self.assertEqual(c["series"][1]["points"][-1][1], -0.5)         # 606 → 603, from the first day both have
 
+    def test_vs_spy_is_at_the_same_closes_as_the_status(self):
+        """Bug hunt 2026-11-06: SPY counted from the start day's close, Charles from the night before (7.1 points behind on the
+        chart beside a sentence that said about six)."""
+        st = {"plan": {"started": "2026-10-16"}, "spy": [["2026-10-15", 100.0], ["2026-10-16", 102.0], ["2026-10-19", 101.0]],
+              "equity": [["2026-10-15T19:30:00+00:00", 1000.0], ["2026-10-16T04:00:00+00:00", 1.0],      # a midnight mark
+                         ["2026-10-16T19:30:00+00:00", 1010.0], ["2026-10-19T19:30:00+00:00", 990.0], ["2026-10-19T23:00:00+00:00", 5.0]]}
+        c = rv.stocks_chart("vs-spy", st, NOW)
+        self.assertEqual([p[1] for p in c["series"][0]["points"]], [0.0, 1.0, -1.0])
+        self.assertEqual([p[1] for p in c["series"][1]["points"]], [0.0, 2.0, 1.0])
+
     def test_kalshi_by_strategy(self):
         r = {"date": "2026-10-29", "text": """## Where things stand
 - Book value **$562.74**, down from the start.

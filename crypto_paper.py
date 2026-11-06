@@ -8,7 +8,7 @@ Never touches the Alpaca account or any exchange account: prices come from Coinb
 import argparse
 import json
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import crypto_market
 import crypto_plan
@@ -18,6 +18,7 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("CRYPTO_DATA") or os.path.join(ROOT, "data")
 PATH = os.path.join(DATA, "crypto_paper.json")
 START_CASH = 1000.0
+WAIT_HOURS = 6        # a due check whose coins' prices didn't come waits this long for them, then goes ahead without them
 
 
 def new_book(now: str) -> dict:
@@ -43,21 +44,39 @@ def save(book: dict, path: str = PATH):
 def step(book: dict, closes: dict, prices: dict, now: datetime, settings: dict | None = None, force: bool = False,
          names: dict | None = None) -> dict:
     """One run: on a due weekly check, decide and fill at `prices`; always add a value point. A saved change to the plan
-    (its signature) brings the check forward to this run. A coin the book holds but the plan no longer names is sold."""
+    (its signature) brings the check forward to this run. A coin the book holds but the plan no longer names is sold.
+    A coin whose price or history didn't come (Coinbase's feed down) holds a due check back to the next run, for up to WAIT_HOURS;
+    then the check goes ahead and leaves that coin as it is. The book values a coin at its last price seen, never at $0."""
     s = {**crypto_plan.DEFAULTS, **(settings or {})}
     stamp = now.isoformat(timespec="seconds")
-    book.setdefault("start_prices", {p: v for p, v in prices.items() if p in ("BTC-USD", "ETH-USD")})  # for "vs just holding bitcoin"
+    seen = book.setdefault("last_prices", {t["product"]: t["price"] for t in book.get("trades", []) if t.get("price")})
+    seen.update({p: v for p, v in prices.items() if v})
+    start = book.setdefault("start_prices", {})          # for "vs just holding bitcoin"; a price that didn't come is filled in later
+    start.update({p: prices[p] for p in ("BTC-USD", "ETH-USD") if p not in start and prices.get(p)})
     sig = crypto_plan.signature(s)
     # a book from before 1.4.0 has no signature: it ran fully invested on bitcoin and ether, so a new "My own" or Invested choice
     # made before its first run on 1.4.0 still brings the check forward
     changed = (book.get("sig") or crypto_plan.signature({**s, "INVESTED": 1.0, "BLOCKS": None})) != sig
-    book["sig"] = sig
-    if force or changed or crypto_plan.check_due(book.get("last_check"), now.date().isoformat(), s):
+    held = {p for p, q in book["qty"].items() if q > 1e-12}
+    missing = {p for p in held | set(crypto_plan.products(s)) if not prices.get(p) or p not in closes}
+    due = force or changed or crypto_plan.check_due(book.get("last_check"), now.date().isoformat(), s)
+    wait = bool(due and missing and not force
+                and now - datetime.fromisoformat(book.get("check_waiting") or stamp) < timedelta(hours=WAIT_HOURS))
+    if wait:
+        book.setdefault("check_waiting", stamp)
+    else:
+        book.pop("check_waiting", None)
+    if due and not wait:
         d = crypto_plan.decide(closes, s)
-        held = {p for p, q in book["qty"].items() if q > 1e-12}
-        targets = {**{p: 0.0 for p in held}, **d["targets"]}
-        targets = {p: t for p, t in targets.items() if prices.get(p)}       # a coin without a price this hour waits for the next check
-        trades = crypto_plan.orders(book["qty"], prices, book["cash"], targets, s)
+        px = {**{p: 0.0 for p in held}, **seen}
+        _, share = crypto_plan.weights_now({p: book["qty"][p] for p in held}, px, book["cash"])
+        stuck = held & missing          # still no price or history after the wait: left as it is, and still counted in the book
+        targets = {**{p: 0.0 for p in held}, **d["targets"], **{p: share[p] for p in stuck}}
+        targets = {p: t for p, t in targets.items() if prices.get(p) or p in stuck}       # no price this run: can't be bought
+        room, rest = 1.0 - sum(share[p] for p in stuck), sum(t for p, t in targets.items() if p not in stuck)
+        if stuck and rest > room:       # the others can't use money that's still in a stuck coin
+            targets = {p: t if p in stuck else t * room / rest for p, t in targets.items()}
+        trades = crypto_plan.orders(book["qty"], px, book["cash"], targets, s)
         book["qty"], book["cash"] = crypto_plan.apply(book["qty"], book["cash"], prices, trades, s["FEE"])
         book["qty"] = {p: q for p, q in book["qty"].items() if q > 1e-12 or p in d["targets"]}
         for o in trades:
@@ -67,8 +86,10 @@ def step(book: dict, closes: dict, prices: dict, now: datetime, settings: dict |
                                    "reason": crypto_plan.reason(o["product"], d["coins"].get(o["product"]), s, names,
                                                                 side=o["side"] if o["product"] in held else None,      # a resize, not a coin coming in
                                                                 target=d["targets"].get(o["product"]))})
-        book.update(last_check=stamp, coins=d["coins"], targets=d["targets"])
-    total, _ = crypto_plan.weights_now(book["qty"], {**{p: 0.0 for p in book["qty"]}, **prices}, book["cash"])
+        old = book.get("coins") or {}
+        book.update(last_check=stamp, sig=sig, targets={**d["targets"], **{p: targets[p] for p in stuck}},
+                    coins={**d["coins"], **{p: old[p] for p in missing if p not in closes and p in old}})
+    total, _ = crypto_plan.weights_now(book["qty"], {**{p: 0.0 for p in book["qty"]}, **seen}, book["cash"])
     book["curve"].append([stamp, round(total, 2)])
     return book
 
@@ -86,6 +107,8 @@ def run(force: bool = False, path: str = PATH) -> dict:
         except Exception as e:                         # one coin's feed being down doesn't stop the others
             print(f"crypto paper book: no price for {p} ({e})")
     book = step(book, closes, prices, now, settings=settings, force=force, names=crypto_settings.coin_names())
+    if book.get("check_waiting"):
+        print(f"crypto paper book: the check waits for Coinbase's prices (since {book['check_waiting']}, up to {WAIT_HOURS} hours)")
     save(book, path)
     return book
 

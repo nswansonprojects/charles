@@ -61,20 +61,20 @@ NOT_SHARED_CRYPTO = ("A plan with your own coins, or with part of the book kept 
                      "tab to Charles's coins with 100% invested.")
 
 
-def current_settings(bot: str, root: str = ROOT) -> dict:
+def current_settings(bot: str, root: str = ROOT, sharing: bool = True) -> dict:
     """Every setting the bot is using now (file over defaults), limited to the shareable keys. A Custom Plan
-    (portfolio.py) isn't shareable at all: ValueError."""
+    (portfolio.py) isn't shareable at all: ValueError, unless `sharing` is False (charles-copy only compares with it)."""
     if bot == "stocks":
         import allocator
         import strategy_settings
         s = {**allocator.DEFAULTS, **strategy_settings.load(os.path.join(root, FILES[bot]))}
-        if s.get("BLOCKS") or s.get("INVESTED", 1.0) != 1.0:
+        if sharing and (s.get("BLOCKS") or s.get("INVESTED", 1.0) != 1.0):
             raise ValueError(NOT_SHARED)
         return {k: s[k] for k in strategy_settings.LIMITS}
     import crypto_plan
     import crypto_settings
     s = {**crypto_plan.DEFAULTS, **crypto_settings.load(os.path.join(root, FILES[bot]))}
-    if s.get("BLOCKS") or s.get("INVESTED", 1.0) != 1.0:
+    if sharing and (s.get("BLOCKS") or s.get("INVESTED", 1.0) != 1.0):
         raise ValueError(NOT_SHARED_CRYPTO)
     return {k: v for k, v in crypto_settings.flat(s).items() if k in crypto_settings.LIMITS}
 
@@ -215,15 +215,20 @@ def main(argv=None):
     except (ValueError, urllib.error.URLError, OSError) as e:
         print(f"✗ {e}")
         return 1
-    old = current_settings(cfg["bot"], a.dir)
+    try:
+        old, own = current_settings(cfg["bot"], a.dir), False
+    except ValueError:                  # the user's own tickers/coins or money kept aside: a copy replaces them, as on the dashboard
+        old, own = current_settings(cfg["bot"], a.dir, sharing=False), True
     changes = diff(old, cfg["settings"])
     print(f"✓ {cfg['id']} by {cfg['name']} — {cfg['bot']} config, signature checked")
-    if not changes:
+    if not changes and not own:
         print("Your bot already uses exactly these settings. Nothing to do.")
         return 0
     print(f"\nChanges to {os.path.join(a.dir, FILES[cfg['bot']])}:")
     for k, was, now in changes:
         print(f"  {k:14s} {was!s:>8} → {now}")
+    if own:
+        print(f"  Your own {'tickers' if cfg['bot'] == 'stocks' else 'coins'} and any money kept aside go: the copy is that plan.")
     print("\nPast results don't predict future ones. This is not financial advice.")
     if not a.yes and input("Copy these settings? [y/N] ").strip().lower() not in ("y", "yes"):
         print("Nothing changed.")

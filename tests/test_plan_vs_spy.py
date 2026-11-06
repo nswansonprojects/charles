@@ -54,3 +54,23 @@ class PlanVsSpy(BotTestCase):
         self.assertIsNone(pv.since_started(CURVE, "", SPY))
         self.assertIsNone(pv.since_started(CURVE, "2026-10-19", []))
         self.assertIsNone(pv.since_started(CURVE[4:], "2026-10-19", SPY))   # no close before the start
+
+
+class Over(BotTestCase):
+    """over(): a report period, both sides from the close before it to its last close."""
+    def test_a_period_starts_at_the_close_before_it(self):
+        r = pv.over(CURVE, SPY, "2026-10-19", "2026-10-23")
+        self.assertEqual((r["base_close"], r["as_of_close"], r["charles_pct"], r["spy_pct"]), ("2026-10-16", "2026-10-23", 2.0, 3.0))
+        self.assertEqual((r["start_value"], r["end_value"], r["values"]), (1000.0, 1020.0, [1000.0, 1010.0, 1020.0]))
+
+    def test_a_book_that_began_inside_the_period_starts_at_its_first_close(self):
+        r = pv.over(CURVE[4:], SPY, "2026-10-19", "2026-10-23")
+        self.assertEqual((r["base_close"], r["charles_pct"], r["spy_pct"]), ("2026-10-19", 0.99, 1.98))
+
+    def test_without_spy_charles_alone(self):
+        r = pv.over(CURVE, [], "2026-10-19", "2026-10-23")
+        self.assertEqual((r["charles_pct"], r["spy_pct"]), (2.0, None))
+
+    def test_one_close_is_not_a_period(self):
+        self.assertIsNone(pv.over(CURVE[4:5], SPY, "2026-10-19", "2026-10-23"))
+        self.assertIsNone(pv.over([], SPY, "2026-10-19", "2026-10-23"))

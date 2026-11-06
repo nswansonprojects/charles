@@ -2,6 +2,20 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.4.2",
+   "date": "2026-11-06",
+   "kind": "rule",
+   "notes": [
+    "Fixed: when Coinbase misses a coin's price, the crypto book waits up to 6 hours for it instead of trading without it, and never counts that coin as $0.",
+    "Fixed: weekly and monthly reports show the account's real dollar change. What sales made has its own line.",
+    "Fixed: reports compare Charles with SPY over the same days. A report no longer shows a Sharpe ratio under 15 market days, and says \"Sales: none\" when nothing was sold.",
+    "The daily loss limit pausing buys is a plain note now, not a warning: it's the safety rule working.",
+    "Fixed: the Kalshi page loads quickly again.",
+    "Fixed: the chat keeps going when Anthropic hands a question to a backup model, and counts every part toward your monthly cap.",
+    "Fixed: charles-copy works when your plan has your own tickers or coins. The copy replaces them, as on the dashboard."
+   ]
+  },
+  {
    "version": "v1.4.1",
    "date": "2026-11-05",
    "kind": "fix",

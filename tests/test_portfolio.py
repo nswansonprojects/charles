@@ -207,6 +207,18 @@ class Sharing(BotTestCase):
             got = json.load(f)["settings"]
         self.assertEqual(got, {"PICKS": 6, "SELF_TUNE": False, "PRESETS": [{"name": "Calm", "settings": {"INVESTED": 0.5}}]})
 
+    def test_charles_copy_works_from_a_custom_plan(self):
+        """Bug hunt 2026-11-06: the command stopped with a traceback ("can't be shared") for anyone with their own tickers."""
+        import io, contextlib
+        self.patch(client, "FILES", {"stocks": "strategy.json", "crypto": "crypto.json"})
+        self.patch(client, "fetch", lambda eid: {"bot": "stocks", "id": eid, "name": "Ann", "settings": {"PICKS": 4}})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(client.main(["lb-123456", "--dir", self.tmp, "--yes"]), 0)
+        self.assertIn("Your own tickers and any money kept aside go", out.getvalue())       # same PICKS, but the blocks go
+        with open(self.path) as f:
+            self.assertNotIn("BLOCKS", json.load(f)["settings"])
+
     def test_the_chat_cant_set_tickers_but_the_sliders_can(self):
         with self.assertRaises(ValueError):
             chat.check_settings({"BLOCKS": BLOCKS}, self.path)

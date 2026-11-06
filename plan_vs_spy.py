@@ -40,6 +40,26 @@ def close_point(curve: list, day: str) -> dict | None:
     return close_points(curve).get(day)
 
 
+def over(curve: list, spy_closes: list, first: str, last: str) -> dict | None:
+    """Charles (and SPY, when its closes are given) over the market days `first`..`last` (YYYY-MM-DD), at the same closes:
+    from the last close before `first` (else the window's own first close, for a book that began inside it) to the last
+    close on or before `last`. Returns {"start_value", "end_value", "charles_pct", "spy_pct" (None without SPY),
+    "base_close", "as_of_close", "values": Charles's close each market day from the base to the end}, or None."""
+    closes = close_points(curve)
+    spy = {d[:10]: float(c) for d, c in spy_closes or [] if c == c}
+    days = sorted(d for d in closes if d <= last and (not spy or d in spy))
+    before, inside = [d for d in days if d < first], [d for d in days if d >= first]
+    if not inside:
+        return None
+    b, e = (before[-1] if before else inside[0]), inside[-1]
+    if b == e or not closes[b]["value"]:
+        return None
+    return {"start_value": closes[b]["value"], "end_value": closes[e]["value"],
+            "charles_pct": round((closes[e]["value"] / closes[b]["value"] - 1) * 100, 2),
+            "spy_pct": round((spy[e] / spy[b] - 1) * 100, 2) if spy else None,
+            "base_close": b, "as_of_close": e, "values": [closes[d]["value"] for d in days if b <= d <= e]}
+
+
 def since_started(curve: list, started: str, spy_closes: list, until: str | None = None) -> dict | None:
     """Charles and SPY from the last close before `started` to the latest close both have
     (on or before `until` when given).

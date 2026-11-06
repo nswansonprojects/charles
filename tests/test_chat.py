@@ -67,6 +67,23 @@ class Base(BotTestCase):
 
 
 class Answers(Base):
+    def test_after_a_fallback_the_declined_part_is_left_out(self):
+        fb, think = types.SimpleNamespace(type="fallback"), types.SimpleNamespace(type="thinking", thinking="", signature="s")
+        self.answers = [resp(think, tool("get_settings"), fb, text("Let me look."), tool("get_portfolio"), stop="tool_use"),
+                        resp(text("Done."))]
+        self.assertEqual(self.ask()["text"], "Done.")
+        sent = self.calls[1]["messages"]
+        self.assertEqual([b.type for b in sent[-2]["content"]], ["fallback", "text", "tool_use"])
+        self.assertEqual([r["tool_use_id"] for r in sent[-1]["content"]], ["tu_get_portfolio"])     # the declined call never ran
+
+    def test_every_attempt_counts_toward_the_cap(self):
+        r = resp(text("Fine."))
+        r.usage.iterations = [types.SimpleNamespace(type="message", input_tokens=1000, output_tokens=50),
+                              types.SimpleNamespace(type="fallback_message", input_tokens=1000, output_tokens=100)]
+        self.answers = [r]
+        self.ask()
+        self.assertAlmostEqual(chat.month_spend(self.tmp, NOW), (2000 * 4 + 150 * 20) / 1e6)
+
     def test_a_plain_answer_with_its_cost(self):
         self.answers = [resp(text("Because of momentum."))]
         out = self.ask()

@@ -1,4 +1,4 @@
-"""reports: report windows (scheduled = last complete period) and SPY's inclusive end date."""
+"""reports: report windows (scheduled = last complete period), the numbers at the same closes as SPY, SPY's inclusive end date."""
 import sys
 import types
 from datetime import datetime, timezone
@@ -46,7 +46,7 @@ class PlanLines(BotTestCase):
             else:
                 json.dump(obj, f)
 
-    def lines(self, spy=lambda s, e: 2.0):
+    def lines(self, spy=lambda s, e: []):
         return rpt.plan_lines(*self.OCT, data_dir=self.tmp, spy=spy)
 
     def test_nothing_before_the_plan_starts(self):
@@ -66,7 +66,8 @@ class PlanLines(BotTestCase):
                                     {"ts": "2026-10-19T14:00:00", "symbol": "NVDA", "veto": False, "reason": "Fine."},
                                     {"ts": "2026-09-01T14:00:00", "symbol": "OLD", "veto": True, "reason": "Old."}])
         spy_calls = []
-        got = self.lines(lambda s, e: spy_calls.append((s, e)) or 2.0)
+        spy = [("2026-10-16", 100.0), ("2026-10-19", 101.0), ("2026-10-30", 102.0), ("2026-11-02", 150.0)]
+        got = self.lines(lambda s, e: spy_calls.append((s, e)) or spy)     # both from Friday 10-16's close, not Monday's
         self.assertEqual(got, [
             "Plan since Oct 19, 2026: +3.00% vs SPY +2.00% ✅",
             "Picks now:    NVDA, AAPL",
@@ -90,8 +91,8 @@ class PlanLines(BotTestCase):
                                  "switches": [{"date": f"2026-10-{d:02d}", "to": "invest"} for d in range(2, 8)]})
         self.write("equity_curve.json", [{"ts": "2026-10-01T20:00:00", "value": 1000.0},
                                          {"ts": "2026-10-02T20:00:00", "value": 990.0}])
-        got = self.lines()
-        self.assertEqual(got[0], "Plan since Oct 1, 2026: -1.00% vs SPY +2.00% ⚠️")
+        got = self.lines(lambda s, e: [("2026-10-01", 100.0), ("2026-10-02", 102.0)])
+        self.assertEqual(got[0], "Plan since Oct 1, 2026: -1.00% vs SPY +2.00% ⚠️")      # began inside: its first close
         self.assertTrue(got[-1].startswith("Mode changes: Oct 4 → invest"))
         self.assertTrue(got[-1].endswith("(+2 earlier)"))
 
@@ -105,7 +106,7 @@ class PlanLines(BotTestCase):
 
 
 class SpyEndDate(BotTestCase):
-    def test_end_date_is_inclusive(self):
+    def test_end_date_is_inclusive_and_the_close_before_comes_too(self):
         calls = []
 
         class Ticker:
@@ -113,14 +114,68 @@ class SpyEndDate(BotTestCase):
             def history(self, start, end):
                 calls.append((start, end))
                 import pandas as pd
-                return pd.DataFrame({"Close": [100.0, 110.0]})
+                return pd.DataFrame({"Close": [100.0, 110.0]}, index=pd.to_datetime(["2026-09-30", "2026-10-01"]))
 
         fake = types.ModuleType("yfinance"); fake.Ticker = Ticker
         real = sys.modules.get("yfinance")
         sys.modules["yfinance"] = fake
         try:
-            self.assertEqual(rpt._spy_return("2026-10-01", "2026-10-01"), 10.0)
+            self.assertEqual(rpt._spy_closes("2026-10-01", "2026-10-01"), [("2026-09-30", 100.0), ("2026-10-01", 110.0)])
         finally:
             if real is not None: sys.modules["yfinance"] = real
             else: sys.modules.pop("yfinance", None)
-        self.assertEqual(calls, [("2026-10-01", "2026-10-02")])
+        self.assertEqual(calls, [("2026-09-21", "2026-10-02")])
+
+
+def closes(values, first="2026-10-01"):
+    """One in-session point a market day (15:30 ET) from `first`, plus a midnight mark that must not count."""
+    from datetime import date, timedelta
+    out, d = [], date.fromisoformat(first)
+    for v in values:
+        while d.weekday() >= 5:
+            d += timedelta(days=1)
+        out += [{"ts": f"{d}T04:00:00+00:00", "value": 1.0}, {"ts": f"{d}T19:30:00+00:00", "value": v}]
+        d += timedelta(days=1)
+    return out
+
+
+class Numbers(BotTestCase):
+    """The weekly/monthly numbers (bug hunt 2026-11-06: "-3.41% ($+17.54)" showed sales profit beside a loss)."""
+    SELLS = [{"action": "SELL", "symbol": "WOLF", "pnl": 20.0}, {"action": "SELL", "symbol": "AMAT", "pnl": -2.46},
+             {"action": "BUY", "symbol": "SPY"}]
+
+    def test_the_dollar_change_is_the_accounts_not_just_sales(self):
+        import plan_vs_spy
+        curve = closes([1000.0, 990.0, 965.9])
+        same = plan_vs_spy.over(curve, [], "2026-10-02", "2026-10-05")
+        st = rpt._compute_stats(self.SELLS, curve[2:], same=same)
+        self.assertEqual((st["start_value"], st["end_value"], st["period_return"], st["change"]), (1000.0, 965.9, -3.41, -34.1))
+        self.assertEqual((st["sales_pnl"], st["closed_trades"], st["win_rate"]), (17.54, 2, 50.0))
+
+    def test_sharpe_is_one_return_a_market_day_and_needs_enough_days(self):
+        import statistics
+        vals = [1000.0 * (1.01 if i % 2 else 0.995) ** i for i in range(rpt.SHARPE_DAYS + 1)]
+        st = rpt._compute_stats([], closes(vals))
+        rets = [b / a - 1 for a, b in zip(vals, vals[1:])]
+        self.assertAlmostEqual(st["sharpe_ratio"], round(statistics.mean(rets) / statistics.stdev(rets) * 252 ** 0.5, 3))
+        self.assertIsNone(rpt._compute_stats([], closes(vals[:6]))["sharpe_ratio"])           # a week: left out
+        self.assertIsNone(rpt._compute_stats([], closes(vals))["win_rate"])                    # no sales: no win rate
+
+    def test_drawdown_counts_from_the_close_before_and_skips_after_hours_marks(self):
+        import plan_vs_spy
+        curve = closes([1000.0, 950.0, 990.0])
+        st = rpt._compute_stats([], curve[2:], same=plan_vs_spy.over(curve, [], "2026-10-02", "2026-10-05"))
+        self.assertEqual(st["max_drawdown"], 5.0)                                              # not the $1 midnight marks
+
+    def test_message(self):
+        rpt.post_report({"period": "weekly", "label": "Week", "period_return": -1.07, "change": -10.32, "spy_return": -1.26,
+                         "alpha": 0.19, "closed_trades": 0, "win_rate": None, "sharpe_ratio": None, "max_drawdown": 2.0})
+        rpt.post_report({"period": "monthly", "label": "October 2026", "period_return": -3.41, "change": -34.1,
+                         "spy_return": None, "alpha": None, "closed_trades": 11, "win_rate": 63.6, "sales_pnl": 17.54,
+                         "sharpe_ratio": -1.2, "max_drawdown": 7.02, "best_symbol": "WOLF", "worst_symbol": "AMAT"})
+        (_, (_, week), _), (_, (_, month), _) = self.alerts.calls
+        self.assertIn("Return:       -1.07%  (-$10.32)\nvs SPY:       -1.26%  ✅ Alpha: +0.19%\nSales:        none\nMax drawdown: -2.00%", week)
+        self.assertNotIn("Sharpe", week)
+        self.assertNotIn("Best sym", week)
+        self.assertIn("Return:       -3.41%  (-$34.10)\nvs SPY:       couldn't get SPY's prices", month)
+        self.assertIn("Win rate:     63.6%  (11 sales, +$17.54)\nSharpe:       -1.200", month)

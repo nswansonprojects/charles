@@ -24,22 +24,33 @@ def test_calibration_uses_settled_bets_only():
     assert "econ" not in cal
 
 
-def _graded(side, result, cost, opp_cost=None, ts="2026-10-20T00:00:00+00:00", key="K"):
-    sig = {"side": side, "ask": cost, "cost": cost, "pnl": (1.0 if side == result else 0.0) - cost}
-    if opp_cost is not None:
-        sig["opp_cost"] = opp_cost
-    return {"key": key, "result": result, "first": {"ts": ts, "market_yes": 0.5}, "signal": sig}
-
-
-def test_evil_record_compares_charles_with_the_opposite_bets():
+def test_levels_read_nothing_while_off_and_reread_only_a_changed_file(tmp_path, monkeypatch):
+    # 2026-11-05: every rebuild read the whole ~60 MB graded file (~3 s, ~300 MB) for levels that are off during the
+    # test, keeping kalshi-web at its 300 MB cap: the review's check took over 10 s and /kalshi/ gave a 502.
+    import json
     from datetime import datetime, timezone
-    now = datetime(2026, 10, 26, tzinfo=timezone.utc)
-    rows = [_graded("yes", "no", 0.40, 0.62), _graded("yes", "yes", 0.40, 0.62, key="K2"),
-            _graded("no", "yes", 0.30), _graded("yes", "no", 0.40, 0.62, ts="2026-09-01T00:00:00+00:00")]
-    r = wd.evil_record(rows, now)
-    assert (r["bets"], r["events"], r["estimated"]) == (3, 2, 1)       # the September one is too old
-    assert r["charles"]["won"] == 1 and r["evil"]["won"] == 2
-    assert r["charles"]["roi_pct"] < 0 < r["evil"]["roi_pct"]
+    import gates
+    import predictions
+    monkeypatch.setattr(wd, "DATA", str(tmp_path))
+    monkeypatch.setitem(wd._LEVELS, "stamp", None)
+    reads, real = [], predictions.load_graded
+    monkeypatch.setattr(predictions, "load_graded", lambda *a, **k: reads.append(k) or real(*a, **k))
+    now = datetime(2026, 11, 6, 12, tzinfo=timezone.utc)
+    graded = tmp_path / "predictions_graded.jsonl"
+    row = {"strategy": "weather", "key": "K", "y": 1.0, "title": "t", "signal": None,
+           "first": {"ts": "2026-11-01T00:00:00+00:00", "model_yes": 0.7, "fair_yes": 0.7, "market_yes": 0.5}}
+    graded.write_text(json.dumps(row) + "\n")
+    (tmp_path / "levels.json").write_text(json.dumps({"weather": {"level": "predict", "since": "2026-10-01T00:00:00+00:00",
+                                                                  "history": []}}))
+    monkeypatch.setattr(gates, "ON", False)
+    assert wd.levels_view(now) is None and reads == []
+    monkeypatch.setattr(gates, "ON", True)
+    first = wd.levels_view(now)
+    assert first["weather"]["card"]["graded"] == 1 and reads == [{"slim_rows": True}]
+    assert wd.levels_view(now) is first and len(reads) == 1          # same file: no second read
+    with open(graded, "a") as f:
+        f.write(json.dumps({**row, "key": "K2"}) + "\n")
+    assert wd.levels_view(now)["weather"]["card"]["graded"] == 2 and len(reads) == 2
 
 
 def test_evil_card_keeps_its_own_class():

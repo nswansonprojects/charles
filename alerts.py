@@ -1,6 +1,7 @@
 """
 alerts.py — the bot's notices: data/notifications.json, shown on the dashboard's Home page.
 An "error" notice shows as "Needs a look"; every notice is listed under Recent activity.
+Only a real problem the owner has to act on is an "error" (owner 2026-11-06: no warnings unless a real bug needs them).
 """
 
 import json
@@ -57,7 +58,7 @@ def rebalanced(summary: str, lines: list):
 def daily_loss_halted(loss: float, limit: float):
     _notify("Buys paused for today",
             f"The account is down {_usd(abs(loss))}, past the {_usd(limit)} daily limit. "
-            "Sales still go through; buys resume tomorrow.", "error")
+            "Sales still go through; buys resume tomorrow.")      # the safety rule working, not a problem
 
 
 def control(text: str):
@@ -87,8 +88,9 @@ def report(title: str, text: str):
 
 
 def notice(text: str):
-    """A note from an ops script (ops/notify.py). The first line is the title; "needs you" or "failed" in it asks for a look."""
+    """A note from an ops script (ops/notify.py). The first line is the title; "needs you", "needs a look" or "failed to run"
+    in it asks for a look (not a bare "failed": "fixed the failed-orders label — done" is good news)."""
     first, _, rest = text.strip().partition("\n")
-    first = first.lstrip("✅🔧🎛️⚠🛠📈️ \t")
-    urgent = any(w in first.lower() for w in ("needs you", "failed", "needs a look"))
+    first = first.lstrip("✅🔧🎛️⚠🛠📈📋️ \t")
+    urgent = any(w in first.lower() for w in ("needs you", "failed to run", "needs a look"))
     _notify(first[:120] or "Note", rest.strip()[:1500], "error" if urgent else "info")
