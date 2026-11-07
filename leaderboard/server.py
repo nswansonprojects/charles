@@ -17,10 +17,12 @@ Every write is signed, size-capped, rate-limited per address and schema-checked 
 Results are never accepted from anyone: leaderboard/sim.py makes them. Python stdlib server, like webdash.py.
 SITE_DIR (preview only) also serves a copy of the website from the same address.
 """
+import hashlib
 import json
 import logging
 import mimetypes
 import os
+import secrets
 import sys
 import threading
 import time
@@ -227,6 +229,7 @@ def manifest(row, key) -> dict:
 _lock = threading.Lock()
 _hits: dict = {}
 _copied: set = set()
+_SALT = secrets.token_hex(16)        # this process's: the copy counter remembers a hash of each address for a day, never the address
 
 
 def allowed(kind: str, addr: str, now: float) -> bool:
@@ -306,8 +309,11 @@ class Handler(BaseHTTPRequestHandler):
             row = self._db().execute("SELECT * FROM entries WHERE id=?", (eid,)).fetchone()
             if not row:
                 return self._json(404, {"ok": False, "message": "no such config"})
-            seen = (self._addr(), eid, date.today().isoformat())
+            today = date.today().isoformat()
+            seen = (hashlib.sha256((_SALT + self._addr()).encode()).hexdigest()[:20], eid, today)   # one copy a day per address, as a hash
             if seen not in _copied:
+                if any(s[2] != today for s in _copied):
+                    _copied.difference_update({s for s in _copied if s[2] != today})
                 _copied.add(seen)
                 db = self._db()
                 db.execute("UPDATE entries SET copies=copies+1 WHERE id=?", (eid,))
@@ -376,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
                 out = challenges.withdraw(db, body, now)
             else:
                 out = (submit if kind == "submit" else withdraw)(db, body, now)
-            log.info(f"{kind} {out.get('id')} from {self._addr()}")
+            log.info(f"{kind} {out.get('id')}")                     # never the address (the Privacy Policy: web logs only, 14 days)
             self._json(200, out)
         except Reject as e:
             self._json(e.code, {"ok": False, "message": e.message, **e.extra})

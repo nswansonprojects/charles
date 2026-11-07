@@ -27,6 +27,13 @@
     <div class="set-row"><div><h3>Dashboard tour</h3></div><div class="acts"><button class="btn small" type="button" id="tour-again">Show it again</button></div></div>
     <div class="set-row" id="logout-row" hidden><div><h3>Logged in</h3></div><div class="acts"><a class="btn small" href="/logout">Log out</a></div></div>
   </div>
+  <h2 class="set-group">Legal</h2>
+  <div class="card" id="legal">
+    <div class="set-row"><div style="min-width:0"><h3>Terms of Service and License Agreement</h3><div class="s">What you accepted to install Charles</div></div><div class="acts"><a class="btn small" href="https://charles-bot.xyz/terms.html" target="_blank" rel="noopener noreferrer">Read</a></div></div>
+    <div class="set-row"><div style="min-width:0"><h3>Risk Disclosure</h3><div class="s">How you can lose money, and what simulated results can't tell you</div></div><div class="acts"><a class="btn small" href="https://charles-bot.xyz/risk.html" target="_blank" rel="noopener noreferrer">Read</a></div></div>
+    <div class="set-row"><div style="min-width:0"><h3>Privacy Policy</h3><div class="s">Your keys, trades and account stay on this server</div></div><div class="acts"><a class="btn small" href="https://charles-bot.xyz/privacy.html" target="_blank" rel="noopener noreferrer">Read</a></div></div>
+  </div>
+  <p class="legal-note">Charles is software, not investment advice. It isn't a broker or an investment adviser, it promises no gains, and you can lose money. Copies of these documents are in the Charles folder on this server: LICENSE.md, RISK.md and PRIVACY.md.</p>
 </main>
 
 <div class="scrim" id="scrim" hidden></div>
@@ -87,7 +94,7 @@ function render() {
   renderTrading();
 }
 
-// Paper by default. Live (stocks only) takes the user's own steps over SSH: 18+, the License Agreement, live keys, typing LIVE (live.py).
+// Paper by default. Live (stocks only) takes the user's own steps over SSH: 18+, the Terms, live keys, typing LIVE (live.py).
 const TERMS_URL = "https://charles-bot.xyz/terms.html";
 function renderTrading() {
   const t = A.trading || {mode: "paper"}, live = t.mode === "live";
@@ -97,7 +104,7 @@ function renderTrading() {
       live ? (t.hold ? `Live, on hold: ${esc(t.hold)}` : `Live: real money since ${esc(fmtDay(t.since))}. Crypto and Kalshi stay practice money.`)
            : "Paper trading: practice money in your Alpaca paper account.",
       `<button class="btn small" type="button" id="live-steps">${live ? "Back to paper" : "Trade real money"}</button>`) +
-    row("License Agreement", /accepted on/.test(t.terms || "") ? "good" : "warn", esc(t.terms || ""),
+    row("Terms", /accepted on/.test(t.terms || "") ? "good" : "warn", esc(t.terms || ""),
       `<a class="btn small" href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">Read it</a>`);
   $("live-steps").onclick = () => liveSheet(live);
 }
@@ -108,11 +115,11 @@ function liveSheet(live) {
       <li><b>Turn live off:</b>${cmd("charles-live off")}<div class="muted">Charles goes back to your paper account and its history. What it bought in the live account stays there until you sell it in Alpaca.</div></li>
     </ol><p class="sh-p muted">To stop new orders right away, use Pause on Home.</p>`
     : `<h2 class="sh-title" id="sh-title">Trade real money</h2><div class="sh-sub">Stocks only, in your own Alpaca live account</div>
-    <p class="sh-p">Live trading is for adults (18 or older, or the age of majority where you live) who accept the <a href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">License Agreement</a>. Charles promises no gains, and you can lose money.</p>
+    <p class="sh-p">Live trading is for adults (18 or older, or the age of majority where you live) who accept the <a href="${TERMS_URL}" target="_blank" rel="noopener noreferrer">Terms</a> and have read the <a href="https://charles-bot.xyz/risk.html" target="_blank" rel="noopener noreferrer">Risk Disclosure</a>. Charles is software, not investment advice: it promises no gains, and you can lose money, including all of it.</p>
     <ol class="stepsl">
       <li><b>Get live keys from Alpaca.</b><div class="muted">Switch to your live account, then API Keys → Generate. Live keys start with AK.</div></li>
       <li><b>Log in to the server:</b>${cmd("ssh root@" + HOST)}</li>
-      <li><b>Turn live on:</b>${cmd("charles-live on")}<div class="muted">It asks you to confirm your age and accept the agreement, checks your live keys with Alpaca, then asks you to type LIVE. Your paper history is kept for when you come back.</div></li>
+      <li><b>Turn live on:</b>${cmd("charles-live on")}<div class="muted">It asks you to confirm your age and accept the Terms, checks your live keys with Alpaca, then asks you to type LIVE. Your paper history is kept for when you come back.</div></li>
       <li><b>Come back here.</b><div class="muted">Home and Stocks then say real money. Charles trades at its next daily check, 10:00 AM ET on weekdays.</div></li>
     </ol><p class="sh-p muted">Back to paper any time: <code>charles-live off</code>. Pause on Home stops new orders at once.</p>`);
 }

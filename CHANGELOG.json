@@ -2,6 +2,18 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.5.0",
+   "date": "2026-11-07",
+   "kind": "rule",
+   "notes": [
+    "New Terms of Service and License Agreement (version 2.0), with a Privacy Policy and a Risk Disclosure. They're on charles-bot.xyz and in your Charles folder (LICENSE.md, PRIVACY.md, RISK.md). Run charles-terms to read and accept it.",
+    "If you trade real money: live trading waits until you accept version 2.0 (charles-terms). Paper trading carries on as before.",
+    "Settings has a Legal section with all three documents, and the steps to trade real money link the Risk Disclosure.",
+    "The chat says plainly that its answers aren't investment advice and can be wrong.",
+    "The installer shows the new Terms' short version and links the Risk Disclosure and the Privacy Policy."
+   ]
+  },
+  {
    "version": "v1.4.2",
    "date": "2026-11-06",
    "kind": "rule",

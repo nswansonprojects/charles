@@ -38,7 +38,7 @@
     } else if (S.why === "key") {
       log_.innerHTML = `<div class="chat-empty"><p style="margin-top:0">The chat uses your own Anthropic API key, on your own bill. It can explain anything Charles does and propose a settings change, which you then have to apply yourself. It can't place orders.</p>Make a key at <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer">console.anthropic.com</a>, then over SSH run <code>charles-keys --set ANTHROPIC_API_KEY</code> and paste it. The key stays on your server, and the chat spends at most ${money(S.cap_usd)} a month until you change that with <code>charles-chat --cap</code>.</div>`;
     } else {
-      const lead = S.demo ? "Saved answers from a real test. This preview has no API key, so your own questions won't reach Claude here." : "Ask anything about what Charles holds and does. It explains; it doesn't give advice.";
+      const lead = S.demo ? "Saved answers from a real test. This preview has no API key, so your own questions won't reach Claude here." : "Ask anything about what Charles holds and does. It explains; it isn't investment advice, and an AI's answers can be wrong.";
       log_.innerHTML = `<div class="chat-empty">${lead}${(S.starts || STARTS).map(q => `<button type="button" data-q="${e(q)}">${e(q)}</button>`).join("")}
         ${S.undo ? `<button type="button" id="chat-undo">Undo the last settings change</button>` : ""}</div>`;
       log_.querySelectorAll("[data-q]").forEach(b => b.onclick = () => ask(b.dataset.q));

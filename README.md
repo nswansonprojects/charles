@@ -1,8 +1,8 @@
 # Charles
 
 A simple, open source investing bot for your own server. It trades **paper money linked to real market data**
-through a free Alpaca paper account, and you watch it from your phone. No real money, no subscription, and your
-keys and data stay on a server you own.
+through a free Alpaca paper account, and you watch it from your phone. No subscription, and your keys and data stay on
+a server you own. Live trading (stocks only, in your own Alpaca live account) stays off unless you turn it on yourself.
 
 **Set it up:** https://charles-bot.xyz/setup.html (one command on a fresh Ubuntu server; $6 a month at DigitalOcean is enough)
 
@@ -33,14 +33,14 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 
 `backtest_core.py` runs the same decision code as the live bot on daily history, with slippage, dividends and fund fees.
 
-| $1,000, Jul 2007 to Oct 2026 | A year, on average | Worst drop |
+| $1,000, Jul 2007 to Oct 2026 (hypothetical) | A year, on average | Worst drop |
 |---|---|---|
-| The plan with sector funds as picks | +11.7% | −35% |
-| The plan with stock picks | +18.9% | −39% |
+| The plan, with sector funds as its picks | +11.7% | −35% |
 | SPY, buy and hold | +10.9% | −55% |
 
-Read it with care. The stock list is today's, so it already contains past winners, which flatters the stock-pick line. Simulated
-results don't predict real ones. **Charles is not financial advice and promises nothing.**
+These are hypothetical results from a simulation, not real trading, and the rules were written knowing how these years
+went. They have limits that real results don't; see section 5 of the [Risk Disclosure](RISK.md). Past and simulated
+results don't predict future results. **Charles is software, not investment advice, and promises nothing.**
 
 ## Commands
 
@@ -54,6 +54,14 @@ results don't predict real ones. **Charles is not financial advice and promises 
 | `charles-addon` | Turn crypto or Kalshi on or off |
 | `charles-copy <id>` | Copy settings from the leaderboard |
 | `charles-chat --cap <dollars>` | Set the chat's monthly cap |
+
+## Legal
+
+Charles is free software under its [Terms of Service and License Agreement](LICENSE.md), which you accept when you install
+it. Read the [Risk Disclosure](RISK.md) before trading real money, and the [Privacy Policy](PRIVACY.md) for what the website,
+the leaderboard and the paid setup collect (very little). Charles is a tool: we aren't a broker, an investment adviser or a
+fiduciary, we never hold your money or your keys, and nothing here is a recommendation to buy or sell anything.
+Questions, security reports or legal notices: support@charles-bot.xyz.
 
 ## For developers
 

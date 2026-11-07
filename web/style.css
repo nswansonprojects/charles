@@ -669,6 +669,7 @@ button.icon:hover { background: var(--surface-2); color: var(--text); }
 /* settings */
 .set-group { margin: 28px 0 10px; font: 600 15px var(--sans); letter-spacing: -.008em; }
 main.narrow > .set-group:first-of-type { margin-top: 0; }
+.legal-note { margin: 10px 4px 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
 .set-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 14px; align-items: center; padding: 14px 0; border-top: 1px solid var(--border); }
 .set-row:first-child { border-top: 0; padding-top: 0; }
 .set-row:last-child, .set-row:has(+ .set-row[hidden]:last-child) { padding-bottom: 0; }

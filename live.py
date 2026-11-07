@@ -3,7 +3,7 @@ live.py — live trading for the stock bot (owner 2026-11-03: "live trading mode
 
 Paper is the default and stays the default. Live means Charles trades the user's own Alpaca live account, and getting
 there takes every step below, over SSH on the user's own server (never the browser):
-  1. confirm they're 18 or older and accept the License Agreement (terms.py; asked here if it isn't on file);
+  1. confirm they're 18 or older and accept the Terms of Service and License Agreement (terms.py; asked here if it isn't on file);
   2. add their live Alpaca keys, checked read-only with Alpaca and kept in .env as ALPACA_LIVE_API_KEY /
      ALPACA_LIVE_SECRET_KEY, apart from the paper pair;
   3. read what live trading means and type LIVE.
@@ -43,7 +43,8 @@ CONFIRM = "LIVE"
 RISKS = [
     "Every order Charles places is your order, in your own Alpaca account, with real money.",
     "You can lose money, including all of it. The 2x fund in aggressive mode falls twice as fast as the market.",
-    "Charles promises no gains and gives no advice. Fees, taxes and your broker's rules are yours.",
+    "Charles is software, not investment advice, and promises no gains. Fees, taxes and your broker's rules are yours.",
+    f"Read the Risk Disclosure first: {terms.RISK_URL} (also RISK.md in the Charles folder).",
     "Pause on the dashboard stops new orders at once; charles-live off goes back to paper.",
     "Charles buys only with the account's cash, never margin, at its daily check (10:00 AM ET, 2:00 PM retry).",
 ]
@@ -82,7 +83,7 @@ def problem(data_dir: str | None = None, env: dict | None = None) -> str | None:
     if not is_live(data_dir):
         return None
     if not terms.current(data_dir):
-        return "the License Agreement has a version you haven't accepted. Run charles-terms over SSH"
+        return "the Terms have a version you haven't accepted. Run charles-terms over SSH"
     key, secret = keys(env)
     if not key or not secret:
         return "the live Alpaca keys are missing. Run charles-live on over SSH"
@@ -238,9 +239,9 @@ def turn_off(read=input, say=print, service=_service, data_dir: str | None = Non
 def status(data_dir: str | None = None) -> str:
     s, hold = state(data_dir), problem(data_dir)
     if s["mode"] != "live":
-        return "📄 Paper trading (practice money). To trade real money: charles-live on\nLicense Agreement: " + terms.status_line(data_dir)
+        return "📄 Paper trading (practice money). To trade real money: charles-live on\nTerms: " + terms.status_line(data_dir)
     return (f"🟢 Live trading since {str(s.get('since'))[:10]}." + (f"\n⛔ On hold: {hold}." if hold else "") +
-            "\nLicense Agreement: " + terms.status_line(data_dir))
+            "\nTerms: " + terms.status_line(data_dir))
 
 
 def main(argv: list[str]) -> int:

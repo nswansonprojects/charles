@@ -55,24 +55,7 @@ class Agreement(BotTestCase):
             self.assertIn(line, text)
         self.assertIn(f'TERMS_VERSION="{terms.VERSION}"', text)
 
-    def test_the_website_page_says_what_the_agreement_says(self):
-        # terms.html comes from ops/site-terms.py; after changing LICENSE.md, run it again
-        import importlib.util
-        site = os.environ.get("CHARLES_SITE_DIR", "/root/site-next")
-        path = os.path.join(site, "terms.html")
-        here = os.path.dirname(terms.__file__)
-        if not os.path.exists(path) or not os.path.exists(os.path.join(here, "ops", "site-terms.py")):
-            self.skipTest("no website checkout here, or a public copy without ops/")
-        spec = importlib.util.spec_from_file_location("site_terms", os.path.join(here, "ops", "site-terms.py"))
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        with open(os.path.join(here, "LICENSE.md")) as f:
-            _, version, parts = mod.body(f.read())
-        with open(path) as f:
-            page = f.read()
-        self.assertIn(version, page)
-        for part in parts:
-            self.assertIn(part, page)
+    # The website's terms.html (and the other legal pages) are checked in test_legal.py: made by ops/legal/render.py.
 
     def _ask(self, answers):
         said = []
@@ -123,7 +106,7 @@ class Mode(BotTestCase):
     def test_a_new_agreement_version_puts_live_on_hold(self):
         live.set_mode("live", "test")
         terms.record("charles-live")
-        self.patch(terms, "VERSION", "2.0")
+        self.patch(terms, "VERSION", terms.VERSION + ".1")          # whatever the next version is
         self.assertIn("charles-terms", live.problem(env=self.ENV))
 
 
