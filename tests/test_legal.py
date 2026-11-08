@@ -45,6 +45,17 @@ class Documents(BotTestCase):
         for must in ("binding individual arbitration", "opt out", "AS IS", "not investment advice", "18"):
             self.assertIn(must.lower(), text.lower(), must)
 
+    def test_each_document_gets_its_own_link_preview_tags(self):
+        shell = ('<head><title>Set up Charles</title><meta name="description" content="Setup.">'
+                 '<meta property="og:title" content="Set up Charles"><meta property="og:description" content="Setup.">'
+                 '<meta property="og:url" content="https://charles-bot.xyz/setup.html"></head><body><main>x</main><footer>f</footer></body>')
+        name = next(iter(self.r.DOCS))
+        _, _, file, title, _, about = self.r.DOCS[name]
+        page = self.r.page(name, "# Heading\n\nVersion 1\n\nText.", shell)
+        self.assertIn(f'<meta property="og:url" content="https://charles-bot.xyz/{file}">', page)
+        self.assertIn(f'<meta property="og:title" content="{title}">', page)
+        self.assertNotIn("setup.html", page.split("</head>")[0])
+
     def test_every_fact_is_filled_in_or_reads_naturally(self):
         blank = self.r.context({"price_cents": 2999, "refund_days": 14, "unused_refund_days": 14, "keep_server_details_hours": 24,
                                 "keep_order_records_years": 2}, "9.9", "January 1, 2030")

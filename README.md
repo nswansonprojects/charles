@@ -23,7 +23,6 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 - **Home**: what each bot has earned, Pause, and Get started on a new install.
 - **Stocks**: holdings and a feed of what the bot did and the news about what it holds. **Plan**: sliders, a test on past prices, Undo.
 - **Leaderboard**: settings people chose to share, each run forward by the leaderboard's server (nobody's own results are accepted). Copy takes two taps, and monthly challenges are opt-in.
-- **Ask Charles** (optional): a chat on your own Anthropic key, with a monthly spending cap. It can read and propose settings. It can't place orders or see your keys.
 - **Updates**: a version history with Restore. Anything that changes how it trades shows old → new and asks first. Nothing updates by itself.
 
 **Add-ons**, off by default: `charles-addon on crypto` (a $1,000 paper book of bitcoin and ether, Coinbase's public prices) and
@@ -53,7 +52,31 @@ results don't predict future results. **Charles is software, not investment advi
 | `charles-update` · `charles-restore` | Install a new version, or go back to an earlier one |
 | `charles-addon` | Turn crypto or Kalshi on or off |
 | `charles-copy <id>` | Copy settings from the leaderboard |
-| `charles-chat --cap <dollars>` | Set the chat's monthly cap |
+
+## Change it with Claude Code
+
+Charles is plain Python on your own server, so you can change anything about it. The easiest way is
+[Claude Code](https://www.anthropic.com/claude-code): describe the change in plain words, and it reads the code, makes the
+change and runs the tests. It needs a Claude subscription or Anthropic API credit (on your own bill), and a server with 4 GB
+of memory is comfortable.
+
+```
+curl -fsSL https://claude.ai/install.sh | bash
+exec bash
+cd ~/charles
+claude
+```
+
+Then ask things like:
+
+- *Why did Charles pick these stocks this month?*
+- *Backtest the plan with 6 picks instead of 4.*
+- *Add a card to the dashboard that shows my trades by month.*
+- *The dashboard won't load. Find out why and fix it.*
+
+The repo's `CLAUDE.md` tells Claude Code how Charles fits together and the rules to keep: practice money first, keys
+stay in `.env`, run the tests, keep your changes on a git branch so `charles-update` still works. Read what it changed
+before you keep it.
 
 ## Legal
 
@@ -72,7 +95,8 @@ Python, with a standard-library web server and plain HTML in `web/`.
 | `main.py`, `rebalancer.py`, `allocator.py` | The schedule, the daily check, and the plan's rules as pure functions |
 | `backtest_core.py`, `evaluate.py` | The simulation, and a monthly check of one-step changes to the plan |
 | `alpaca_executor.py`, `risk_manager.py`, `news_veto.py` | The paper account, the loss limit, the headline check |
-| `webdash.py`, `auth.py`, `control.py`, `updates.py`, `chat.py` | The dashboard, its login, its requests to the root job, updates, the chat |
+| `webdash.py`, `auth.py`, `control.py`, `updates.py` | The dashboard, its login, its requests to the root job, updates |
+| `stock_settings.py`, `crypto_settings.py` | Checking, applying and undoing a settings change (the sliders, Copy, self-tune) |
 | `crypto_*.py`, `kalshi/` | The add-ons |
 | `leaderboard/` | The board's server, its simulator and the client ([docs/leaderboard.md](docs/leaderboard.md)) |
 

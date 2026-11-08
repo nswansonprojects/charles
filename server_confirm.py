@@ -81,7 +81,6 @@ def run_confirmation() -> bool:
         ("ALPACA_API_KEY",      "Alpaca API Key",    "required"),
         ("ALPACA_SECRET_KEY",   "Alpaca Secret",     "required"),
         ("GROQ_API_KEY",        "Groq API Key",      "optional"),
-        ("ANTHROPIC_API_KEY",   "Anthropic (chat)",  "optional"),
     ]
 
     print(f"{BOLD}Current API Keys:{RESET}")

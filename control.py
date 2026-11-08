@@ -96,7 +96,7 @@ def dispatch(r: dict) -> str:
     import updates
     said = updates.queue(r["action"], "the dashboard", version=r.get("version"), confirm=r.get("confirm") is True,
                          settings=r.get("settings"), reason=r.get("reason") or "", config=r.get("config"),
-                         bot=r.get("bot") or "stocks", source=r.get("source") or "the chat")
+                         bot=r.get("bot") or "stocks", source=r.get("source") or "the dashboard")
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps({"at": _now(None).isoformat(), "action": r["action"], "by": "the dashboard",
                             "version": r.get("version"), "result": said}) + "\n")

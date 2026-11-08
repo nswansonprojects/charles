@@ -3,7 +3,7 @@ report_view.py — Claude's daily report as short findings, each with a small ch
 graph representations" instead of a wall of text behind a button).
 
 The check-up and the Kalshi review write a `## Findings` section, one line per finding:  - <chart> | <what it found>
-The chart is named, never drawn, by the report: its numbers come from the bot's own records, as in the chat. Only `bars:` carries
+The chart is named, never drawn, by the report: its numbers come from the bot's own records. Only `bars:` carries
 numbers of its own, the same ones the report would otherwise have put in a sentence. A report without the section (every report
 before 2026-10-31) is read from its bullets instead: their first sentence, and a chart picked from what that sentence is about.
 The full text stays one tap away.

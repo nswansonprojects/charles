@@ -1,5 +1,5 @@
 /* Alerts are always on. On a wide screen the window stays open beside the page, on every page, until the bell hides it (the
-   choice is remembered), and it shrinks to sit on top of the chat while the chat is open. While the window is hidden, and on
+   choice is remembered). While the window is hidden, and on
    a phone, a one-line bubble pops up in the header instead. Everything here comes from /api/alerts (webdash.alert_events),
    so it only ever shows what really happened.
    It's only for while the dashboard is open: nothing is pushed to a closed phone. */
@@ -151,7 +151,7 @@
   function makeList() {
     list = document.createElement("div");
     list.className = "alerts-panel"; list.hidden = true; list.setAttribute("role", "dialog"); list.setAttribute("aria-label", "Alerts");
-    list.innerHTML = `<div class="chat-head"><h2>Alerts</h2><button class="icon" id="alerts-close" type="button" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg></button></div><div class="alerts-list" id="alerts-list"></div>`;
+    list.innerHTML = `<div class="panel-head"><h2>Alerts</h2><button class="icon" id="alerts-close" type="button" aria-label="Close"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8"/></svg></button></div><div class="alerts-list" id="alerts-list"></div>`;
     document.body.append(list);
     document.getElementById("alerts-close").onclick = closeList;
     document.getElementById("alerts-list").addEventListener("click", ev => {   // a row opens in place to its whole message
@@ -198,7 +198,7 @@
   // On a phone it's a sheet over the page, so a tap elsewhere puts it away too; beside the page, only the bell does.
   const onSheet = () => listOpen() && !docked.matches;
   document.addEventListener("keydown", ev => { if (ev.key === "Escape" && onSheet()) closeList(); });
-  document.addEventListener("pointerdown", ev => { if (onSheet() && !ev.target.closest(".alerts-panel, #bell, #chat-open, .chat-panel, .chat-scrim")) closeList(); });
+  document.addEventListener("pointerdown", ev => { if (onSheet() && !ev.target.closest(".alerts-panel, #bell")) closeList(); });
 
   addEventListener("charles:tour-done", () => { settle(); if (listOpen()) fill(); check(); });
   document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });

@@ -98,8 +98,9 @@ class NoTelegram(BotTestCase):
             for name in files:
                 path = os.path.join(folder, name)
                 rel = os.path.relpath(path, ROOT)
-                if name.endswith((".png", ".db")) or name.startswith(".env") or rel in ("docs/redesign-plan.md", "ops/roadmap.md", "tests/test_alerts.py", "ops/droplet_test.py") or rel.startswith("docs/roadmap-"):
-                    continue          # the old plans are history
+                if name.endswith((".png", ".db")) or name.startswith(".env") or rel in ("docs/redesign-plan.md", "ops/roadmap.md", "tests/test_alerts.py", "ops/droplet_test.py",
+                                                                                   "marketing/check.py", "marketing/features.json") or rel.startswith("docs/roadmap-"):
+                    continue          # the old plans are history; marketing names it as a claim never to make
                 try:
                     if re.search("telegram", open(path, errors="ignore").read(), re.I):
                         found.append(rel)

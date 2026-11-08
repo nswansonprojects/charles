@@ -306,18 +306,18 @@ class CopyConfig(BotTestCase):
     CFG = {"id": "lb-1a2b3c", "name": "quiet", "bot": "stocks", "settings": {"PICKS": 2, "CORE_PCT": 0.8}}
 
     def test_stocks_change_only_what_differs_and_can_be_undone(self):
-        import chat
+        import stock_settings
         applied = []
-        self.patch(chat, "current_settings", lambda *a: {"PICKS": 4, "CORE_PCT": 0.8})
-        self.patch(chat, "apply_settings", lambda *a, **k: (applied.append((a, k)), (True, "done"))[1])
+        self.patch(stock_settings, "current_settings", lambda *a: {"PICKS": 4, "CORE_PCT": 0.8})
+        self.patch(stock_settings, "apply_settings", lambda *a, **k: (applied.append((a, k)), (True, "done"))[1])
         self.assertEqual(updates.copy_config("lb-1a2b3c", "the dashboard", fetch=lambda e: self.CFG), (True, "done"))
         self.assertEqual(applied[0][0][0], {"PICKS": 2})
         self.assertEqual(applied[0][1]["source"], "the leaderboard")
 
     def test_settings_already_in_place_change_nothing(self):
-        import chat
-        self.patch(chat, "current_settings", lambda *a: {"PICKS": 2, "CORE_PCT": 0.8})
-        self.patch(chat, "apply_settings", lambda *a, **k: self.fail("applied"))
+        import stock_settings
+        self.patch(stock_settings, "current_settings", lambda *a: {"PICKS": 2, "CORE_PCT": 0.8})
+        self.patch(stock_settings, "apply_settings", lambda *a, **k: self.fail("applied"))
         ok, said = updates.copy_config("lb-1a2b3c", "the dashboard", fetch=lambda e: self.CFG)
         self.assertTrue(ok)
         self.assertIn("already", said)

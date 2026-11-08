@@ -13,9 +13,6 @@ alpaca-py>=0.33.0
 # Leaderboard signatures (leaderboard/)
 cryptography>=42
 
-# The dashboard chat, on the user's own Anthropic key (chat.py)
-anthropic>=2.3,<3
-
 # Scheduling and settings
 apscheduler>=3.10.4
 python-dotenv>=1.0.0

@@ -29,7 +29,7 @@ LIMITS = {
     "AGG_VOL_EXIT":  (0.15, 0.35, float),
 }
 # Beyond the numbers above (owner 2026-11-03): the Custom Plan (portfolio.py) and the user's own choices. These are never
-# shared on the leaderboard or copied from it; the chat can't propose them (only the sliders can).
+# shared on the leaderboard or copied from it; only the sliders can set them.
 CUSTOM = ("INVESTED", "BLOCKS")      # how much is invested at all, and the user's own blocks
 OWN = ("SELF_TUNE", "PRESETS")       # self-tune on or off, and the user's saved presets
 KEYS = tuple(LIMITS) + CUSTOM + OWN

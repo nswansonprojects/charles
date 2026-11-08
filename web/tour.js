@@ -37,7 +37,7 @@
     {id: "bots", page: "home", sel: "#t-bots", mood: "think", reply: "Next",
      say: "Open a bot for its chart and holdings. Its Plan tab has the sliders, if you want to fine-tune."},
     {id: "help", page: "home", sel: "#t-help", reply: "Next",
-     say: "The bell lists what I've done. The chat is for questions. The gear has your keys and updates."},
+     say: "The bell lists what I've done. The gear has your keys and updates."},
     {id: "board", page: "home", sel: "#t-board", need: "#t-board", miss: "bye", mood: "wow", reply: "Take me there", skip: ["Skip this part", "bye"],
      say: "Next, the leaderboard. Other people run me too, each with their own settings. Let's take a look."},
 

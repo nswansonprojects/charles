@@ -5,7 +5,7 @@ import tempfile
 from datetime import datetime, timezone
 from unittest import mock
 
-import chat
+import stock_settings
 import crypto_settings
 import updates
 import webdash as wd
@@ -99,7 +99,7 @@ class Job(BotTestCase):
     def test_a_crypto_job_says_which_bot_and_runs_on_crypto(self):
         applied = []
         self.patch(crypto_settings, "apply_settings", lambda *a, **k: (applied.append((a, k)), (True, "done"))[1])
-        self.patch(chat, "apply_settings", lambda *a, **k: self.fail("the stock plan was changed"))
+        self.patch(stock_settings, "apply_settings", lambda *a, **k: self.fail("the stock plan was changed"))
         self.queue("apply-settings", settings={"TREND_DAYS": 150}, bot="crypto", source="the sliders")
         self.assertEqual((updates.read_job()["bot"], updates.read_job()["source"]), ("crypto", "the sliders"))
         self.assertEqual(updates.run_job(NOW), "done")
@@ -108,33 +108,33 @@ class Job(BotTestCase):
 
     def test_a_stock_job_from_the_sliders_says_so(self):
         applied = []
-        self.patch(chat, "check_settings", lambda c, *a, **k: c)
-        self.patch(chat, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
+        self.patch(stock_settings, "check_settings", lambda c, *a, **k: c)
+        self.patch(stock_settings, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
         self.queue("apply-settings", settings={"PICKS": 2}, source="the sliders")
         updates.run_job(NOW)
         self.assertEqual(applied[0]["source"], "the sliders")
         self.assertTrue(applied[0]["custom"])                  # only the sliders may change the custom plan
 
-    def test_the_chats_old_requests_still_work(self):
+    def test_a_request_without_a_source_cant_touch_the_custom_plan(self):
         applied = []
-        self.patch(chat, "check_settings", lambda c, *a, **k: c)
-        self.patch(chat, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
+        self.patch(stock_settings, "check_settings", lambda c, *a, **k: c)
+        self.patch(stock_settings, "apply_settings", lambda *a, **k: (applied.append(k), (True, "done"))[1])
         self.queue("apply-settings", settings={"PICKS": 2})
         updates.run_job(NOW)
-        self.assertEqual(applied[0]["source"], "the chat")
+        self.assertEqual(applied[0]["source"], "the dashboard")
         self.assertFalse(applied[0]["custom"])
 
     def test_crypto_undo_stays_on_crypto(self):
         undone = []
         self.patch(crypto_settings, "undo_settings", lambda *a, **k: (undone.append(a), (True, "undone"))[1])
-        self.patch(chat, "undo_settings", lambda *a, **k: self.fail("the stock plan was undone"))
+        self.patch(stock_settings, "undo_settings", lambda *a, **k: self.fail("the stock plan was undone"))
         self.queue("undo-settings", bot="crypto", source="the sliders")
         self.assertEqual(updates.run_job(NOW), "undone")
         self.assertTrue(undone)
 
     def test_what_the_queue_refuses(self):
         for k in ({"action": "apply-settings", "settings": {"PICKS": 2}, "bot": "kalshi"},
-                  {"action": "apply-settings", "settings": {"INVESTED": 0.5}, "bot": "crypto", "source": "the chat"},     # the chat never sets your own plan
+                  {"action": "apply-settings", "settings": {"INVESTED": 0.5}, "bot": "crypto", "source": "the dashboard"},     # only the sliders and self-tune set your own plan
                   {"action": "apply-settings", "settings": {"PICKS": 2}, "source": "someone"},
                   {"action": "apply-settings", "settings": {"MAX_DAILY_LOSS": 1}},
                   {"action": "apply-settings", "settings": {"FEE": 0}, "bot": "crypto"}):
@@ -191,7 +191,7 @@ class Dashboard(BotTestCase):
         state = {"rules": {"settings": {**PLAN, "PICKS": 3, "CASH_PCT": 0.0}}}
         with tempfile.TemporaryDirectory() as d, mock.patch.object(wd, "LEADERBOARD_BOT_DIR", d), mock.patch.object(wd, "STATE_FROM", "http://x"), \
                 mock.patch.object(wd, "_cached", return_value=state), mock.patch.object(wd.control, "request") as asked, \
-                mock.patch.object(chat, "_tell", side_effect=AssertionError("told someone")):
+                mock.patch.object(stock_settings, "_tell", side_effect=AssertionError("told someone")):
             v = wd.settings_view("stocks", None, None)
             self.assertEqual((v["settings"]["PICKS"], v["can"], v["test"], v["can_undo"]), (3, True, True, False))
             self.assertNotIn("CASH_PCT", v["settings"])                      # the live bot's value, and only real settings
@@ -215,15 +215,15 @@ class Dashboard(BotTestCase):
             self.assertEqual(wd.settings_view("crypto", None, None)["settings"]["BTC_PCT"], 0.6)
 
     def test_what_the_view_says_about_the_login(self):
-        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(chat, "last_change", return_value=None), \
+        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(stock_settings, "last_change", return_value=None), \
                 mock.patch.object(wd.auth, "access", return_value="open"):
             v = wd.settings_view("stocks", None, None)
             self.assertFalse(v["can"])
             self.assertIn("charles-login", v["why"])
-        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(chat, "last_change", return_value=None), \
+        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(stock_settings, "last_change", return_value=None), \
                 mock.patch.object(wd.auth, "access", return_value="public"), mock.patch.object(wd.auth, "check", return_value=None):
             self.assertIn("Log in", wd.settings_view("stocks", {}, None)["why"])
-        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(chat, "last_change", return_value=None), \
+        with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(stock_settings, "last_change", return_value=None), \
                 mock.patch.object(wd.auth, "access", return_value="public"), mock.patch.object(wd.auth, "check", return_value="sid"):
             v = wd.settings_view("stocks", {}, None)
             self.assertTrue(v["can"])
@@ -231,7 +231,7 @@ class Dashboard(BotTestCase):
 
     def test_the_view_gives_real_limits_and_the_default_plan(self):
         with mock.patch.object(wd, "LEADERBOARD_BOT_DIR", wd.ROOT), mock.patch.object(wd, "STATE_FROM", ""), mock.patch.object(wd.auth, "access", return_value="open"), \
-                mock.patch.object(chat, "last_change", return_value=None), mock.patch.object(crypto_settings, "last_change", return_value=None):
+                mock.patch.object(stock_settings, "last_change", return_value=None), mock.patch.object(crypto_settings, "last_change", return_value=None):
             s = wd.settings_view("stocks", None, None)
             self.assertEqual(s["limits"]["CORE_PCT"], {"min": 0.5, "max": 0.95})
             self.assertEqual(s["defaults"]["PICKS"], 4)

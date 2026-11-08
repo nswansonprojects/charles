@@ -13,8 +13,7 @@ Cancelling changes nothing and leaves the running bot alone.
 
 Non-interactive: `update_keys.py --set GROQ_API_KEY` reads the new value from
 stdin, saves it to .env, copies it into launch_authorized.json and restarts.
-It never prints key values. Allowed keys: those in CRED_FIELDS, and ENV_ONLY, which
-only the chat reads (fresh each time), so saving one needs no restart.
+It never prints key values. Allowed keys: those in CRED_FIELDS.
 Replaces start_server.py (2026-10-01), which stopped the service, rewrote
 launch_authorized.json with old defaults and ran the bot outside systemd.
 """
@@ -35,7 +34,6 @@ CRED_FIELDS = {
     "ALPACA_SECRET_KEY":  "alpaca_secret",
     "GROQ_API_KEY":       "groq_key",
 }
-ENV_ONLY = ("ANTHROPIC_API_KEY",)
 
 
 def sync_launch_flag(env_vals: dict, flag_path: str | None = None, only: str | None = None) -> list:
@@ -66,8 +64,8 @@ def sync_launch_flag(env_vals: dict, flag_path: str | None = None, only: str | N
 
 def set_key(env_key: str, value: str):
     """Non-interactive update of one key in .env (other entries kept)."""
-    if env_key not in CRED_FIELDS and env_key not in ENV_ONLY:
-        print(f"⛔ Unknown key {env_key}. Allowed: {', '.join((*CRED_FIELDS, *ENV_ONLY))}")
+    if env_key not in CRED_FIELDS:
+        print(f"⛔ Unknown key {env_key}. Allowed: {', '.join(CRED_FIELDS)}")
         sys.exit(2)
     if not value or any(c.isspace() for c in value):
         print("⛔ Empty value or value contains whitespace — nothing changed.")
@@ -79,10 +77,6 @@ def set_key(env_key: str, value: str):
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "--set" and sys.argv[2] in ENV_ONLY:
-        print(f"Paste your {sys.argv[2]} and press Enter (it stays on this server):", file=sys.stderr)
-        set_key(sys.argv[2], sys.stdin.readline().strip())
-        return
     if not os.path.exists(FLAG) and state_io.private_copy(HERE):
         print(f"⛔ {FLAG} is missing — the bot can't start without it. Restore it from a backup first.")
         sys.exit(1)

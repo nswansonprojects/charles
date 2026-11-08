@@ -2,7 +2,7 @@
 
 Version 2.0, effective November 7, 2026
 
-These terms are a contract between you and the people who develop Charles and run charles-bot.xyz ("Charles", "we", "us"). They cover the Charles software (the trading bot, its dashboard, installer, commands and add-ons), the website charles-bot.xyz, the leaderboard and its challenges, the paid "Set it up for me" service, and any help we give you. Our [Privacy Policy](https://charles-bot.xyz/privacy.html), [Risk Disclosure](https://charles-bot.xyz/risk.html) and [Refund Policy](https://charles-bot.xyz/refunds.html) are part of these terms.
+These terms are a contract between you and Charles LLC, Single member limited liability company ("Charles", "we", "us"). They cover the Charles software (the trading bot, its dashboard, installer, commands and add-ons), the website charles-bot.xyz, the leaderboard and its challenges, the paid "Set it up for me" service, and any help we give you. Our [Privacy Policy](https://charles-bot.xyz/privacy.html), [Risk Disclosure](https://charles-bot.xyz/risk.html) and [Refund Policy](https://charles-bot.xyz/refunds.html) are part of these terms.
 
 You accept these terms when you install Charles, when you buy the setup service, when you turn on live trading, or when you otherwise use Charles. If you don't agree, don't install or use Charles.
 
@@ -158,7 +158,7 @@ To the extent the law allows, you agree to defend and indemnify us against third
 
 ## 19. Governing law and courts
 
-These terms are governed by the laws of the U.S. state where our business is organized, without regard to conflict-of-laws rules, and by U.S. federal law; the Federal Arbitration Act governs section 18. For anything that goes to court instead of arbitration, you and we agree to the exclusive jurisdiction of the state and federal courts where our business is organized, except that you may always bring a claim in small claims court where you live. Nothing in these terms takes away a consumer protection right that the law where you live doesn't allow a contract to take away.
+These terms are governed by the laws of the State of Colorado, without regard to conflict-of-laws rules, and by U.S. federal law; the Federal Arbitration Act governs section 18. For anything that goes to court instead of arbitration, you and we agree to the exclusive jurisdiction of the state and federal courts located in Arapahoe County, Colorado, except that you may always bring a claim in small claims court where you live. Nothing in these terms takes away a consumer protection right that the law where you live doesn't allow a contract to take away.
 
 ## 20. Changes to these terms
 
@@ -178,7 +178,8 @@ These terms, with the Privacy Policy, the Risk Disclosure and the Refund Policy,
 
 ## 24. Contact
 
-- **Charles**
+- **Charles LLC**, Single member limited liability company
+- Mailing address: 7575 E Peakview Ave, Centennial, CO 80111
 - Email: [support@charles-bot.xyz](mailto:support@charles-bot.xyz)
 - Website: https://charles-bot.xyz
 

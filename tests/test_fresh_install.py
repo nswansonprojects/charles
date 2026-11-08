@@ -60,14 +60,12 @@ class Keys(BotTestCase):
         with self.assertRaises(SystemExit):
             self.run_keys(True, "--set", "ALPACA_API_KEY")
 
-    def test_the_menu_offers_the_chats_key(self):
-        """The guide's chat needs this key, and the menu was the first place the owner looked for it."""
+    def test_the_menu_has_no_chat_key(self):
+        """The dashboard chat is gone (owner 2026-11-07), so the key menu doesn't ask for an Anthropic key."""
         import server_confirm
         self.patch(server_confirm, "_load_env", lambda: {"ALPACA_API_KEY": "a", "ALPACA_SECRET_KEY": "b"})
-        saved = {}
-        self.patch(server_confirm, "_save_env", saved.update)
-        answers = iter(["2", "4", "sk-test", "4"])
-        with mock.patch("builtins.input", lambda *a: next(answers)), mock.patch("sys.stdout", io.StringIO()):
+        out = io.StringIO()
+        with mock.patch("builtins.input", lambda *a: "4"), mock.patch("sys.stdout", out):
             server_confirm.run_confirmation()
-        self.assertEqual(saved.get("ANTHROPIC_API_KEY"), "sk-test")
+        self.assertNotIn("Anthropic", out.getvalue())
 

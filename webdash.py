@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 import addons
 import auth
 import allocator
-import chat
+import stock_settings
 import config
 import connections
 import control
@@ -53,7 +53,7 @@ PAGE_TAB = {"/": "home", "/index.html": "home", "/stocks": "stocks", "/crypto/":
 CRYPTO_BACKTEST = os.path.join(ROOT, "docs", "crypto_backtest.json")
 BACKTEST = os.path.join(ROOT, "docs", "backtest.json")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
-STATIC = {"/style.css": "text/css; charset=utf-8", "/shell.css": "text/css; charset=utf-8", "/shell.js": "text/javascript; charset=utf-8", "/common.js": "text/javascript; charset=utf-8", "/board.js": "text/javascript; charset=utf-8", "/chat.js": "text/javascript; charset=utf-8", "/alerts.js": "text/javascript; charset=utf-8", "/tour.js": "text/javascript; charset=utf-8", "/feed.js": "text/javascript; charset=utf-8", "/report.js": "text/javascript; charset=utf-8", "/tune.js": "text/javascript; charset=utf-8", "/viz.js": "text/javascript; charset=utf-8", "/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
+STATIC = {"/style.css": "text/css; charset=utf-8", "/shell.css": "text/css; charset=utf-8", "/shell.js": "text/javascript; charset=utf-8", "/common.js": "text/javascript; charset=utf-8", "/board.js": "text/javascript; charset=utf-8", "/alerts.js": "text/javascript; charset=utf-8", "/tour.js": "text/javascript; charset=utf-8", "/feed.js": "text/javascript; charset=utf-8", "/report.js": "text/javascript; charset=utf-8", "/tune.js": "text/javascript; charset=utf-8", "/viz.js": "text/javascript; charset=utf-8", "/icon-180.png": "image/png", "/icon-192.png": "image/png", "/icon-512.png": "image/png"}
 # The login (auth.py). Cookie names carry the port: browsers send a host's cookies to all its ports, so
 # the dashboard (:8502) and the preview (:8504) would otherwise log each other out.
 SESSION_COOKIE, CSRF_COOKIE = f"charles_session_{PORT}", f"charles_csrf_{PORT}"
@@ -603,8 +603,8 @@ def accounts_state(on: dict | None = None, new: bool = False) -> dict:
 
 def control_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
     """POST /api/control {"action": "pause" | "resume" | "update" | "restore" | "check-updates" | "undo-settings"}:
-    leaves a request for the root service (control.py), which checks it again. "apply-settings" comes through
-    chat_apply. The gate has already checked the login and CSRF; with no login turned on, nobody may change anything."""
+    leaves a request for the root service (control.py), which checks it again. Settings changes come through
+    /api/settings. The gate has already checked the login and CSRF; with no login turned on, nobody may change anything."""
     if STATE_FROM:
         return 409, {"error": "This is a preview: it shows the live bot, so it can't change it."}
     if auth.access(cfg) == "open":
@@ -629,57 +629,6 @@ def control_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
     return 202, {"ok": True, "action": action}
 
 
-def chat_status(cfg: dict | None, cookie_header: str | None) -> dict:
-    """The chat drawer's first look: can it be used, and if not, what's the one step missing."""
-    saved = chat.demo_answers()
-    if saved:                     # a preview replaying saved answers: no key, no spending, so it needs no login
-        return {"enabled": True, "why": None, "demo": True, "starts": [a.get("q") for a in saved], "spend_usd": 0, "cap_usd": 0, "preview": True, "undo": False}
-    sid = auth.check(cfg, auth.cookies(cookie_header).get(SESSION_COOKIE))
-    return {**chat.status(auth.access(cfg), bool(sid), DATA), "preview": bool(STATE_FROM), "undo": bool(chat.last_change()) if not STATE_FROM else False}
-
-
-def chat_state():
-    return with_lessons(_cached("state", 10, _stocks_state) or {})
-
-
-def chat_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
-    """POST /api/chat {"messages": [...]}: one question, answered with the user's own Anthropic key."""
-    if chat.demo_answers():
-        try:
-            return 200, chat.demo_reply(json.loads(body).get("messages"))
-        except (ValueError, AttributeError):
-            return 400, {"ok": False, "error": "Couldn't read that message. Refresh the page and try again."}
-    if auth.access(cfg) == "open":
-        return 403, {"ok": False, "error": "The chat needs the dashboard login, or anyone could spend your money. Turn it on over SSH: charles-login"}
-    try:
-        return 200, chat.reply(json.loads(body).get("messages"), chat_state, DATA)
-    except chat.ChatError as e:
-        return 200, {"ok": False, "error": str(e)}
-    except (ValueError, AttributeError):
-        return 400, {"ok": False, "error": "Couldn't read that message. Refresh the page and try again."}
-
-
-def chat_apply_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
-    """POST /api/chat/apply {"settings": {...}, "reason": "..."}, or with "backtest": true to run the backtest of it
-    first. Checked here and again by the root service; the dashboard itself can't write the settings."""
-    if STATE_FROM:
-        return 409, {"ok": False, "error": "This is a preview: it shows the live bot, so it can't change its settings."}
-    if auth.access(cfg) == "open":
-        return 403, {"ok": False, "error": "Changing settings needs the dashboard login. Turn it on over SSH: charles-login"}
-    try:
-        req = json.loads(body)
-        changes = chat.check_settings(req.get("settings"))
-    except (ValueError, AttributeError) as e:
-        return 400, {"ok": False, "error": str(e) or "Couldn't read that change."}
-    action = "backtest-settings" if req.get("backtest") is True else "apply-settings"
-    try:
-        control.request(action, "the dashboard", settings=changes, reason=str(req.get("reason") or "")[:300])
-    except OSError as e:
-        log.warning(f"control request failed: {e}")
-        return 503, {"ok": False, "error": "The dashboard can't leave requests on this server yet (data/requests isn't writable)."}
-    return 202, {"ok": True, "action": action}
-
-
 # ── The Plan tab's sliders: GET and POST /api/settings ──
 
 def _test_files(bot: str) -> tuple[str, str]:
@@ -695,7 +644,7 @@ def _own_file(bot: str) -> dict:
     """The stock plan's file as it stands (the preview's test copy on a preview), for the user's own choices."""
     test, (path, _) = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)
     try:
-        return chat.current_settings(path if test and os.path.exists(path) else None)
+        return stock_settings.current_settings(path if test and os.path.exists(path) else None)
     except (OSError, ValueError):
         return {}
 
@@ -706,9 +655,9 @@ def plan_now(bot: str) -> dict:
     if bot == "crypto":
         return {k: v for k, v in crypto_settings.current(path if test else crypto_settings.PATH).items() if k in crypto_settings.PLAN_KEYS}
     if test and os.path.exists(path):
-        return {k: v for k, v in {**allocator.DEFAULTS, **chat.current_settings(path)}.items() if k in PLAN_KEYS}
+        return {k: v for k, v in {**allocator.DEFAULTS, **stock_settings.current_settings(path)}.items() if k in PLAN_KEYS}
     rules = ((_cached("state", 10, _stocks_state) or {}).get("rules") or {}).get("settings") if STATE_FROM else None
-    return {k: v for k, v in {**allocator.DEFAULTS, **(rules or chat.current_settings())}.items() if k in PLAN_KEYS}
+    return {k: v for k, v in {**allocator.DEFAULTS, **(rules or stock_settings.current_settings())}.items() if k in PLAN_KEYS}
 
 
 # ── The ticker search (the Custom Plan's "Add a ticker") ──
@@ -914,7 +863,7 @@ def _check_change(bot: str, changes) -> dict:
     test, path = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)[0]
     if bot == "crypto":
         return crypto_settings.check(changes, path if test else crypto_settings.PATH, custom=True)
-    return chat.check_settings(changes, path if test and os.path.exists(path) else None, custom=True)
+    return stock_settings.check_settings(changes, path if test and os.path.exists(path) else None, custom=True)
 
 
 def settings_change_test(bot: str, changes, reason: str = "", source: str = "the sliders") -> tuple[bool, str]:
@@ -925,7 +874,7 @@ def settings_change_test(bot: str, changes, reason: str = "", source: str = "the
                                               custom=source == "the sliders")
     if not os.path.exists(path):
         state_io.write_json(path, {"settings": plan_now("stocks")}, indent=2)
-    return chat.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False, custom=source == "the sliders")
+    return stock_settings.apply_settings(changes, "the preview", reason, path=path, source=source, history=history, tell=False, custom=source == "the sliders")
 
 
 def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
@@ -935,7 +884,7 @@ def settings_view(bot: str, cfg: dict | None, cookie: str | None) -> dict:
     limits, defaults = (strategy_settings.LIMITS, {k: allocator.DEFAULTS[k] for k in PLAN_KEYS}) if bot == "stocks" \
         else (crypto_settings.LIMITS, crypto_settings.defaults())
     test, history = LEADERBOARD_BOT_DIR != ROOT, _test_files(bot)[1]
-    changed = chat.last_change(history if test else None) if bot == "stocks" else crypto_settings.last_change(history if test else crypto_settings.HISTORY)
+    changed = stock_settings.last_change(history if test else None) if bot == "stocks" else crypto_settings.last_change(history if test else crypto_settings.HISTORY)
     why = None
     if not test:
         if STATE_FROM:
@@ -991,7 +940,7 @@ def settings_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
         path, history = _test_files(bot)
         try:
             if undo:
-                _, said = (chat.undo_settings("the preview", path=path, history=history, tell=False) if bot == "stocks"
+                _, said = (stock_settings.undo_settings("the preview", path=path, history=history, tell=False) if bot == "stocks"
                            else crypto_settings.undo_settings("the preview", path=path, history=history, tell=False))
             else:
                 _, said = settings_change_test(bot, changes)
@@ -1050,7 +999,6 @@ def shell(page: bytes, on: dict, current: str) -> bytes:
     items = [n for n in NAV if on.get(n[0], True)]
     links = "".join(f'<a href="{h}"{" class=on aria-current=page" if k == current else ""}>{_I % d}<span>{t}</span></a>' for k, h, t, d in items)
     gear = '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.9 2.9l-.1-.1a1.7 1.7 0 0 0-2.9 1.2V21a2 2 0 0 1-4 0v-.1a1.7 1.7 0 0 0-2.9-1.2l-.1.1a2 2 0 1 1-2.9-2.9l.1-.1A1.7 1.7 0 0 0 3 14H3a2 2 0 0 1 0-4h.1a1.7 1.7 0 0 0 1.2-2.9l-.1-.1a2 2 0 1 1 2.9-2.9l.1.1A1.7 1.7 0 0 0 10 3V3a2 2 0 0 1 4 0v.1a1.7 1.7 0 0 0 2.9 1.2l.1-.1a2 2 0 1 1 2.9 2.9l-.1.1a1.7 1.7 0 0 0 1.2 2.9H21a2 2 0 0 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/>'
-    chat_ic = '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>'
     bell = '<path d="M6 9a6 6 0 0 1 12 0c0 6 2.5 8 2.5 8h-17S6 15 6 9zM10 20.5a2.2 2.2 0 0 0 4 0"/>'
     moon = '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>'     # light and dark in one tap (owner 2026-11-04); Settings still has all three
     head = (f'<header class="shell" data-page="{current}"><div class="bar">'
@@ -1059,7 +1007,6 @@ def shell(page: bytes, on: dict, current: str) -> bytes:
             f'<div class="bar-end" id="t-help"><a class="status" id="st-bot" href="/#t-run"><span class="dot"></span><span>…</span></a>'
             f'<button class="ibtn" id="theme-tg" type="button" aria-label="Dark mode" title="Dark mode">{_I % moon}</button>'
             f'<button class="ibtn bell" id="bell" type="button" aria-label="Alerts" title="Alerts">{_I % bell}<span class="bell-n" id="bell-n" hidden></span></button>'
-            f'<button class="ibtn" id="chat-open" type="button" aria-label="Ask Charles" title="Ask Charles">{_I % chat_ic}</button>'
             f'<a class="ibtn{" on" if current == "settings" else ""}" href="/settings" aria-label="Settings" title="Settings">{_I % gear}</a></div>'
             f'</div></header>').encode()
     page, found = re.subn(rb"<header\b.*?</header>", lambda _: head, page, count=1, flags=re.S)
@@ -1068,7 +1015,7 @@ def shell(page: bytes, on: dict, current: str) -> bytes:
     # The theme is set before the page paints; it's chosen on Settings.
     extra = (f'<link href="{FONTS}" rel="stylesheet"><link rel="stylesheet" href="/shell.css">'
              '<script>try{var t=localStorage.getItem("charles-theme");if(t)document.documentElement.dataset.theme=t}catch(e){}</script>').encode()
-    foot = (f'<nav class="appnav" aria-label="Main">{links}</nav><script src="/shell.js" defer></script><script src="/tour.js" defer></script><script src="/alerts.js" defer></script><script src="/chat.js" defer></script><script src="/feed.js" defer></script><script src="/report.js" defer></script>').encode()
+    foot = (f'<nav class="appnav" aria-label="Main">{links}</nav><script src="/shell.js" defer></script><script src="/tour.js" defer></script><script src="/alerts.js" defer></script><script src="/feed.js" defer></script><script src="/report.js" defer></script>').encode()
     return page.replace(b"</head>", extra + b"</head>", 1).replace(b"</body>", foot + b"</body>", 1)
 
 
@@ -1400,7 +1347,7 @@ def home_state(on: dict | None = None, new: bool = False) -> dict:
     stocks = {} if new else _cached("state", 10, _stocks_state)
     view = home_view(stocks, _cached("crypto_state", 10, build_crypto_state) if on["crypto"] else None,
                      kalshi_for_home() if on["kalshi"] else None, [] if new else notices()["notices"], on, now)
-    changed = not new and bool(chat.last_change(_test_files("stocks")[1] if LEADERBOARD_BOT_DIR != ROOT else None))
+    changed = not new and bool(stock_settings.last_change(_test_files("stocks")[1] if LEADERBOARD_BOT_DIR != ROOT else None))
     return {**view, "setup": setup_view(stocks or {}, changed, now, new)}
 
 
@@ -1727,10 +1674,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._login(parse_qs(query).get("t", [""])[0], use=False)
         if path == "/logout":
             return self._redirect("/", [set_cookie(SESSION_COOKIE, "", 0), set_cookie(CSRF_COOKIE, "", 0, http_only=False)])
-        if path == "/api/chat/status":
-            if self._stopped("GET", path):
-                return
-            return self._json(200, chat_status(_cached("auth", 5, auth.load), self.headers.get("Cookie")))
         if path == "/api/session":
             cfg = _cached("auth", 5, auth.load)
             return self._json(200, {"access": auth.access(cfg), "logged_in": bool(
@@ -1813,13 +1756,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         if path not in ("/login", "/api/control", "/kalshi/api/mode", "/api/leaderboard/submit", "/api/leaderboard/withdraw",
-                        "/api/chat", "/api/chat/apply", "/api/challenge/enter", "/api/challenge/withdraw", "/api/leaderboard/copy", "/api/settings"):
+                        "/api/challenge/enter", "/api/challenge/withdraw", "/api/leaderboard/copy", "/api/settings"):
             return self._send(404, b"not found", "text/plain")
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = -1
-        if not 0 < n <= {"/api/chat": 64_000, "/api/chat/apply": 2048, "/api/settings": 60_000}.get(path, 256):
+        if not 0 < n <= {"/api/settings": 60_000}.get(path, 256):
             return self._send(413, b"too big", "text/plain")
         body = self.rfile.read(n)
         if path == "/login":
@@ -1834,10 +1777,6 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(*challenge_post(body, withdraw=True))
         if path == "/api/leaderboard/copy":
             return self._json(*leaderboard_copy(body, _cached("auth", 5, auth.load)))
-        if path == "/api/chat":
-            return self._json(*chat_post(body, _cached("auth", 5, auth.load)))
-        if path == "/api/chat/apply":
-            return self._json(*chat_apply_post(body, _cached("auth", 5, auth.load)))
         if path == "/api/settings":
             return self._json(*settings_post(body, _cached("auth", 5, auth.load)))
         if path == "/kalshi/api/mode":

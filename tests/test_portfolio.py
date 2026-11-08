@@ -6,7 +6,7 @@ import os
 from base import BotTestCase
 
 import allocator as al
-import chat
+import stock_settings
 import portfolio as pf
 import rebalancer as rb
 import strategy_settings
@@ -219,20 +219,20 @@ class Sharing(BotTestCase):
         with open(self.path) as f:
             self.assertNotIn("BLOCKS", json.load(f)["settings"])
 
-    def test_the_chat_cant_set_tickers_but_the_sliders_can(self):
+    def test_only_the_sliders_can_set_tickers(self):
         with self.assertRaises(ValueError):
-            chat.check_settings({"BLOCKS": BLOCKS}, self.path)
-        self.assertEqual(chat.check_settings({"PICKS": 3}, self.path), {"PICKS": 3})        # the file's own blocks don't block the chat
-        self.assertEqual(chat.check_settings({"INVESTED": 0.7}, self.path, custom=True), {"INVESTED": 0.7})
+            stock_settings.check_settings({"BLOCKS": BLOCKS}, self.path)
+        self.assertEqual(stock_settings.check_settings({"PICKS": 3}, self.path), {"PICKS": 3})        # the file's own blocks don't block other changes
+        self.assertEqual(stock_settings.check_settings({"INVESTED": 0.7}, self.path, custom=True), {"INVESTED": 0.7})
 
     def test_apply_and_undo_a_custom_change(self):
         hist = os.path.join(self.tmp, "hist.jsonl")
-        ok, said = chat.apply_settings({"BLOCKS": None, "INVESTED": 0.5}, "test", path=self.path, history=hist, tell=False, custom=True,
+        ok, said = stock_settings.apply_settings({"BLOCKS": None, "INVESTED": 0.5}, "test", path=self.path, history=hist, tell=False, custom=True,
                                        source="the sliders")
         self.assertTrue(ok)
         self.assertIn("Your blocks 3 blocks (Index funds, Energy, Tech) → the default plan", said)
         self.assertIn("Invested 100% → 50%", said)
-        chat.undo_settings("test", path=self.path, history=hist, tell=False)
+        stock_settings.undo_settings("test", path=self.path, history=hist, tell=False)
         with open(self.path) as f:
             self.assertEqual(json.load(f)["settings"]["BLOCKS"], BLOCKS)
 
@@ -339,7 +339,7 @@ class Dashboard(BotTestCase):
         with tempfile.TemporaryDirectory() as d, mock.patch.object(wd, "LEADERBOARD_BOT_DIR", d), mock.patch.object(wd, "STATE_FROM", "http://x"), \
                 mock.patch.object(wd, "_cached", side_effect=lambda k, t, f: state if k == "state" else [] if k == "alpaca_assets" else f()), \
                 mock.patch.object(wd.control, "request", side_effect=AssertionError("left a request")), \
-                mock.patch.object(chat, "_tell", side_effect=AssertionError("told someone")):
+                mock.patch.object(stock_settings, "_tell", side_effect=AssertionError("told someone")):
             v = wd.settings_view("stocks", None, None)
             self.assertEqual((v["settings"]["BLOCKS"], v["settings"]["INVESTED"], v["self_tune"], v["presets"]), (None, 1.0, True, []))
             self.assertEqual(v["limits"]["INVESTED"], {"min": 0.1, "max": 1.0})

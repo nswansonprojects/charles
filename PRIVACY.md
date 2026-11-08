@@ -2,7 +2,7 @@
 
 Version 2.0, effective November 7, 2026
 
-This policy explains what information the people who develop Charles and run charles-bot.xyz ("Charles", "we", "us") collects through the website charles-bot.xyz, the leaderboard, the paid "Set it up for me" service and emails with us, what we do with it, and your choices. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html).
+This policy explains what information Charles LLC, Single member limited liability company ("Charles", "we", "us") collects through the website charles-bot.xyz, the leaderboard, the paid "Set it up for me" service and emails with us, what we do with it, and your choices. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html).
 
 **The short version.**
 
@@ -93,6 +93,7 @@ When we change this policy, we'll update the version and effective date at the t
 
 ## 13. Contact
 
-- **Charles**
+- **Charles LLC**, Single member limited liability company
+- Mailing address: 7575 E Peakview Ave, Centennial, CO 80111
 - Email: [support@charles-bot.xyz](mailto:support@charles-bot.xyz)
 - Website: https://charles-bot.xyz

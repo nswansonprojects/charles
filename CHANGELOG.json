@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.6.0",
+   "date": "2026-11-08",
+   "kind": "fix",
+   "notes": [
+    "The dashboard's chat (Ask Charles) is gone, and so is the Anthropic key it needed. The sliders, presets, Copy and Undo work as before, and how Charles trades doesn't change.",
+    "To change Charles in plain words, use Claude Code on your own server. Your Charles folder now has a CLAUDE.md that tells Claude Code how Charles fits together and what's safe to change. The README and the setup guide show how to start.",
+    "charles-keys no longer asks for an Anthropic key. A key you added before is simply unused.",
+    "The Terms, Privacy Policy and Risk Disclosure now name the seller, Charles LLC, and its address. The Terms are still version 2.0, so there's nothing new to accept."
+   ]
+  },
+  {
    "version": "v1.5.0",
    "date": "2026-11-07",
    "kind": "rule",

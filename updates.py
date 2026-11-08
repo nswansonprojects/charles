@@ -41,8 +41,8 @@ PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
 ET = ZoneInfo("America/New_York")
 VERSION_RE = re.compile(r"^v(\d{1,4})\.(\d{1,4})\.(\d{1,4})\Z")
 SETTINGS_FILES = ("strategy.json", "crypto.json")     # the user's own settings: an update keeps their changes
-SOURCES = ("the chat", "the sliders", "self-tune")    # where a settings change came from, for its note in the file
-CUSTOM_SOURCES = ("the sliders", "self-tune")         # these may change the Custom Plan; the chat never can
+SOURCES = ("the dashboard", "the sliders", "self-tune")    # where a settings change came from, for its note in the file
+CUSTOM_SOURCES = ("the sliders", "self-tune")         # these may change the Custom Plan; a request without a source never can
 # Anything here can change what gets bought or sold, so moving across it needs the confirm screen,
 # whatever the changelog calls the release.
 RULE_FILES = ("allocator.py", "rebalancer.py", "risk_manager.py", "news_veto.py", "alpaca_executor.py", "config.py",
@@ -258,7 +258,7 @@ def _check_target(action: str, version, confirm: bool, now: datetime | None) -> 
 
 
 def queue(action: str, by: str, version=None, confirm: bool = False, settings=None, reason: str = "",
-          now: datetime | None = None, start=None, config=None, bot: str = "stocks", source: str = "the chat") -> str:
+          now: datetime | None = None, start=None, config=None, bot: str = "stocks", source: str = "the dashboard") -> str:
     """Check a request and leave it for charles-updater.service. Returns what happened, in a sentence."""
     now = now or datetime.now(timezone.utc)
     if job_active(now.timestamp()):
@@ -275,9 +275,9 @@ def queue(action: str, by: str, version=None, confirm: bool = False, settings=No
                 raise UpdateError("Unknown source of a settings change.")
             job.update(bot=bot, source=source)
             if action != "undo-settings":
-                import chat
+                import stock_settings
                 import crypto_settings
-                job.update(settings=chat.check_settings(settings, custom=source in CUSTOM_SOURCES) if bot == "stocks"
+                job.update(settings=stock_settings.check_settings(settings, custom=source in CUSTOM_SOURCES) if bot == "stocks"
                            else crypto_settings.check(settings, custom=source in CUSTOM_SOURCES),
                            reason=str(reason or "")[:300])
         elif action == "copy-config":
@@ -305,8 +305,8 @@ def copy_config(entry: str, by: str, now: datetime | None = None, fetch=None, ro
     cfg = (fetch or client.fetch)(entry)
     reason = f"copied {cfg['id']} ({cfg['name']})"
     if cfg["bot"] == "stocks":
-        import chat
-        now_set = chat.current_settings()
+        import stock_settings
+        now_set = stock_settings.current_settings()
         changes = {k: v for k, v in cfg["settings"].items() if now_set.get(k) != v}
         # a copy is that plan: the user's own blocks and the money they kept aside go (Undo brings them back)
         if now_set.get("BLOCKS"):
@@ -315,7 +315,7 @@ def copy_config(entry: str, by: str, now: datetime | None = None, fetch=None, ro
             changes["INVESTED"] = 1.0
         if not changes:
             return True, "You already use these settings."
-        return chat.apply_settings(changes, by, reason, now, source="the leaderboard", custom=True)
+        return stock_settings.apply_settings(changes, by, reason, now, source="the leaderboard", custom=True)
     import crypto_settings
     path, history = os.path.join(root, "crypto.json"), os.path.join(root, "data", "crypto_settings_history.jsonl")
     now_set = crypto_settings.current(path)
@@ -484,10 +484,10 @@ def run_job(now: datetime | None = None, **steps) -> str | None:
                                                           custom=job.get("source") in CUSTOM_SOURCES) \
                     if action == "apply-settings" else crypto_settings.undo_settings(who, now)
             else:
-                import chat
-                ok, said = chat.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the chat",
+                import stock_settings
+                ok, said = stock_settings.apply_settings(job.get("settings"), who, job.get("reason") or "", now, source=job.get("source") or "the dashboard",
                                                custom=job.get("source") in CUSTOM_SOURCES) \
-                    if action == "apply-settings" else chat.undo_settings(who, now)
+                    if action == "apply-settings" else stock_settings.undo_settings(who, now)
         elif action == "copy-config":
             ok, said = copy_config(job.get("config"), job.get("by") or "the dashboard", now)
         elif action == "backtest-settings" and job.get("bot") == "crypto":
@@ -495,8 +495,8 @@ def run_job(now: datetime | None = None, **steps) -> str | None:
             extra["backtest"] = crypto_backtest.compare(job.get("settings"))
             ok, said = True, "The backtest is done."
         elif action == "backtest-settings":
-            import chat
-            extra["backtest"] = chat.backtest(job.get("settings"), custom=job.get("source") in CUSTOM_SOURCES)
+            import stock_settings
+            extra["backtest"] = stock_settings.backtest(job.get("settings"), custom=job.get("source") in CUSTOM_SOURCES)
             ok, said = True, "The backtest is done."
         else:
             ok, said = True, "Checked for updates."
