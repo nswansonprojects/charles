@@ -2,7 +2,7 @@
 auth.py — the dashboard login (owner's Phase 3 plan, 2026-10-29; charles-audit/phase3-design.md §3).
 
 No passwords and no account with us. Over SSH, `charles-login` prints a link that works once, within 10
-minutes. Opening it and tapping "Log in" keeps that browser logged in for 30 days.
+minutes. Opening it and tapping "Log in" keeps that browser logged in for 30 days, renewed while it's used.
 
     charles-login                a login link (the first run turns the login on, in public mode)
     charles-login --private      only a logged-in browser can see the dashboard (new installs)
@@ -41,6 +41,7 @@ MODES = {"private": "only a logged-in browser can see it",
          "open": "no login: anyone can see and change things"}
 LINK_SECONDS = 10 * 60
 SESSION_SECONDS = 30 * 86400
+RENEW_AFTER = 24 * 3600            # a session used a day or more after it began is renewed for 30 days from then
 _lock = threading.Lock()
 
 
@@ -118,6 +119,19 @@ def check(cfg: dict | None, value: str | None, now: float | None = None) -> str 
     return sid if hmac.compare_digest(sig, _sign(cfg["secret"], f"s|{sid}|{exp}")) else None
 
 
+def renew(cfg: dict | None, value: str | None, now: float | None = None) -> str | None:
+    """A browser that keeps using the dashboard stays logged in: once a session is RENEW_AFTER old, the same session gets
+    a fresh 30 days (same id, so the page's CSRF token still works). None when it's not due, or not valid."""
+    sid = check(cfg, value, now)
+    if not sid:
+        return None
+    now = time.time() if now is None else now
+    if int(value.split(".")[1]) - now > SESSION_SECONDS - RENEW_AFTER:
+        return None
+    exp = int(now + SESSION_SECONDS)
+    return f"{sid}.{exp}.{_sign(cfg['secret'], f's|{sid}|{exp}')}"
+
+
 def csrf(cfg: dict, sid: str) -> str:
     """The token a logged-in page sends with every change (X-CSRF-Token), tied to its session."""
     return _sign(cfg["secret"], f"c|{sid}")
@@ -180,7 +194,7 @@ def main(argv: list[str], path: str | None = None) -> int:
     if token:
         url = base_url(a.port)
         print(f"\n🔑 Open this within 10 minutes on the phone or computer you'll use. It works once:\n\n   {url}/login?t={token}\n")
-        print("That browser stays logged in for 30 days. To log every browser out: charles-login --logout-all")
+        print("That browser stays logged in while it's used (30 days from its last visit). To log every browser out: charles-login --logout-all")
         if url.startswith("http://"):
             print("Note: over http://, someone on the same Wi-Fi could copy the login. HTTPS fixes that.")
     return 0

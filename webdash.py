@@ -35,6 +35,7 @@ import crypto_plan
 import crypto_settings
 import equity_tracker
 import feed
+import keypage
 import lessons
 import live
 import news_feed
@@ -1062,7 +1063,7 @@ def auth_page(kind: str, token: str = "") -> bytes:
     a link checker or chat preview opening it doesn't use it up) and "expired"."""
     no_ref = '\n<meta name="referrer" content="no-referrer">'           # the link's token stays out of Referer headers
     if kind == "confirm":
-        return _page("Log in to Charles", f"""    <p style="margin-top:0">Log in on this phone or computer? It stays logged in for 30 days.</p>
+        return _page("Log in to Charles", f"""    <p style="margin-top:0">Log in on this phone or computer? It stays logged in while you use it: 30 days from your last visit.</p>
     <form method="post" action="/login"><input type="hidden" name="t" value="{html.escape(token)}">
       <button type="submit" style="font:inherit;font-weight:600;padding:10px 18px;border-radius:10px;border:0;background:var(--series-1);color:#fff;cursor:pointer">Log in</button></form>
     <p class="note" style="margin-bottom:0">To log every browser out later, run <code>charles-login --logout-all</code> on your server.</p>""", no_ref)
@@ -1071,7 +1072,7 @@ def auth_page(kind: str, token: str = "") -> bytes:
     {_code("charles-login")}""", no_ref)
     return _page("This dashboard is private", f"""    <p style="margin-top:0">Charles keeps your portfolio private. To open it, log in to your server over SSH and run:</p>
     {_code("charles-login")}
-    <p class="note" style="margin-bottom:0">It prints a link that works once, within 10 minutes. The phone or computer you open it on stays logged in for 30 days.</p>""", no_ref)
+    <p class="note" style="margin-bottom:0">It prints a link that works once, within 10 minutes. The phone or computer you open it on stays logged in while you use it.</p>""", no_ref)
 
 
 def gate(method: str, path: str, cfg: dict | None, cookie_header: str | None, csrf_header: str | None,
@@ -1093,6 +1094,65 @@ def gate(method: str, path: str, cfg: dict | None, cookie_header: str | None, cs
 def set_cookie(name: str, value: str, max_age: int, http_only: bool = True, secure: bool = False) -> str:
     return (f"{name}={value}; Path=/; Max-Age={max_age}; SameSite=Lax" + ("; HttpOnly" if http_only else "")
             + ("; Secure" if secure else ""))
+
+
+# ── The paid setup's key page (keypage.py): /keys ──
+KEYS_POSTS = ("/keys/check", "/keys/add", "/keys/status")
+KEYS_TRIES = 12                          # tries per 10 minutes, for every browser together
+_keys_lock = threading.Lock()
+_keys_tries: list = []
+_keys_logged_in: set = set()             # codes whose browser was logged in already (only once each)
+
+
+def keys_post(path: str, body: bytes, https: bool, now: float | None = None) -> tuple[int, dict, bool]:
+    """POST /keys/check {t}, /keys/add {t, key, secret} and /keys/status {t, attempt}. Returns (status, reply, log the
+    browser in). The code comes in the body, never the address, so it's in no log. Keys only over HTTPS; this
+    sandbox only checks the code and leaves a root-only request: control.py checks it all again, tries the keys and
+    writes .env."""
+    now = time.time() if now is None else now
+    if STATE_FROM:
+        return 409, {"error": "This is a preview: it can't take keys."}, False
+    try:
+        req = json.loads(body)
+        code = str(req.get("t") or "")
+    except (ValueError, AttributeError):
+        return 400, {"error": "Unknown request."}, False
+    st = keypage.state(code, now)
+    if path == "/keys/check":
+        return 200, {"state": st, "https": https}, False
+    if path == "/keys/status":
+        attempt = str(req.get("attempt") or "")
+        got = keypage.outcome(attempt) if keypage.ATTEMPT_RE.fullmatch(attempt) else None
+        if not got:
+            return 200, {"state": "waiting"}, False
+        if not got.get("ok"):
+            return 200, {"state": "bad", "message": got.get("message")}, False
+        with _keys_lock:
+            give = https and keypage.login_due(code, _keys_logged_in, now)
+            if give:
+                _keys_logged_in.add(keypage.code_hash(code))
+        return 200, {"state": "done", "message": got.get("message"), "go": "/"}, give
+    if not https:
+        return 403, {"error": "Keys only go over HTTPS. Open this page's https:// address."}, False
+    if st != "open":
+        return 410, {"error": "Your keys are already in." if st == "done" else
+                     "This key page has closed. Add your keys over SSH instead: nano ~/charles/.env, then charles-start."}, False
+    with _keys_lock:
+        _keys_tries[:] = [t for t in _keys_tries if now - t < 600]
+        if len(_keys_tries) >= KEYS_TRIES:
+            return 429, {"error": "Too many tries. Wait 10 minutes and try again."}, False
+        _keys_tries.append(now)
+    try:
+        key, secret = keypage.tidy(req.get("key"), req.get("secret"))
+    except ValueError as e:
+        return 400, {"error": str(e)}, False
+    attempt = os.urandom(8).hex()
+    try:
+        control.request("set-keys", "the key page", code=code, key=key, secret=secret, attempt=attempt)
+    except OSError as e:
+        log.warning(f"key page request failed: {type(e).__name__}")
+        return 503, {"error": "Your server couldn't take the keys here. Add them over SSH instead: nano ~/charles/.env, then charles-start."}, False
+    return 202, {"ok": True, "attempt": attempt}, False
 
 
 def with_csrf(page: bytes) -> bytes:
@@ -1615,12 +1675,16 @@ def challenge_post(body: bytes, withdraw: bool = False):
 
 
 class Handler(BaseHTTPRequestHandler):
+    _renewed: tuple = ()
+
     def _send(self, code, body: bytes, ctype):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        for c in self._renewed:
+            self.send_header("Set-Cookie", c)
         self.end_headers()
         self.wfile.write(body)
 
@@ -1664,9 +1728,38 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200 if ok else 410, auth_page("confirm" if ok else "expired", token), "text/html; charset=utf-8")
         if not auth.take_link(cfg, token, _links_used):
             return self._send(410, auth_page("expired"), "text/html; charset=utf-8")
+        self._redirect("/", self._session_cookies(cfg))
+
+    def _session_cookies(self, cfg: dict | None) -> list:
+        """A new 30-day login for this browser: its session cookie and the CSRF token its pages send."""
+        if auth.access(cfg) == "open":
+            return []
         value, secure = auth.session(cfg), self.headers.get("X-Forwarded-Proto") == "https"
-        self._redirect("/", [set_cookie(SESSION_COOKIE, value, auth.SESSION_SECONDS, True, secure),
-                             set_cookie(CSRF_COOKIE, auth.csrf(cfg, value.split(".")[0]), auth.SESSION_SECONDS, False, secure)])
+        return [set_cookie(SESSION_COOKIE, value, auth.SESSION_SECONDS, True, secure),
+                set_cookie(CSRF_COOKIE, auth.csrf(cfg, value.split(".")[0]), auth.SESSION_SECONDS, False, secure)]
+
+    def _renew(self):
+        """A page opened by a logged-in browser keeps its login going (auth.renew): no terminal needed after 30 days."""
+        cfg = _cached("auth", 5, auth.load)
+        value = auth.cookies(self.headers.get("Cookie")).get(SESSION_COOKIE)
+        fresh = auth.renew(cfg, value)
+        if fresh:
+            secure = self.headers.get("X-Forwarded-Proto") == "https"
+            self._renewed = (set_cookie(SESSION_COOKIE, fresh, auth.SESSION_SECONDS, True, secure),
+                             set_cookie(CSRF_COOKIE, auth.csrf(cfg, fresh.split(".")[0]), auth.SESSION_SECONDS, False, secure))
+
+    def _keys(self, path: str, body: bytes):
+        code, reply, give = keys_post(path, body, self.headers.get("X-Forwarded-Proto") == "https")
+        cookies = self._session_cookies(auth.load()) if give else []
+        data = json.dumps(reply).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.send_header("Cache-Control", "no-store")
+        for c in cookies:
+            self.send_header("Set-Cookie", c)
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_GET(self):
         path, _, query = self.path.partition("?")
@@ -1674,6 +1767,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._login(parse_qs(query).get("t", [""])[0], use=False)
         if path == "/logout":
             return self._redirect("/", [set_cookie(SESSION_COOKIE, "", 0), set_cookie(CSRF_COOKIE, "", 0, http_only=False)])
+        if path == "/keys":                  # only on a server the paid setup made (keypage.arm); the page asks about its code itself
+            if not keypage.read() or STATE_FROM:
+                return self._send(404, b"not found", "text/plain")
+            with open(os.path.join(ROOT, "web", "keys.html"), "rb") as f:
+                return self._send(200, f.read(), "text/html; charset=utf-8")
         if path == "/api/session":
             cfg = _cached("auth", 5, auth.load)
             return self._json(200, {"access": auth.access(cfg), "logged_in": bool(
@@ -1684,6 +1782,7 @@ class Handler(BaseHTTPRequestHandler):
             off = "off" in query
             return self._redirect("/", [f"preview_new={'0' if off else '1'}; Path=/; Max-Age={0 if off else 86400}; SameSite=Lax"])
         if path in PAGES:
+            self._renew()
             on = self._on()
             if path == "/crypto/" and not on["crypto"]:
                 return self._send(200, addon_off_page("crypto"), "text/html; charset=utf-8")
@@ -1756,17 +1855,19 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0]
         if path not in ("/login", "/api/control", "/kalshi/api/mode", "/api/leaderboard/submit", "/api/leaderboard/withdraw",
-                        "/api/challenge/enter", "/api/challenge/withdraw", "/api/leaderboard/copy", "/api/settings"):
+                        "/api/challenge/enter", "/api/challenge/withdraw", "/api/leaderboard/copy", "/api/settings") + KEYS_POSTS:
             return self._send(404, b"not found", "text/plain")
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = -1
-        if not 0 < n <= {"/api/settings": 60_000}.get(path, 256):
+        if not 0 < n <= {"/api/settings": 60_000}.get(path, 1024 if path in KEYS_POSTS else 256):
             return self._send(413, b"too big", "text/plain")
         body = self.rfile.read(n)
         if path == "/login":
             return self._login(parse_qs(body.decode("utf-8", "replace")).get("t", [""])[0], use=True)
+        if path in KEYS_POSTS:               # the code in the body is this page's login
+            return self._keys(path, body)
         if self._stopped("POST", path):
             return
         if path == "/api/control":

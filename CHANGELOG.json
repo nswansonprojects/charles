@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.7.0",
+   "date": "2026-11-09",
+   "kind": "fix",
+   "notes": [
+    "A server made by \"Set it up for me\" has a key page: paste your Alpaca paper keys on a page on your own server, press Start Charles, and your dashboard opens, logged in. No terminal needed. The keys go only from your browser to your server, and the page works once, for a day, only over HTTPS.",
+    "A free install has no key page and works as before: nano, charles-start, charles-login.",
+    "The dashboard login now renews itself while you use it, so a browser you open at least once every 30 days stays logged in.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.6.0",
    "date": "2026-11-08",
    "kind": "fix",

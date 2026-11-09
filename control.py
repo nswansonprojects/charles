@@ -31,7 +31,8 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 REQ_DIR = os.path.join(ROOT, "data", "requests")
 PAUSE_FILE = os.path.join(ROOT, "data", "paused.json")
 LOG_FILE = os.path.join(ROOT, "data", "control.jsonl")
-ACTIONS = ("pause", "resume", "update", "restore", "check-updates", "apply-settings", "undo-settings", "backtest-settings", "copy-config")
+ACTIONS = ("pause", "resume", "update", "restore", "check-updates", "apply-settings", "undo-settings", "backtest-settings", "copy-config",
+           "set-keys")
 MAX_REQUEST = 65536                      # bytes; most are a few dozen, a custom plan with its saved presets a few thousand
 
 log = logging.getLogger(__name__)
@@ -62,7 +63,11 @@ def request(action: str, by: str, now: datetime | None = None, **extra) -> str:
         raise ValueError(f"unknown request: {action}")
     now = _now(now)
     name = f"{now:%Y%m%dT%H%M%S}-{secrets.token_hex(4)}-{action}.json"
-    state_io.write_json(os.path.join(REQ_DIR, name), {**extra, "action": action, "by": by, "at": now.isoformat()})
+    path = os.path.join(REQ_DIR, name)
+    if action == "set-keys":            # it carries keys: root-only from the first byte (state_io keeps an existing file's mode)
+        os.makedirs(REQ_DIR, exist_ok=True)
+        os.close(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+    state_io.write_json(path, {**extra, "action": action, "by": by, "at": now.isoformat()})
     return name
 
 
@@ -93,6 +98,8 @@ def dispatch(r: dict) -> str:
     """One checked-in-shape request: pause and resume happen now, the rest are queued for the updater."""
     if r["action"] in ("pause", "resume"):
         return apply(r["action"], "the dashboard")
+    if r["action"] == "set-keys":
+        return set_keys(r)
     import updates
     said = updates.queue(r["action"], "the dashboard", version=r.get("version"), confirm=r.get("confirm") is True,
                          settings=r.get("settings"), reason=r.get("reason") or "", config=r.get("config"),
@@ -100,6 +107,22 @@ def dispatch(r: dict) -> str:
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps({"at": _now(None).isoformat(), "action": r["action"], "by": "the dashboard",
                             "version": r.get("version"), "result": said}) + "\n")
+    return said
+
+
+def set_keys(r: dict) -> str:
+    """The paid setup's key page (keypage.py): check the code, try the keys, save them, start Charles. Only the outcome is
+    logged, never a key."""
+    import keypage
+    said = keypage.apply(r)
+    with open(LOG_FILE, "a") as f:
+        f.write(json.dumps({"at": _now(None).isoformat(), "action": "set-keys", "by": "the key page", "result": said}) + "\n")
+    if said.startswith("Your keys"):
+        try:
+            import alerts
+            alerts.control(f"🔑 {said}\nAdded on the key page from the paid setup.")
+        except Exception as e:
+            log.warning(f"Notice: {e}")
     return said
 
 

@@ -18,6 +18,7 @@ if ROOT not in sys.path:
 import config            # noqa: E402
 import control           # noqa: E402
 import equity_tracker    # noqa: E402
+import keypage           # noqa: E402
 import live              # noqa: E402
 import risk_manager      # noqa: E402
 import terms             # noqa: E402
@@ -87,6 +88,9 @@ class BotTestCase(unittest.TestCase):
         patch(control, "REQ_DIR", os.path.join(self.tmp, "requests"))
         patch(control, "PAUSE_FILE", os.path.join(self.tmp, "paused.json"))
         patch(control, "LOG_FILE", os.path.join(self.tmp, "control.jsonl"))
+        patch(keypage, "STATE", os.path.join(self.tmp, "keypage.json"))
+        patch(keypage, "ENV_FILE", os.path.join(self.tmp, "env"))
+        patch(keypage, "BOT_LOG", os.path.join(self.tmp, "bot.log"))
         patch(live, "DATA", self.tmp)            # paper unless a test writes a trading_mode.json there
         patch(terms, "DATA", self.tmp)
         # no real notices
