@@ -1,6 +1,6 @@
 # Charles
 
-A simple, open source investing bot for your own server. It trades **paper money linked to real market data**
+A simple, free investing bot for your own server, with all of its code public. It trades **paper money linked to real market data**
 through a free Alpaca paper account, and you watch it from your phone. No subscription, and your keys and data stay on
 a server you own. Live trading (stocks only, in your own Alpaca live account) stays off unless you turn it on yourself.
 
@@ -20,10 +20,11 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 
 ## What's on the dashboard
 
-- **Home**: what each bot has earned, Pause, and Get started on a new install.
+- **Home**: how each bot is doing (practice money unless you turned on live trading), Pause, and Get started on a new install.
 - **Stocks**: holdings and a feed of what the bot did and the news about what it holds. **Plan**: sliders, a test on past prices, Undo.
 - **Leaderboard**: settings people chose to share, each run forward by the leaderboard's server (nobody's own results are accepted). Copy takes two taps, and monthly challenges are opt-in.
-- **Updates**: a version history with Restore. Anything that changes how it trades shows old → new and asks first. Nothing updates by itself.
+- **Updates**: a version history with Restore. Anything that changes how it trades shows old → new and asks first. Software updates never install by themselves.
+- **Self-Tune**: on unless you turn it off. Each month it tests small changes to the plan's numbers on past prices, and it may make one passing change a quarter by itself, on paper money only (while live trading is on, it only shows its results). Every change shows on the dashboard and can be undone.
 
 **Add-ons**, off by default: `charles-addon on crypto` (a $1,000 paper book of bitcoin and ether, Coinbase's public prices) and
 `charles-addon on kalshi` (a paper-only prediction-market bot; see [kalshi/README.md](kalshi/README.md)).

@@ -1,8 +1,8 @@
 # Charles Privacy Policy
 
-Version 2.0, effective November 7, 2026
+Version 2.1, effective November 9, 2026
 
-This policy explains what information Charles LLC, Single member limited liability company ("Charles", "we", "us") collects through the website charles-bot.xyz, the leaderboard, the paid "Set it up for me" service and emails with us, what we do with it, and your choices. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html).
+This policy explains what information Charles LLC, a Colorado limited liability company ("we", "us", "our") collects through the website charles-bot.xyz, the leaderboard, the paid "Set it up for me" service and emails with us, what we do with it, and your choices. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html).
 
 **The short version.**
 
@@ -13,20 +13,22 @@ This policy explains what information Charles LLC, Single member limited liabili
 
 ## 1. The Charles software on your server
 
-The bot, its dashboard and its records run on a server you control. We don't receive your API keys, orders, positions, balances, settings, chat questions or anything else stored there, and the software has no analytics or "phone home" reporting. Your server talks directly to the services you set it up with, under their own privacy policies:
+The bot, its dashboard and its records run on a server you control. We don't receive your API keys, orders, positions, balances, settings or anything else stored there, and the software has no analytics or "phone home" reporting. Your server talks directly to the services you set it up with, under their own privacy policies:
 
 - your broker (Alpaca), for your account, orders and market data;
 - public price and news sources, such as Yahoo Finance, Google News and Coinbase's public prices;
-- AI providers, only if you add your own key: Groq (news headlines about new picks) and Anthropic (the questions you ask the chat, with the bot's records it needs to answer);
+- Groq, an AI provider, only if you add your own Groq key: it receives news headlines about a stock before Charles first buys it, to check them for serious bad news;
 - for the Kalshi add-on, Kalshi's public market data and public weather and sports data sources;
 - GitHub, to check for and download updates; and
 - our leaderboard, as described in section 3.
+
+If you use an AI tool on your server yourself, such as Claude Code, what it reads and sends is between you and that tool's provider; we don't receive it.
 
 ## 2. Visiting the website
 
 Our web server keeps standard access logs: your IP address, the date and time, the page or file requested, the response, the referring page and your browser's user agent. We use them only to run and secure the site, and they're deleted after 14 days.
 
-The website sets no cookies and loads nothing from advertising, analytics or social media companies. Its fonts are served from our own server. If you pick light or dark mode, that choice is saved in your own browser's storage and never sent to us. Because we don't track you, "Do Not Track" and Global Privacy Control signals don't change anything here, but we respect their intent.
+The website sets no cookies and loads nothing from advertising, analytics or social media companies. Its fonts are served from our own server. Choices you make on a page, such as light or dark mode, are saved in your own browser's storage and never sent to us. Because we don't track you, "Do Not Track" and Global Privacy Control signals don't change anything here, but we respect their intent.
 
 ## 3. The leaderboard and challenges
 
@@ -44,6 +46,7 @@ When you buy "Set it up for me":
 - **Your payment details** go straight to Stripe. We never see your full card number.
 - **Your DigitalOcean API token** is used once, in memory, to create your server, and is sent only to DigitalOcean. It's never written to our disks, database or logs, and it's discarded as soon as your server exists. Please delete it in DigitalOcean when you're done.
 - **Your SSH public key**, if you give one, goes only to DigitalOcean, to add it to your account. We don't keep it.
+- **Your broker keys** never pass through us. You type them on a page served by your own new server, and they go from your browser straight to that server.
 - **Your order record** holds no contact details: a random order number, its status, the version of our terms you accepted and when, the price and amount paid, Stripe's references for the checkout and the payment, when it was paid, finished and refunded, and your new server's region, DigitalOcean ID, IP address and dashboard link. We delete the server details 24 hours after your setup finishes (we email them to you first), and the rest of the record after 2 years. We keep it that long to handle refunds, disputes and our accounts.
 - **Your IP address** is used only as a one-way, salted fingerprint, held in memory for up to an hour to limit repeated attempts. Our web server doesn't log requests to the setup service.
 
@@ -93,7 +96,7 @@ When we change this policy, we'll update the version and effective date at the t
 
 ## 13. Contact
 
-- **Charles LLC**, Single member limited liability company
+- **Charles LLC**, a Colorado limited liability company
 - Mailing address: 7575 E Peakview Ave, Centennial, CO 80111
 - Email: [support@charles-bot.xyz](mailto:support@charles-bot.xyz)
 - Website: https://charles-bot.xyz

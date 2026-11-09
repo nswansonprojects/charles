@@ -274,6 +274,21 @@ class SelfTune(BotTestCase):
         self.assertIn("check-up decides", evaluate.self_tune({"candidate": cand}, {}, self.tmp, now - timedelta(days=200), q, none))
         self.assertEqual(len(queued), 1)
 
+    def test_self_tune_never_changes_a_live_plan(self):
+        import evaluate
+        from datetime import datetime, timezone
+        now = datetime(2026, 12, 6, 8, tzinfo=timezone.utc)
+        cand = {"label": "Trend line (days)", "from": 200, "to": 150, "why": "Better in every test.", "change": {"TREND_DAYS": 150}}
+        queued = []
+        q = lambda *a, **k: (queued.append(k), "Queued: apply-settings")[1]
+        none = os.path.join(self.tmp, "no-checkup")
+        with open(os.path.join(self.tmp, "trading_mode.json"), "w") as f:
+            json.dump({"mode": "live", "since": "2026-12-01", "by": "charles-live"}, f)
+        self.assertIn("Live trading is on", evaluate.self_tune({"candidate": cand}, {"SELF_TUNE": True}, self.tmp, now, q, none))
+        self.assertEqual(queued, [])
+        said = evaluate.self_tune({"candidate": cand}, {"SELF_TUNE": True}, self.tmp, now, q, none, bot="crypto")
+        self.assertIn("200 → 150", said)                                # crypto is practice money only: still tuned
+
     def test_self_tune_changes_from_the_custom_sources_only(self):
         import updates
         self.assertIn("self-tune", updates.SOURCES)

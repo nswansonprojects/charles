@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.7.1",
+   "date": "2026-11-09",
+   "kind": "rule",
+   "notes": [
+    "New Terms of Service and License Agreement, version 2.1, with clearer wording. If you trade live, live trading waits until you accept it with charles-terms. Paper trading isn't affected.",
+    "Self-tune no longer changes a plan that trades real money: while live trading is on, it only shows what it would change. On paper it works as before.",
+    "The Terms, Privacy Policy and Risk Disclosure now say plainly what self-tune does, that software updates never install by themselves, and that the license allows commercial use. Mentions of the removed chat are gone.",
+    "How Charles trades on paper doesn't change."
+   ]
+  },
+  {
    "version": "v1.7.0",
    "date": "2026-11-09",
    "kind": "fix",

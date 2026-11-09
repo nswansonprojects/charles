@@ -101,14 +101,22 @@ def custom_variants(cur: dict) -> list[dict]:
     return out
 
 
+def live_on(data_dir: str) -> bool:
+    """Is the stock bot trading real money? (live.py; anything unreadable counts as paper, so this never blocks wrongly on paper.)"""
+    import live
+    return live.is_live(data_dir)
+
+
 def self_tune(result: dict, cur: dict, data_dir: str, now: datetime | None = None, queue=None, checkup: str | None = CHECKUP,
               bot: str = "stocks") -> str:
-    """Apply the candidate by itself where nobody else does (an install without Claude's check-up), if self-tune is on and
-    nothing was changed this way in the last quarter. Goes through the updater like a slider change. Returns what happened.
+    """Apply the candidate by itself where nobody else does (an install without Claude's check-up), if self-tune is on, the
+    stock bot isn't trading live money, and nothing was changed this way in the last quarter. Goes through the updater like a slider change. Returns what happened.
     The crypto plan passes checkup=None: the check-up tunes only the stock plan, so its own monthly check applies it everywhere."""
     now = now or datetime.now(timezone.utc)
     if not cur.get("SELF_TUNE", True):
         return "Self-tune is off, so nothing was changed."
+    if bot == "stocks" and live_on(data_dir):                # owner 2026-11-09 ("decide everything"): real money changes only
+        return "Live trading is on, so self-tune only shows its results: change the plan yourself if you want it."
     if checkup and os.path.exists(checkup):
         return "Claude's daily check-up decides here."
     cand = result.get("candidate")

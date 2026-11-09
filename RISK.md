@@ -1,6 +1,6 @@
 # Charles Risk Disclosure
 
-Version 2.0, effective November 7, 2026
+Version 2.1, effective November 9, 2026
 
 Trading and investing involve substantial risk, and automated trading adds risks of its own. Read this before you use Charles, and again before you turn on live trading. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html). It can't list every risk.
 
@@ -29,7 +29,11 @@ Watch your account. Pause on the dashboard stops new orders, and a daily loss li
 
 ## 4. AI
 
-Charles uses AI models that can be wrong. The news check can skip a good pick or miss bad news. The chat can give answers that are incorrect, out of date or made up; check anything important yourself, and remember that a settings change it proposes only happens if you press Apply. Self-tune changes settings because of simulations, and a change that looked better on past prices can do worse from now on.
+Charles uses AI models that can be wrong. The news check can skip a good pick or miss bad news.
+
+Self-tune is on unless you turn it off: up to once a quarter for each plan it changes a number in your plan by itself, because a simulation on past prices liked the change. It does this only on paper money: while live trading is on, it only shows what it would change. A change that looked better on past prices can do worse from now on. Each change shows on the dashboard and can be undone, and the Self-Tune tab turns it off.
+
+If you use an AI tool such as Claude Code to change Charles's code or settings, it can make mistakes too. Read what it changed, and run it on paper before you trust it with real money.
 
 ## 5. Simulated, backtested and paper results
 

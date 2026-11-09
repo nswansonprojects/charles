@@ -1,6 +1,6 @@
 # Charles: notes for Claude Code
 
-You're on the user's own server, in their copy of Charles: an open source investing bot that trades a free Alpaca
+You're on the user's own server, in their copy of Charles: a free investing bot, with all of its code public, that trades a free Alpaca
 **paper** (practice) account by default. The user asks for changes in plain words; they may not be a programmer, so
 explain what you changed and why in plain words too, and ask before anything risky.
 

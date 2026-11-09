@@ -1,8 +1,8 @@
 # Charles Terms of Service and License Agreement
 
-Version 2.0, effective November 7, 2026
+Version 2.1, effective November 9, 2026
 
-These terms are a contract between you and Charles LLC, Single member limited liability company ("Charles", "we", "us"). They cover the Charles software (the trading bot, its dashboard, installer, commands and add-ons), the website charles-bot.xyz, the leaderboard and its challenges, the paid "Set it up for me" service, and any help we give you. Our [Privacy Policy](https://charles-bot.xyz/privacy.html), [Risk Disclosure](https://charles-bot.xyz/risk.html) and [Refund Policy](https://charles-bot.xyz/refunds.html) are part of these terms.
+These terms are a contract between you and Charles LLC, a Colorado limited liability company ("we", "us", "our"). They cover the Charles software (the trading bot, its dashboard, installer, commands and add-ons), the website charles-bot.xyz, the leaderboard and its challenges, the paid "Set it up for me" service, and any help we give you. In these terms, "Charles" means all of these together, and "the software" means the Charles software alone. Our [Privacy Policy](https://charles-bot.xyz/privacy.html), [Risk Disclosure](https://charles-bot.xyz/risk.html) and [Refund Policy](https://charles-bot.xyz/refunds.html) are part of these terms.
 
 You accept these terms when you install Charles, when you buy the setup service, when you turn on live trading, or when you otherwise use Charles. If you don't agree, don't install or use Charles.
 
@@ -11,7 +11,7 @@ You accept these terms when you install Charles, when you buy the setup service,
 **The short version.** The full terms below are what count.
 
 - You must be 18 or older (or the age of majority where you live) and allowed to trade where you live.
-- Charles is free software. You run it on your own server, with your own accounts and keys. We never hold your money or your keys.
+- Charles is free to use. You run it on your own server, with your own accounts and keys. We never hold your money or your keys.
 - It trades paper (practice) money by default. Live trading happens only if you turn it on yourself.
 - Charles is a tool, not investment advice. It promises no gains, and you can lose money, including everything you put in.
 - You're responsible for your accounts, your trades and your taxes. The software comes as is, with no warranty.
@@ -35,17 +35,17 @@ Charles is software that follows rules: its default plan, a preset, or settings 
 
 We are not a broker-dealer, investment adviser, commodity trading advisor, financial planner or fiduciary, and using Charles doesn't make us one. We don't hold or move your money or investments. We have no access to your brokerage or other accounts, we can't place, change or cancel orders in them, and we have no authority to trade for you. We're paid only for software services (such as the one-time setup fee), never based on your trades, the size of your account or its results.
 
-You decide whether to use Charles, which settings to use, whether to copy anyone's settings, and whether to turn on live trading.
+You decide whether to use Charles, which settings to use, whether to copy anyone's settings, whether to let self-tune change your settings (section 8), and whether to turn on live trading.
 
 ## 3. Not investment, financial, legal or tax advice
 
-Nothing in Charles is investment, financial, legal, tax or accounting advice, or an offer, solicitation or recommendation to buy, sell or hold any security, fund, cryptocurrency, contract or other asset, or to follow any strategy. That includes the default plan and presets, the dashboard and its chat and AI answers, alerts, lessons, reports and findings, the leaderboard and challenges, simulations and backtests, the website, and anything we say in emails or support. All of it is general information about how the software works, and it's the same for everyone.
+Nothing in Charles is investment, financial, legal, tax or accounting advice, or an offer, solicitation or recommendation to buy, sell or hold any security, fund, cryptocurrency, contract or other asset, or to follow any strategy. That includes the default plan and presets, the dashboard, the news check and any other AI output, self-tune's changes, alerts, lessons, reports and findings, the leaderboard and challenges, simulations and backtests, the website, and anything we say in emails or support. All of it is general information about how the software works, and it's the same for everyone.
 
 Simulated, backtested and paper results are hypothetical, have real limits, and don't reliably predict future results (see the [Risk Disclosure](https://charles-bot.xyz/risk.html)). Before you trade real money, consider asking a licensed financial professional whether a strategy fits your goals, your finances and how much risk you can take.
 
 ## 4. Your license to the software
 
-We grant you a free, non-exclusive, worldwide license to install, run, copy and modify the Charles software, and to share copies of its source code, as long as every copy you share includes these terms and anyone who uses it accepts them.
+We grant you a free, non-exclusive, worldwide license to install, run, copy and modify the Charles software for any purpose, including commercial purposes, and to share copies of its source code, changed or unchanged, as long as every copy you share includes these terms and anyone who uses it accepts them.
 
 You may not:
 
@@ -79,7 +79,9 @@ Charles depends on services we don't control: your broker, your server host, mar
 
 ## 8. The software has limits
 
-Charles can have bugs, stop running, use late or wrong market data, misread the news, or act on an AI model's mistake. Markets can move faster than it reacts, and orders can fill at worse prices than expected. Self-tune can change your settings based on simulations that may not hold up. Updates can change how Charles trades: when an update changes the trading rules it says so and asks before installing, and you decide when to update. We may change, pause or stop any part of Charles, including the website, the leaderboard and the setup service, at any time; the copy on your server keeps running as it is. Watch your account, and don't put in money you can't afford to lose.
+Charles can have bugs, stop running, use late or wrong market data, misread the news, or act on an AI model's mistake. Markets can move faster than it reacts, and orders can fill at worse prices than expected. **Self-tune is on unless you turn it off.** Each month the software tests small changes to your plan's numbers on past prices. If a change passes every test, self-tune makes it by itself, at most one change a quarter for each plan (stocks and crypto), but only while the plan trades paper money: while live trading is on, it only shows what it would change, and changes to real-money trading are yours to make. It changes numbers in the plan (such as how much goes to the core or how many picks it holds), never which stocks you choose yourself. Those tests are simulations and may not hold up. Each change shows on the dashboard and can be undone, and you can turn self-tune off on the Self-Tune tab.
+
+**Software updates never install by themselves.** You decide when to update. When an update changes the trading rules, it shows what changes and asks you to confirm before it installs. We may change, pause or stop any part of Charles, including the website, the leaderboard and the setup service, at any time; the copy on your server keeps running as it is. Watch your account, and don't put in money you can't afford to lose.
 
 ## 9. The leaderboard, challenges and sharing
 
@@ -124,7 +126,7 @@ The names "Charles", "Evil Charles" and "charles-bot.xyz", our logos and terrier
 
 ## 14. Privacy
 
-Our [Privacy Policy](https://charles-bot.xyz/privacy.html) explains what we collect, how we use it and the choices you have. In short: the Charles software runs on your server and sends us nothing unless you use the leaderboard, and our setup service never stores your DigitalOcean token, your SSH key or your email address.
+Our [Privacy Policy](https://charles-bot.xyz/privacy.html) explains what we collect, how we use it and the choices you have. In short: the software runs on your server and sends us nothing except what the leaderboard needs (your dashboard reads the public leaderboard from us, and sends the settings you choose to submit), and our setup service never stores your DigitalOcean token, your SSH key or your email address.
 
 ## 15. No warranty
 
@@ -178,7 +180,7 @@ These terms, with the Privacy Policy, the Risk Disclosure and the Refund Policy,
 
 ## 24. Contact
 
-- **Charles LLC**, Single member limited liability company
+- **Charles LLC**, a Colorado limited liability company
 - Mailing address: 7575 E Peakview Ave, Centennial, CO 80111
 - Email: [support@charles-bot.xyz](mailto:support@charles-bot.xyz)
 - Website: https://charles-bot.xyz

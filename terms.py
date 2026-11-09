@@ -24,15 +24,15 @@ import state_io
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
-VERSION = "2.0"
-EFFECTIVE = "November 7, 2026"
+VERSION = "2.1"
+EFFECTIVE = "November 9, 2026"
 URL = "https://charles-bot.xyz/terms.html"
 PRIVACY_URL = "https://charles-bot.xyz/privacy.html"
 RISK_URL = "https://charles-bot.xyz/risk.html"
 # The agreement's own short version (LICENSE.md, and the installer's prompt): keep the three the same.
 SHORT = [
     "You must be 18 or older (or the age of majority where you live) and allowed to trade where you live.",
-    "Charles is free software. You run it on your own server, with your own accounts and keys. We never hold your money or your keys.",
+    "Charles is free to use. You run it on your own server, with your own accounts and keys. We never hold your money or your keys.",
     "It trades paper (practice) money by default. Live trading happens only if you turn it on yourself.",
     "Charles is a tool, not investment advice. It promises no gains, and you can lose money, including everything you put in.",
     "You're responsible for your accounts, your trades and your taxes. The software comes as is, with no warranty.",
