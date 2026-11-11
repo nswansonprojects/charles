@@ -2,6 +2,16 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.8.0",
+   "date": "2026-11-11",
+   "kind": "fix",
+   "notes": [
+    "A new look for the dashboard: a blue bar on every page, bolder headings, buttons and tabs that press, rounder cards. The pages, the numbers and the charts are the same.",
+    "The Kalshi page, the login page and the key page wear the same look.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.7.1",
    "date": "2026-11-09",
    "kind": "rule",

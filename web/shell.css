@@ -1,18 +1,24 @@
 /* The header, navigation and tour on every page, the Kalshi page included (webdash.shell adds this file). */
-:root { --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --display: var(--sans); --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
+:root { --sans: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --display: "Gabarito", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace; }
 body { padding-bottom: calc(72px + env(safe-area-inset-bottom)); }
-header.shell { position: sticky; top: 0; z-index: 8; background: color-mix(in srgb, var(--surface) 86%, transparent);
-  backdrop-filter: saturate(1.6) blur(14px); -webkit-backdrop-filter: saturate(1.6) blur(14px); border-bottom: 1px solid var(--border); padding-top: env(safe-area-inset-top); }
+/* A bar of the logo's blue on every page (2026-11-11): white words on it, and the page's greys start under it. */
+header.shell { position: sticky; top: 0; z-index: 8; background: var(--bar, #1f6ad1); color: #fff; padding-top: env(safe-area-inset-top); box-shadow: 0 8px 18px -12px rgba(13, 33, 71, .55); }
 header.shell .bar { position: relative; max-width: var(--page-max, 1180px); margin: 0 auto; padding: 8px 16px; display: flex; flex-wrap: nowrap; align-items: center; gap: 10px; min-height: 56px; }
-header.shell .brand { display: inline-flex; align-items: center; gap: 10px; font: 600 16px var(--sans); letter-spacing: -.02em; color: var(--text); text-decoration: none; margin: 0 auto 0 0; min-height: 40px; }
-header.shell .brand:hover .bname { color: var(--text-2); }
-header.shell .logo { width: 28px; height: 28px; border-radius: 7px; background: var(--brand, #2a78d6); display: grid; place-items: center; flex: none; box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+header.shell .brand { display: inline-flex; align-items: center; gap: 10px; font: 800 21px/1 var(--display); letter-spacing: -.01em; color: #fff; text-decoration: none; margin: 0 auto 0 0; min-height: 40px; }
+header.shell .brand:hover .logo { transform: rotate(-8deg) scale(1.08); }
+header.shell .logo { width: 30px; height: 30px; border-radius: 9px; background: var(--brand, #2a78d6); display: grid; place-items: center; flex: none; box-shadow: 0 0 0 2px #fff; transition: transform .25s cubic-bezier(.3,1.6,.5,1); }
 header.shell .logo svg { width: 24px; height: 24px; }
 .topnav { display: none; }
 .bar-end { display: flex; align-items: center; gap: 4px; }
 .status { display: inline-flex; align-items: center; gap: 7px; font: 500 12.5px var(--sans); color: var(--text-2); text-decoration: none; padding: 0 11px 0 10px; height: 30px; margin-right: 4px;
   white-space: nowrap; border: 1px solid var(--border); border-radius: 99px; background: var(--surface); }
 .status:hover { color: var(--text); border-color: var(--border-strong); }
+header.shell .status { color: #fff; font-weight: 600; background: rgba(255, 255, 255, .16); border-color: transparent; }
+header.shell .status:hover { background: rgba(255, 255, 255, .24); }
+header.shell .status .dot { background: rgba(255, 255, 255, .7); }
+header.shell .status .dot.good { background: #5ff0a0; box-shadow: 0 0 0 3px rgba(95, 240, 160, .28); }
+header.shell .status .dot.bad { background: #ff8a80; box-shadow: 0 0 0 3px rgba(255, 138, 128, .3); }
+header.shell .status .dot.warn { background: #ffd166; box-shadow: 0 0 0 3px rgba(255, 209, 102, .3); }
 .status .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex: none; box-shadow: none; }
 .status .dot.good { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 18%, transparent); }
 .status .dot.bad { background: var(--critical); box-shadow: 0 0 0 3px color-mix(in srgb, var(--critical) 18%, transparent); }
@@ -20,6 +26,8 @@ header.shell .logo svg { width: 24px; height: 24px; }
 .ibtn { width: 36px; height: 36px; display: grid; place-items: center; background: none; border: 0; border-radius: 8px; color: var(--text-2); cursor: pointer; padding: 0; flex: none; transition: background .12s, color .12s; }
 .ibtn svg { width: 19px; height: 19px; }
 .ibtn:hover, .ibtn.on { color: var(--text); background: var(--surface-2); }
+header.shell .ibtn { color: rgba(255, 255, 255, .88); }
+header.shell .ibtn:hover, header.shell .ibtn.on { color: #fff; background: rgba(255, 255, 255, .16); }
 .ibtn[hidden] { display: none; }
 
 /* phones: a tab bar along the bottom */
@@ -28,7 +36,8 @@ header.shell .logo svg { width: 24px; height: 24px; }
   border-top: 1px solid var(--border); padding: 6px 2px calc(6px + env(safe-area-inset-bottom)); }
 .appnav a { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 48px; color: var(--muted); text-decoration: none; font: 500 10.5px var(--sans); letter-spacing: .005em; }
 .appnav a svg { width: 22px; height: 22px; }
-.appnav a.on { color: var(--accent); font-weight: 600; }
+.appnav a { border-radius: 12px; margin: 0 2px; }
+.appnav a.on { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
 .appnav a.on svg { stroke-width: 2.1; }
 
 @media (min-width: 860px) {
@@ -36,12 +45,11 @@ header.shell .logo svg { width: 24px; height: 24px; }
   .appnav { display: none; }
   header.shell .bar { padding: 8px 24px; min-height: 60px; }
   .topnav { display: flex; align-items: center; gap: 2px; margin-right: auto; align-self: stretch; }
-  header.shell .brand { margin-right: 18px; padding-right: 20px; border-right: 1px solid var(--border); min-height: 28px; }
-  .topnav a { position: relative; display: inline-flex; align-items: center; font: 500 14px var(--sans); color: var(--text-2); text-decoration: none; padding: 0 12px; height: 36px; border-radius: 7px; align-self: center; transition: background .12s, color .12s; }
+  header.shell .brand { margin-right: 14px; padding-right: 20px; border-right: 1px solid rgba(255, 255, 255, .28); min-height: 30px; }
+  .topnav a { position: relative; display: inline-flex; align-items: center; font: 600 14.5px var(--sans); color: rgba(255, 255, 255, .82); text-decoration: none; padding: 0 13px; height: 36px; border-radius: 10px; align-self: center; transition: background .12s, color .12s; }
   .topnav a svg { display: none; }
-  .topnav a:hover { color: var(--text); background: var(--surface-2); }
-  .topnav a.on, .topnav a.on:hover { color: var(--text); font-weight: 600; background: none; }
-  .topnav a.on::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -13px; height: 2px; border-radius: 2px 2px 0 0; background: var(--accent); }
+  .topnav a:hover { color: #fff; background: rgba(255, 255, 255, .13); }
+  .topnav a.on, .topnav a.on:hover { color: var(--bar, #1f6ad1); background: #fff; }
 }
 
 /* the guided tour: a real part of the page stays lit, and Charles talks you through it (web/tour.js) */

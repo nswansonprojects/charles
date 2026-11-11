@@ -977,7 +977,7 @@ def accounts_view(rows: list, on: dict, addon_rows: list) -> dict:
     return {"bots": [b for b in rows if on.get(b["id"], True)], "addons": addon_rows}
 
 
-FONTS = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+FONTS = "https://fonts.googleapis.com/css2?family=Gabarito:wght@700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
 _I = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">%s</svg>'
 NAV = (("home", "/", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
        ("stocks", "/stocks", "Stocks", '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>'),
@@ -1031,9 +1031,11 @@ def _page(title: str, inner: str, head: str = "") -> bytes:
 <link rel="icon" href="/icon-192.png">
 <link href="{FONTS}" rel="stylesheet">
 <link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/shell.css">
 <script>try {{ const t = localStorage.getItem("charles-theme"); if (t) document.documentElement.dataset.theme = t; }} catch (e) {{}}</script>
 </head>
-<body>
+<body style="padding-bottom:0">
+<header class="shell"><div class="bar"><span class="brand"><span class="logo">{LOGO}</span><span class="bname">Charles</span></span></div></header>
 <main style="max-width:600px">
   <h1 class="page-title" style="display:block">{title}</h1>
   <div class="card">
