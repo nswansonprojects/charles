@@ -1,10 +1,18 @@
 # Charles
 
-A simple, free investing bot for your own server, with all of its code public. It trades **paper money linked to real market data**
-through a free Alpaca paper account, and you watch it from your phone. No subscription, and your keys and data stay on
-a server you own. Live trading (stocks only, in your own Alpaca live account) stays off unless you turn it on yourself.
+**A trading bot you own.** It runs on your own small server, follows one simple plan, and you watch it from your phone.
+It trades **paper money linked to real market data** through a free Alpaca paper account. Free, no subscription, all of
+its code public, and your keys and data stay on a server you own.
 
-**Set it up:** https://charles-bot.xyz/setup.html (one command on a fresh Ubuntu server; $6 a month at DigitalOcean is enough)
+[![The Charles dashboard. A sample picture: the numbers are made up.](https://charles-bot.xyz/assets/dash-desktop-light.png)](https://charles-bot.xyz/)
+
+<sub>A sample picture of the dashboard. The numbers in it are made up.</sub>
+
+- **Try it first, nothing to install:** [a pretend dashboard you can work in your browser](https://charles-bot.xyz/#try)
+- **Set it up:** [one command on a fresh Ubuntu server](https://charles-bot.xyz/setup.html), about 30 minutes; $6 a month at DigitalOcean is enough
+- **Questions or ideas:** [Discussions](https://github.com/nswansonprojects/charles/discussions). If Charles is useful to you, a star helps other people find it.
+
+Live trading (stocks only, in your own Alpaca live account) stays off unless you turn it on yourself.
 
 ## The default plan
 
