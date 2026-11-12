@@ -30,6 +30,7 @@ PLAN_FILE = os.path.join(ROOT, "data", "plan.json")
 RANKED_SHOWN = 15
 CASH_RESERVE = 0.002                # a few dollars never spent, so the last buy can't overdraw
 HISTORY_DAYS = "2y"                 # enough for 252-day momentum + 200-day average
+ALPACA_HISTORY_DAYS = 730           # the same two years, asked of Alpaca in calendar days
 MAX_MISSING_WEEKDAYS = 2            # weekdays without a close before the prices count as stale
 
 
@@ -191,11 +192,38 @@ def reason(order: dict, d: dict, state: dict, s: dict, first_run: bool) -> str:
     return f"Rebalance: {sym} {'topped up' if side == 'buy' else 'trimmed'} to its {tw}% target."
 
 
-def closes_for(symbols: list[str], today: str) -> tuple[dict[str, list[float]], str | None]:
-    """Daily dividend-adjusted closes before `today` (ET), so a partial day never counts, and the date
-    of the latest close. A symbol missing its latest close keeps its previous one; if that happens to
-    the core fund, the date returned is the core's own latest close, so stale core prices can't pass
-    as fresh (prices_stale)."""
+def _as_of(last_day: dict[str, str]) -> str | None:
+    """The date the prices are good for: the core fund's own latest close when it has one (so stale core prices can't
+    pass as fresh), else the newest close of anything."""
+    core = settings()["CORE"]
+    return last_day.get(core) or max(last_day.values(), default=None)
+
+
+def _alpaca_closes(symbols: list[str], today: str) -> tuple[dict[str, list[float]], str | None]:
+    """Daily closes before `today` from Alpaca, with the user's own keys: the consolidated tape (every exchange, the
+    official close), adjusted for splits and dividends. A free Alpaca account may read that tape once it is 15 minutes
+    old, which daily closes always are; the request ends 16 minutes ago to stay inside that. Measured 2026-11-11 against
+    Yahoo on the plan's 102 symbols over two years: the median largest difference was 0.003%, and the plan's decision was
+    the same. (Alpaca's other free feed, IEX alone, differed by 0.3%: it is never used.)"""
+    from alpaca.data.enums import Adjustment, DataFeed
+    from alpaca.data.requests import StockBarsRequest
+    from alpaca.data.timeframe import TimeFrame
+    import alpaca_executor as ex
+    now = datetime.now(timezone.utc)
+    req = StockBarsRequest(symbol_or_symbols=list(symbols), timeframe=TimeFrame.Day, start=now - timedelta(days=ALPACA_HISTORY_DAYS),
+                           end=now - timedelta(minutes=16), adjustment=Adjustment.ALL, feed=DataFeed.SIP)
+    bars = ex.data_client().get_stock_bars(req).data
+    out, last_day = {}, {}
+    for sym in symbols:
+        rows = [(str(b.timestamp.date()), float(b.close)) for b in bars.get(sym, [])]
+        rows = [(d, c) for d, c in rows if d < today and c == c and c > 0]
+        if rows:
+            out[sym], last_day[sym] = [c for _, c in rows], rows[-1][0]
+    return out, _as_of(last_day)
+
+
+def _yahoo_closes(symbols: list[str], today: str) -> tuple[dict[str, list[float]], str | None]:
+    """The same from Yahoo Finance (unofficial, no key): the backup, and where a symbol Alpaca doesn't have comes from."""
     import yfinance as yf
     df = yf.download(symbols, period=HISTORY_DAYS, auto_adjust=True, progress=False, threads=True)["Close"]
     df = df[[str(i.date()) < today for i in df.index]]
@@ -210,6 +238,32 @@ def closes_for(symbols: list[str], today: str) -> tuple[dict[str, list[float]], 
     if as_of and core in df:
         have = df[core].dropna()
         as_of = min(as_of, str(have.index[-1].date())) if len(have) else None
+    return out, as_of
+
+
+def closes_for(symbols: list[str], today: str) -> tuple[dict[str, list[float]], str | None]:
+    """Daily dividend-adjusted closes before `today` (ET), so a partial day never counts, and the date
+    of the latest close. A symbol missing its latest close keeps its previous one; if that happens to
+    the core fund, the date returned is the core's own latest close, so stale core prices can't pass
+    as fresh (prices_stale).
+
+    Alpaca first (the official tape, with the keys the bot already has), Yahoo as the backup: all of it when Alpaca
+    fails, lacks the core fund or is stale, and symbol by symbol for anything Alpaca doesn't have. Each symbol's closes
+    come from one source only, so its momentum and averages are never a mix."""
+    core = settings()["CORE"]
+    try:
+        out, as_of = _alpaca_closes(symbols, today)
+    except Exception as e:
+        log.warning(f"Alpaca prices not available ({type(e).__name__}: {str(e)[:120]}): using Yahoo")
+        out, as_of = {}, None
+    if core not in out or prices_stale(as_of, today):
+        return _yahoo_closes(symbols, today)
+    missing = [sym for sym in symbols if sym not in out]
+    if missing:
+        try:
+            out.update(_yahoo_closes(missing, today)[0])
+        except Exception as e:
+            log.warning(f"no prices for {', '.join(missing[:8])} ({type(e).__name__})")
     return out, as_of
 
 

@@ -147,8 +147,11 @@ class Website(BotTestCase):
         for name, html in self.pages().items():
             self.assertNotIn("fonts.googleapis.com", html, name)
             self.assertNotIn("fonts.gstatic.com", html, name)
-            for src in re.findall(r'<(?:script|link)[^>]+(?:src|href)="(https?://[^"]+)"', html):
+            for src in re.findall(r'<(?:script|link)(?![^>]*rel="canonical")[^>]+(?:src|href)="(https?://[^"]+)"', html):
                 self.fail(f"{name} loads {src}")
+            # a canonical link names the page's own address: nothing is fetched, and it must be ours
+            for own in re.findall(r'<link rel="canonical" href="([^"]*)"', html):
+                self.assertTrue(own.startswith("https://charles-bot.xyz/"), f"{name}: canonical {own}")
         with open(os.path.join(SITE, "css", "styles.css")) as f:
             css = f.read()
         self.assertNotIn("googleapis", css)

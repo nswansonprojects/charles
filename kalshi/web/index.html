@@ -587,7 +587,7 @@ const facts = rows => `<div class="facts">${rows.filter(Boolean).map(([l, v, c])
 const tapAttrs = (kind, key) => `data-open="${kind}" data-k="${esc(key)}" tabindex="0" role="button"`;
 /* the betting book's briefing: what settled, what's new and what settles soon */
 const STRAT_ABOUT = {
-  weather: "Weather: the National Weather Service forecast and a spread of weather models, blended with the market's own price.",
+  weather: "Weather: the National Weather Service forecast and a spread of weather models (weather data by Open-Meteo.com), blended with the market's own price.",
   sports: "Sports: sportsbook odds (DraftKings, via ESPN) with the bookmaker's cut taken out.",
   econ: "Inflation: the Cleveland Fed's inflation nowcast, blended with the market's own price.",
   longshot: "Longshot: cheap contracts win less often than their price says, so the bot bets against them.",
@@ -998,7 +998,9 @@ async function load() {
     B = S.betting;
     if (!B) throw new Error("no betting book");
     render();
+    document.body.dataset.shown = "1";
   } catch (e) {
+    if (!document.body.dataset.shown) $("ret").textContent = "The dashboard isn't answering. Refresh in a moment.";   // never over numbers already on the page
     if (!INSIDE) $("st-bot").innerHTML = `<span class="dot bad"></span><span>Dashboard offline</span>`;
     document.body.classList.remove("loading");
   }

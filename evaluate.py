@@ -27,6 +27,7 @@ import copy
 
 import allocator as al
 import backtest_core as bc
+import market_types as mt
 import portfolio
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -36,6 +37,7 @@ QUARTER_DAYS = 91
 HALF = "2017-01-01"
 MIN_GAIN = 0.5          # % a year better, in every universe and half
 DD_SLACK = 2.0          # worst drop may be at most this many points deeper
+WEAK_SLACK = 0.1        # % a month a change may give up in the kind of market where the plan is already weakest
 LABEL = {"CORE_PCT": "Share in the whole market", "PICKS": "Momentum picks", "TREND_DAYS": "Trend line (days)",
          "SWITCH_CHECK": "Safety switch check", "SAFETY_SWITCH": "Safety switch",
          "AGGRESSIVE": "Aggressive mode", "AGG_VOL_MAX": "Aggressive mode's calm limit"}
@@ -140,6 +142,64 @@ def self_tune(result: dict, cur: dict, data_dir: str, now: datetime | None = Non
         queue = updates.queue
     said = queue("apply-settings", "self-tune", settings=cand["change"], reason=f"self-tune: {cand['why']}", bot=bot, source="self-tune")
     return f"Self-tune: {cand['label']} {cand['from']} → {cand['to']} ({said})."
+
+
+def _plan_score(runs: list, labels: list, year: int) -> dict:
+    """Several runs of one plan (crypto: one per weekday its weekly check could fall on, each ending on the same day) scored by
+    kind and averaged, so one lucky weekday can't decide it."""
+    rows = [mt.score(v, labels[len(labels) - len(v):], year) for v in runs]
+    return {k: {"days": rows[0][k]["days"], "monthly_pct": None if any(r[k]["monthly_pct"] is None for r in rows)
+                else round(sum(r[k]["monthly_pct"] for r in rows) / len(rows), 2)} for k in mt.KINDS}
+
+
+def by_kind(days: list, runs: list, market: list, cfg: dict, year: int = 252) -> dict:
+    """A plan scored inside each kind of market (market_types: calm rise, fall, rebound, choppy), beside the market itself.
+    `runs` are the plan's value series (each ends on days[-1]), `market` the market's close on each of `days`. → {"kinds":
+    {kind: {"share_pct", "plan_pct", "market_pct"}} (% a month), "weak": the kind where the plan trails the market most (or
+    None), "today", "provisional_days" (the last days' kinds can still change), "from", "to"}. It scores the past: nothing
+    here decides a trade."""
+    lab = mt.label(market, **cfg)
+    plan, mkt = _plan_score(runs, lab["labels"], year), mt.score(market, lab["labels"], year)
+    return {"kinds": {k: {"share_pct": mkt[k]["share_pct"], "plan_pct": plan[k]["monthly_pct"], "market_pct": mkt[k]["monthly_pct"]} for k in mt.KINDS},
+            "weak": mt.weakest(plan, mkt), "today": lab["labels"][-1] if days else None, "provisional_days": lab["provisional"],
+            "from": days[0] if days else None, "to": days[-1] if days else None}
+
+
+def weak_gain(base: dict, runs: list, market: list, cfg: dict, year: int = 252) -> float | None:
+    """What a change does, in % a month, in the kind of market where the plan is weakest (`base` is the plan's own by_kind)."""
+    weak = base.get("weak")
+    if not weak or base["kinds"][weak]["plan_pct"] is None:
+        return None
+    got = _plan_score(runs, mt.label(market, **cfg)["labels"], year)[weak]["monthly_pct"]
+    return None if got is None else round(got - base["kinds"][weak]["plan_pct"], 2)
+
+
+def live_by_kind(account: dict, market: dict, kind_of: dict, since: str) -> dict:
+    """The real book's days so far, by kind: {kind: {"days", "plan_pct", "market_pct"}} (totals, since there are too few days
+    for a monthly rate). `account` and `market` are {day: value at the close}, `kind_of` {day: kind}; counted from the last
+    close before `since`."""
+    days = sorted(d for d in account if d in market and d in kind_of)
+    start = max((i for i, d in enumerate(days) if d < since[:10]), default=0)
+    days = days[start:]
+    if len(days) < 2:
+        return {}
+    labels = [None] + [kind_of[d] for d in days[1:]]
+    plan, mkt = mt.score([account[d] for d in days], labels), mt.score([market[d] for d in days], labels)
+    return {k: {"days": plan[k]["days"], "plan_pct": plan[k]["total_pct"], "market_pct": mkt[k]["total_pct"]} for k in mt.KINDS if plan[k]["days"]}
+
+
+def pick(rows: list, gain) -> dict | None:
+    """The change to propose: the best of those that passed every test and don't make the plan worse where it is already
+    weakest (WEAK_SLACK). A passing change that fails this says so in its `why`. `gain(row)` ranks them."""
+    ok = []
+    for r in rows:
+        if not r["passes"]:
+            continue
+        if r.get("weak_gain") is not None and r["weak_gain"] < -WEAK_SLACK:
+            r["why"] += f" But it does {abs(r['weak_gain']):.1f}% a month worse in the kind of market where the plan is already weakest, so it isn't proposed."
+            continue
+        ok.append(r)
+    return max(ok, key=gain, default=None)
 
 
 def judge(base: dict, var: dict, halves: tuple = ("2007-16", "2017-now")) -> tuple[bool, str]:
@@ -278,23 +338,38 @@ def crypto_main(out: str = CRYPTO_OUT, data_dir: str | None = None, fetch=None, 
     days = cb.window(closes, {"TREND_DAYS": 300})            # every variant starts on the same day
     plan = lambda st: {p: closes[p] for p in closes if p in crypto_plan.products(st)}
 
+    btc = dict(zip(closes["BTC-USD"]["days"], closes["BTC-USD"]["close"]))
+    market, seen = [btc[d] for d in days], {}
+
     def test(st):
-        return {"coins": crypto_summary(cb.simulate(days, plan(st), st))}
+        """Averaged over the seven weekdays the check could fall on: since 2021 one weekday alone moved the result by 9% a year."""
+        curves = [cb.simulate(days[k:], plan(st), st) for k in range(7)]
+        seen["runs"] = [[v for _, v in c] for c in curves]
+        each = [crypto_summary(c) for c in curves]
+        return {"coins": {h: {x: round(sum(e[h][x] for e in each) / len(each), 1) for x in ("cagr_pct", "max_drawdown_pct")} for h in ("all", "first", "second")}}
     base = test(s)
+    kinds = by_kind(days, seen["runs"], market, mt.CRYPTO, 365)
     rows = []
     for v in crypto_variants(flat):
         st = {**s, **crypto_settings.to_plan({**flat, **v["change"]})}
         r = test(st)
         ok, why = judge(base, r, halves=("2017-20", "2021-now"))
-        rows.append({**v, "passes": ok, "why": why, "results": r})
+        rows.append({**v, "passes": ok, "why": why, "results": r, "weak_gain": weak_gain(kinds, seen["runs"], market, mt.CRYPTO, 365)})
         print(f"crypto {v['label']} {v['from']}->{v['to']}: {'PASS' if ok else 'no'} — {why}", file=sys.stderr)
-    best = max((r for r in rows if r["passes"]),
-               key=lambda r: min(r["results"]["coins"][h]["cagr_pct"] - base["coins"][h]["cagr_pct"] for h in ("first", "second")), default=None)
+    best = pick(rows, lambda r: min(r["results"]["coins"][h]["cagr_pct"] - base["coins"][h]["cagr_pct"] for h in ("first", "second")))
     data_dir = data_dir or os.path.dirname(out)
     result = {"generated": (now or datetime.now(timezone.utc)).isoformat(timespec="minutes"), "history": f"{days[0][:7]} to {days[-1][:7]}",
               "custom": bool(s.get("BLOCKS")), "current": base, "variants": rows,
               "candidate": {k: best[k] for k in ("setting", "label", "from", "to", "why", "change")} if best else None,
               "rules": {"min_gain_pct_per_year": MIN_GAIN, "dd_slack_pts": DD_SLACK}, "self_tune": flat.get("SELF_TUNE", True) is not False}
+    try:                                         # the real book's days so far, by kind (its last value each day against bitcoin's close)
+        with open(os.path.join(data_dir, "crypto_paper.json")) as f:
+            book = json.load(f)
+        kind_of = dict(zip(days, mt.label(market, **mt.CRYPTO)["labels"]))
+        kinds["live"] = live_by_kind({t[:10]: v for t, v in book["curve"]}, btc, kind_of, book["curve"][0][0])
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        kinds["live"] = {}
+    result["by_kind"] = kinds
     try:
         result["self_tune_said"] = self_tune(result, flat, data_dir, now=now, queue=queue, checkup=None, bot="crypto")
     except Exception as e:
@@ -313,17 +388,29 @@ def main(out: str = OUT, data_dir: str | None = None):
     stocks = [k for k in al.UNIVERSE if k in closes]
     unis = {"your plan": None} if custom else {"stocks": stocks, "sectors": bc.SECTORS}
 
+    show = "your plan" if custom else "sectors"          # the fair list: today's stock list flatters the picks
+    spy_at, seen, last = {}, {}, None
+    for d, c in zip(dates, closes["SPY"]):
+        last = c if c is not None else last
+        spy_at[d] = last
+
     def test(s):
         s = dict(s, SAFE="BIL")
-        return {u: summarize(bc.simulate(dates, opens, closes, s, universe=lst)) for u, lst in unis.items()}
+        runs = {u: bc.simulate(dates, opens, closes, s, universe=lst) for u, lst in unis.items()}
+        seen["run"] = runs[show]
+        return {u: summarize(r) for u, r in runs.items()}
 
     base = test(cur)
+    run_days = seen["run"]["dates"]
+    market = [spy_at[d] for d in run_days]
+    kinds = by_kind(run_days, [seen["run"]["values"]], market, mt.STOCKS)
+    weak = lambda: weak_gain(kinds, [seen["run"]["values"]], market, mt.STOCKS)
     rows = []
     if custom:
         for v in custom_variants(cur):
             r = test({**cur, **v["change"]})
             ok, why = judge(base, r)
-            rows.append({**v, "passes": ok, "why": why, "results": r})
+            rows.append({**v, "passes": ok, "why": why, "results": r, "weak_gain": weak()})
             print(f"{v['label']} {v['from']}->{v['to']}: {'PASS' if ok else 'no'} — {why}", file=sys.stderr)
     for k, frm, to in ([] if custom else variants(cur)):
         s = {**cur, k: to}
@@ -333,12 +420,10 @@ def main(out: str = OUT, data_dir: str | None = None):
             s["AGG_VOL_EXIT"] = round(to + (cur["AGG_VOL_EXIT"] - cur["AGG_VOL_MAX"]), 2)
         r = test(s)
         ok, why = judge(base, r)
-        rows.append({"setting": k, "label": LABEL[k], "from": frm, "to": to, "passes": ok, "why": why, "results": r,
+        rows.append({"setting": k, "label": LABEL[k], "from": frm, "to": to, "passes": ok, "why": why, "results": r, "weak_gain": weak(),
                      "change": {x: s[x] for x in s if x in strategy_settings.LIMITS and s[x] != cur.get(x)}})
         print(f"{k} {frm}->{to}: {'PASS' if ok else 'no'} — {why}", file=sys.stderr)
-    best = max((r for r in rows if r["passes"]),
-               key=lambda r: min(r["results"][u][h]["cagr_pct"] - base[u][h]["cagr_pct"]
-                                 for u in base for h in ("first", "second")), default=None)
+    best = pick(rows, lambda r: min(r["results"][u][h]["cagr_pct"] - base[u][h]["cagr_pct"] for u in base for h in ("first", "second")))
     data_dir = data_dir or os.path.dirname(out)
     result = {"generated": datetime.now(timezone.utc).isoformat(timespec="minutes"), "history": f"2007-07 to {dates[-1]}",
               "settings": {k: cur[k] for k in LABEL}, "current": base, "variants": rows, "custom": custom,
@@ -347,6 +432,15 @@ def main(out: str = OUT, data_dir: str | None = None):
               "rules": {"min_gain_pct_per_year": MIN_GAIN, "dd_slack_pts": DD_SLACK}, "self_tune": cur.get("SELF_TUNE", True) is not False}
     if custom:
         result["settings"]["BLOCKS"] = cur["BLOCKS"]
+    try:                                         # the real account's days since the plan started, by kind (same closes as SPY's)
+        import plan_vs_spy
+        with open(os.path.join(data_dir, "equity_curve.json")) as f:
+            account = {d: p["value"] for d, p in plan_vs_spy.close_points(json.load(f)).items()}
+        kind_of = dict(zip(run_days, mt.label(market, **mt.STOCKS)["labels"]))
+        kinds["live"] = live_by_kind(account, spy_at, kind_of, result["live"]["started"])
+    except (OSError, ValueError, KeyError, TypeError):
+        kinds["live"] = {}
+    result["by_kind"] = kinds
     try:
         result["self_tune_said"] = self_tune(result, cur, data_dir)
     except Exception as e:                       # the results still count when the change can't be queued

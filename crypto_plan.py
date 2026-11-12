@@ -30,6 +30,8 @@ DEFAULTS = {
     "MIN_TRADE": 0.05,          # skip rebalances that move less than 5% of the book
     "INVESTED": 1.0,            # the share of the book in the plan; the rest waits in cash
     "BLOCKS": None,             # None: Charles's own bitcoin/ether plan
+    "RISING_DAYS": None,        # a rule on trial (crypto_paper's shadow book, never a slider): hold a coin only while it is
+                                # also up over this many days. None: off, the plan as it always was
 }
 NAMES = {"BTC-USD": "Bitcoin", "ETH-USD": "Ether"}
 
@@ -66,8 +68,8 @@ def products(settings: dict | None = None) -> list:
 def signature(settings: dict | None = None) -> str:
     """Changes with any plan setting, so the book checks again within the hour after a change instead of waiting a week."""
     s = {**DEFAULTS, **(settings or {})}
-    raw = json.dumps({k: s.get(k) for k in ("WEIGHTS", "TREND_DAYS", "CHECK_DAYS", "MIN_TRADE", "INVESTED", "BLOCKS")},
-                     sort_keys=True, separators=(",", ":"))
+    keys = ("WEIGHTS", "TREND_DAYS", "CHECK_DAYS", "MIN_TRADE", "INVESTED", "BLOCKS") + (("RISING_DAYS",) if s.get("RISING_DAYS") else ())
+    raw = json.dumps({k: s.get(k) for k in keys}, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 
@@ -92,9 +94,14 @@ def decide(closes: dict, settings: dict | None = None) -> dict:
     targets, coins = {}, {}
     if not s.get("BLOCKS"):
         for product, weight in s["WEIGHTS"].items():
-            coins[product] = info = _coin(closes.get(product) or [], s)
-            info.update(type="trend", held=info["above"])
-            targets[product] = weight * inv if info["above"] else 0.0
+            c = closes.get(product) or []
+            coins[product] = info = _coin(c, s)
+            held, n = info["above"], s.get("RISING_DAYS")
+            if n:                                   # the rule on trial: above its line AND up over the past n days
+                info["rising"] = len(c) > n and c[-1] > c[-1 - n]
+                held = held and info["rising"]
+            info.update(type="trend", held=held)
+            targets[product] = weight * inv if held else 0.0
         return {"targets": targets, "coins": coins}
     for b in s["BLOCKS"]:
         infos = {p: _coin(closes.get(p) or [], s) for p in b["tickers"]}
@@ -188,4 +195,6 @@ def reason(product: str, coin: dict | None, settings: dict | None = None, names:
             return f"{line}, and one of the block's {coin['picks']} strongest over the past {MOM_DAYS} days."
         if coin["above"]:
             return f"{line}, but not one of the block's {coin['picks']} strongest over the past {MOM_DAYS} days."
+    if coin["above"] and coin.get("rising") is False:
+        return f"{line}, but down over the past {s['RISING_DAYS']} days."
     return line + "."

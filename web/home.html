@@ -62,9 +62,29 @@ function renderHero() {
   el.textContent = sgnUsd(t.earned);
   el.className = "big num " + cls(t.earned);
   fitText(el);
-  $("earned-sub").innerHTML = `<b class="${cls(t.today)}">${sgnUsd(t.today)}</b> today · ${usd(t.value)} in all`;
+  // The week: only once a book has a full day behind it (before that it only repeats "earned so far")
+  const week = t.week != null && t.week_days >= 1 ? ` · <b class="${cls(t.week)}">${sgnUsd(t.week)}</b> in ${t.week_days >= 7 ? "7 days" : t.week_days === 1 ? "a day" : t.week_days + " days"}` : "";
+  $("earned-sub").innerHTML = `<b class="${cls(t.today)}">${sgnUsd(t.today)}</b> today${week} · ${usd(t.value)} in all` + sinceLastVisit(t.earned);
   renderChart();
   countUp(el, t.earned, sgnUsd);                         // the first look; it marks the element, so the chart's reveal is once too
+}
+
+// "Since your last visit": this browser remembers what the bots had earned when Home was last opened (nothing leaves the device).
+// Worked out once per page load, so the 30-second refreshes don't move what it compares against.
+let recap;
+function sinceLastVisit(earned) {
+  if (recap === undefined) {
+    recap = "";
+    try {
+      const was = JSON.parse(localStorage.getItem("home-last") || "null"), hours = was ? (Date.now() - was.t) / 36e5 : 0;
+      if (was && hours >= 6 && Number.isFinite(was.earned)) {
+        const ago = hours < 36 ? Math.round(hours) + " hours ago" : Math.round(hours / 24) + " days ago", d = Math.round((earned - was.earned) * 100) / 100;
+        recap = `<span class="recap">Since your last visit, ${ago}: <b class="${cls(d)}">${sgnUsd(d)}</b></span>`;
+      }
+      localStorage.setItem("home-last", JSON.stringify({t: Date.now(), earned}));
+    } catch (e) {}
+  }
+  return recap;
 }
 
 const WHEN = "Checks weekdays at 10:00 AM ET";
@@ -138,11 +158,14 @@ function addTile() {
   const add = setupShown() ? [] : D.can_add || [];
   return add.length ? `<div class="card add-bot"><h2>Add a bot</h2>${add.map(a => `<a class="add-row" href="/settings#addon-${esc(a.id)}"><span><b>${esc(a.name)}</b><span>${esc(a.about)}</span></span><span class="btn small">Add</span></a>`).join("")}</div>` : "";
 }
+// The week's bars share one scale: the bot that moved most fills its bar (at least 2%, so a quiet week doesn't shout)
+const weekTop = () => Math.max(2, ...D.bots.map(b => b.week && b.week.pct != null ? Math.abs(b.week.pct) : 0));
 function renderBots() {
   $("t-bots").innerHTML = D.bots.map(b => `<a class="card bot" href="${esc(b.href)}">
       <div class="bot-name">${esc(b.name)}${b.late ? ' <span class="chip">Needs a look</span>' : ""}</div>
       <div class="bot-earned ${cls(b.earned)}">${b.earned == null ? '<span class="muted">—</span>' : sgnUsd(b.earned)}</div>
       <div class="bot-line num">${b.value == null ? "Not started" : `${usd(b.value)} · <span class="${cls(b.today)}">${sgnUsd(b.today)}</span> today`}</div>
+      ${b.week && b.week.days >= 1 && b.week.pct != null ? `<div class="bot-week num"><span class="wk ${cls(b.week.pct)}"><i style="width:${Math.min(100, Math.abs(b.week.pct) / weekTop() * 100)}%"></i></span><span class="${cls(b.week.pct)}">${pct(b.week.pct, 1)}</span> in ${b.week.days >= 7 ? "7 days" : b.week.days === 1 ? "a day" : b.week.days + " days"}</div>` : ""}
       <div class="bot-note">${esc(b.note)}</div>
       <div class="bot-chart" data-bot="${esc(b.id)}"></div></a>`).join("") + addTile();
   document.querySelectorAll(".bot-earned").forEach(fitText);

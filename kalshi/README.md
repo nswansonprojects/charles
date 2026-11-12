@@ -18,6 +18,11 @@ resolves YES from an outside source. When that beats the price by more than fees
 | econ | Cleveland Fed CPI nowcast |
 | longshot | cheap YES contracts win less often than priced, so it bets NO |
 
+Data credits and limits: weather model data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0; its free service is for
+non-commercial use), forecasts from the US National Weather Service. Kalshi doesn't offer every market in every US state,
+sports contracts in particular: this bot is paper-only and never places an order, so check what Kalshi offers where you
+live before you trade there yourself.
+
 **Every strategy bets from the first scan.** Every market each strategy prices is also logged and graded
 against Kalshi's own price when it settles (`predictions.py`), so you can see whose odds beat the market.
 Optional levels (`gates.py`, off by default: `ON = False`) can make a strategy earn its money first.

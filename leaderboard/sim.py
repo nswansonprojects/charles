@@ -209,6 +209,11 @@ def main():
         db.commit()
     if a.seed_demo:
         seed_demo(db)
+    if os.environ.get("LEADERBOARD_HOUSE") == "1":       # the real board only: its house bots (leaderboard/house.py)
+        from leaderboard import house
+        added = house.ensure(db)
+        if added:
+            log.info(f"house bots added: {', '.join(added)}")
     update(db)
     from leaderboard import challenges
     challenges.update(db)

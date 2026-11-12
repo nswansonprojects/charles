@@ -69,6 +69,7 @@
         <div class="meter" role="img" aria-label="${w.days} of ${w.need || B.min_days} days"><i style="width:${Math.min(100, w.days / (w.need || B.min_days) * 100)}%"></i></div>
         <span class="lb-days">${w.days} of ${w.need || B.min_days} days</span></div>`).join("");
     $("foot").innerHTML = (B.test_mode ? "These are made-up test entries while the leaderboard is being tried out. " : "") +
+      ((B.ranked || []).concat(W).some(e => e.house) ? "A \"House bot\" is run by the leaderboard itself to show a preset. It isn't a person. " : "") +
       `Ranked after ${B.min_days} days. Past results, not a promise.` + (B.board_url ? ` <a href="${esc(B.board_url)}" target="_blank" rel="noopener">Public page ↗</a>` : "");
   }
 

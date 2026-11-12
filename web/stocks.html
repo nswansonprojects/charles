@@ -81,6 +81,11 @@
         <div class="tests" id="tests"></div>
       </div>
       <div class="card st-card" id="selftune" hidden></div>
+      <div class="card" id="kinds-card" hidden>
+        <div class="card-head"><h2>In each kind of market</h2><span class="aside">per month</span></div>
+        <div class="kinds" id="kinds"></div>
+        <p class="note" id="kinds-note"></p>
+      </div>
       <div class="card span" id="cl-card">
         <div class="card-head"><h2>What Claude found</h2><span class="aside" id="cl-when"></span><button class="link-btn" id="cl-full" type="button" hidden>Full report</button></div>
         <div id="findings" data-bot="stocks"></div>
@@ -585,6 +590,9 @@ function render() {
   $("tune-sub").textContent = (!E ? "It tests small changes to the plan's numbers on 19 years of history." : cand ? cand.why
     : `${E.passing || 0} of ${E.tested} alternatives beat the current rules in every test.`) + (E && E.self_tune_said && !C.checkup ? " " + E.self_tune_said : "");
   $("tune-when").hidden = !E; if (E) $("tune-when").textContent = `Checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}`;
+  const KD = E && E.kinds && E.kinds.kinds ? kindBars(E.kinds, "S&P 500", pct) : null;
+  $("kinds-card").hidden = !KD;
+  if (KD) { $("kinds").innerHTML = KD.html; $("kinds-note").textContent = KD.note; }
   TESTS = (E && E.tests) || [];
   $("tests-label").hidden = !TESTS.length;
   $("tests").innerHTML = TESTS.map((t, i) => `<button class="test ${t.passes ? "pass" : t.worst < 0 ? "fail" : ""}" type="button" data-open="test" data-k="${i}" aria-label="${esc(t.label)}, ${t.passes ? "won every test" : "did not win every test"}">
@@ -593,7 +601,7 @@ function render() {
   $("miles").innerHTML = (S.milestones || []).map(m => ring(m.progress, m.detail.replace(/^in /, "").replace(" to go", ""), m.name, m.needs)).join("");
   $("rules-note").textContent = (C.checkup ? "Claude may change one number a quarter, only when the change wins every test and self-tune is on."
     : "With self-tune on, one number a quarter may change, only when the change wins every test.") +
-    ((S.rules || {}).last_change ? ` Last change: ${S.rules.last_change.split(":")[0]}.` : "");
+    ((S.rules || {}).last_change ? ` Last change: ${(d => /^\d{4}-\d\d-\d\d$/.test(d) ? dayFmt(d, {month: "short", day: "numeric", year: "numeric"}) : d)(S.rules.last_change.split(":")[0])}.` : "");
   $("cl-card").hidden = !C.checkup && !C.report;
 
   document.body.classList.remove("loading");
@@ -605,8 +613,12 @@ async function load() {
     S = await r.json();
     if (S.error) throw new Error(S.error);
     render();
+    document.body.dataset.shown = "1";
     loadNews();
-  } catch (e) { document.body.classList.remove("loading"); }
+  } catch (e) {
+    if (!document.body.dataset.shown) $("ret").textContent = "The dashboard isn't answering. Refresh in a moment.";   // never over numbers already on the page
+    document.body.classList.remove("loading");
+  }
 }
 // The holdings' news, for a holding's sheet. The feed beside the page has its own (feed.js).
 async function loadNews() {

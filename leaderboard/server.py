@@ -35,7 +35,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from leaderboard import challenges, common, sim  # noqa: E402
+from leaderboard import challenges, common, house, sim  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -108,7 +108,8 @@ def board(rows: list, bench: list, rng: str, today: str) -> dict:
     for r in rows:
         curve = json.loads(r["curve"])
         base = {"id": r["id"], "name": display_name(r), "anonymous": not r["name"], "submitted": r["submitted"][:10],
-                "days": len(curve), "copies": r["copies"], "demo": bool(r["demo"]), "settings": json.loads(r["settings"])}
+                "days": len(curve), "copies": r["copies"], "demo": bool(r["demo"]), "house": house.is_house(r["pubkey"]),
+                "settings": json.loads(r["settings"])}
         if r["status"] == "retired":
             st = window_stats(curve, None, sim.START_CASH)
             retired.append({**base, "retired": (r["retired"] or "")[:10],
@@ -168,7 +169,8 @@ def submit(db, body: dict, now: datetime) -> dict:
         other = db.execute("SELECT 1 FROM entries WHERE lower(name)=lower(?) AND pubkey!=? LIMIT 1", (name, p["pubkey"])).fetchone()
         if other:
             raise Reject(409, "that name is already used by someone else")
-    same = db.execute("SELECT id, pubkey FROM entries WHERE bot=? AND hash=? AND status='active'", (p["bot"], h)).fetchone()
+    # A house bot (leaderboard/house.py) never blocks a person: it is retired below and this entry takes its place
+    same = db.execute("SELECT id, pubkey FROM entries WHERE bot=? AND hash=? AND status='active' AND pubkey NOT LIKE 'house:%'", (p["bot"], h)).fetchone()
     if same and same["pubkey"] == p["pubkey"]:
         return {"ok": True, "id": same["id"], "message": "Already on the leaderboard."}
     if same:
@@ -181,6 +183,8 @@ def submit(db, body: dict, now: datetime) -> dict:
                                              (p["bot"], p["pubkey"]))]
     db.execute("UPDATE entries SET status='retired', retired=? WHERE bot=? AND pubkey=? AND status='active'",
                (stamp, p["bot"], p["pubkey"]))
+    db.execute("UPDATE entries SET status='retired', retired=? WHERE bot=? AND hash=? AND status='active' AND pubkey LIKE 'house:%'",
+               (stamp, p["bot"], h))
     eid = "lb-" + uuid.uuid4().hex[:6]
     db.execute("INSERT INTO entries (id, bot, pubkey, name, settings, hash, submitted, start_day) VALUES (?,?,?,?,?,?,?,?)",
                (eid, p["bot"], p["pubkey"], name, json.dumps(settings), h, stamp, sim.start_day(now)))

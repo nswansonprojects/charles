@@ -126,9 +126,73 @@ class StalePrices(BotTestCase):
         sys.modules["yfinance"] = fake
         self.addCleanup(lambda: sys.modules.__setitem__("yfinance", real) if real else sys.modules.pop("yfinance"))
         self.patch(rb, "settings", lambda: dict(S))
+        self.patch(rb, "_alpaca_closes", lambda syms, today: (_ for _ in ()).throw(RuntimeError("no Alpaca")))
         closes, as_of = rb.closes_for(["NVDA", "SPY"], "2026-10-19")
         self.assertEqual(as_of, "2026-10-15")
         self.assertEqual(closes["SPY"], [700.0, 701.0])
+
+
+class Bar:
+    def __init__(self, day, close):
+        from datetime import datetime, timezone
+        self.timestamp, self.close = datetime.fromisoformat(day + "T04:00:00").replace(tzinfo=timezone.utc), close
+
+
+class PriceSources(BotTestCase):
+    """Alpaca's official closes first, Yahoo as the backup."""
+    def setUp(self):
+        super().setUp()
+        import alpaca_executor as ex
+        self.patch(rb, "settings", lambda: dict(S))
+        self.asked, self.bars, self.yahoo_calls = [], {}, []
+        test = self
+
+        class Data:
+            def get_stock_bars(self, req):
+                test.asked.append(req)
+                if isinstance(test.bars, Exception):
+                    raise test.bars
+                return type("R", (), {"data": test.bars})()
+        self.patch(ex, "data_client", lambda: Data())
+
+        def yahoo(syms, today):
+            self.yahoo_calls.append(list(syms))
+            return {s: [1.0, 2.0] for s in syms}, "2026-10-16"
+        self.patch(rb, "_yahoo_closes", yahoo)
+
+    def test_alpaca_is_asked_for_the_official_adjusted_tape_and_today_never_counts(self):
+        self.bars = {"SPY": [Bar("2026-10-15", 700.0), Bar("2026-10-16", 701.0), Bar("2026-10-19", 650.0)],
+                     "NVDA": [Bar("2026-10-15", 190.0), Bar("2026-10-16", 191.0)]}
+        closes, as_of = rb.closes_for(["NVDA", "SPY"], "2026-10-19")
+        self.assertEqual(closes, {"SPY": [700.0, 701.0], "NVDA": [190.0, 191.0]})
+        self.assertEqual(as_of, "2026-10-16")
+        self.assertEqual(self.yahoo_calls, [])
+        req = self.asked[0]
+        self.assertEqual((req.feed.value, req.adjustment.value, sorted(req.symbol_or_symbols)), ("sip", "all", ["NVDA", "SPY"]))
+        from datetime import datetime, timezone, timedelta
+        # alpaca-py stores the end as a naive UTC time (it drops the zone), so read it as UTC, not as this machine's local time
+        self.assertGreaterEqual(datetime.now(timezone.utc) - req.end.replace(tzinfo=timezone.utc), timedelta(minutes=15))   # a free account's limit
+
+    def test_yahoo_takes_over_when_alpaca_fails(self):
+        self.bars = RuntimeError("subscription does not permit querying recent SIP data")
+        closes, as_of = rb.closes_for(["NVDA", "SPY"], "2026-10-19")
+        self.assertEqual((closes["SPY"], as_of, self.yahoo_calls), ([1.0, 2.0], "2026-10-16", [["NVDA", "SPY"]]))
+
+    def test_yahoo_takes_over_when_alpaca_lacks_the_core_or_is_stale(self):
+        self.bars = {"NVDA": [Bar("2026-10-16", 191.0)]}
+        rb.closes_for(["NVDA", "SPY"], "2026-10-19")
+        self.bars = {"SPY": [Bar("2026-10-02", 700.0)], "NVDA": [Bar("2026-10-16", 191.0)]}
+        rb.closes_for(["NVDA", "SPY"], "2026-10-19")
+        self.assertEqual(self.yahoo_calls, [["NVDA", "SPY"], ["NVDA", "SPY"]])
+
+    def test_a_symbol_alpaca_does_not_have_comes_from_yahoo_alone(self):
+        self.bars = {"SPY": [Bar("2026-10-15", 700.0), Bar("2026-10-16", 701.0)]}
+        closes, as_of = rb.closes_for(["ODD", "SPY"], "2026-10-19")
+        self.assertEqual((closes, as_of, self.yahoo_calls), ({"SPY": [700.0, 701.0], "ODD": [1.0, 2.0]}, "2026-10-16", [["ODD"]]))
+
+    def test_the_core_dates_the_prices(self):
+        self.bars = {"SPY": [Bar("2026-10-15", 700.0)], "NVDA": [Bar("2026-10-15", 190.0), Bar("2026-10-16", 191.0)]}
+        self.assertEqual(rb.closes_for(["NVDA", "SPY"], "2026-10-19")[1], "2026-10-15")
 
 
 class FakeClient:

@@ -192,7 +192,7 @@ def evaluation_view(ev: dict | None) -> dict | None:
     rows = ev.get("variants") or []
     return {"generated": ev.get("generated"), "tested": len(rows), "passing": sum(r.get("passes", False) for r in rows),
             "candidate": ev.get("candidate"), "live": ev.get("live") or {}, "custom": bool(ev.get("custom")),
-            "self_tune_said": ev.get("self_tune_said")}
+            "self_tune_said": ev.get("self_tune_said"), "kinds": ev.get("by_kind")}
 
 
 def evaluation_tests(ev: dict | None) -> list:
@@ -553,6 +553,7 @@ def build_crypto_state() -> dict:
                       datetime.now(timezone.utc), _cached("crypto_bt", 3600, lambda: crypto_backtest_view(_read(CRYPTO_BACKTEST))),
                       settings=_crypto_settings(), names=coin_names_known())
     out["evaluation"] = crypto_evaluation_view(_read("crypto_evaluation.json"))
+    out["shadow"] = crypto_shadow_view(book, _read("crypto_shadow.json"))
     if book:          # bitcoin's hourly closes since the book started: the chart's "just hold bitcoin" line
         import crypto_market
         out["btc_hourly"] = _cached("btc_hourly", 900, lambda: crypto_market.hourly_closes("BTC-USD", book["started"])) or []
@@ -581,6 +582,7 @@ def with_lessons(state: dict) -> dict:
             h["why"] = lessons.holding_why(h, state.get("plan") or {})
         if isinstance(state.get("evaluation"), dict):
             state["evaluation"]["tests"] = evaluation_tests(_read("evaluation.json"))
+            state["evaluation"]["kinds"] = (_read("evaluation.json") or {}).get("by_kind") or state["evaluation"].get("kinds")
     return state
 
 
@@ -841,6 +843,19 @@ def coin_names_known() -> dict:
     return {**{r["product"]: r["name"] for r in rows}, **{r["product"]: r["name"] for r in _builtin_coins()}, **crypto_plan.NAMES}
 
 
+def crypto_shadow_view(book: dict | None, shadow: dict | None) -> dict | None:
+    """The trial book (crypto_paper.shadow) beside the real one, both as % since the trial started. None without one."""
+    if not book or not shadow or not shadow.get("curve") or not book.get("curve"):
+        return None
+    since = shadow["started"]
+    then = next((v for t, v in book["curve"] if t >= since), book["curve"][-1][1])
+    pct = lambda now, start: round((now / start - 1) * 100, 2) if start else None
+    held = [p for p, w in (shadow.get("targets") or {}).items() if w]
+    return {"since": since, "days": (shadow.get("rule") or {}).get("RISING_DAYS"), "book_pct": pct(book["curve"][-1][1], then),
+            "shadow_pct": pct(shadow["curve"][-1][1], shadow.get("start_cash") or 1000.0),
+            "holds": [crypto_plan.name_of(p) for p in held], "trades": len(shadow.get("trades") or [])}
+
+
 def crypto_evaluation_view(ev: dict | None) -> dict | None:
     """The crypto plan's monthly check (evaluate.crypto_main), for its Self-Tune tab: each change tried, with what it did in its
     worse half (% a year against the plan now), like the stock plan's."""
@@ -856,7 +871,7 @@ def crypto_evaluation_view(ev: dict | None) -> dict | None:
             return None
     tests = [{"setting": v.get("setting"), "label": v.get("label"), "from": v.get("from"), "to": v.get("to"), "passes": bool(v.get("passes")),
               "why": v.get("why"), "worst": worst(v)} for v in ev.get("variants") or []]
-    return {k: ev.get(k) for k in ("generated", "history", "custom", "candidate", "self_tune", "self_tune_said", "rules")} | {
+    return {k: ev.get(k) for k in ("generated", "history", "custom", "candidate", "self_tune", "self_tune_said", "rules")} | {"kinds": ev.get("by_kind")} | {
         "now": base.get("all"), "tests": tests, "tested": len(tests), "passing": sum(t["passes"] for t in tests)}
 
 
@@ -1213,6 +1228,23 @@ def _thin(rows: list, keep: int = 90) -> list:
     return [rows[round(i * step)] for i in range(keep)]
 
 
+def week_change(curve: list, value, start: float, now: datetime) -> dict | None:
+    """What a book's value did over the last 7 days: {"change" dollars, "pct", "days"}. A book younger than that counts from
+    its start, and "days" says how many it has. `curve` is [[iso time, value], ...], oldest first."""
+    if value is None:
+        return None
+    cut, base, first = now - timedelta(days=7), start, None
+    for row in curve or []:
+        t = datetime.fromisoformat(str(row[0]).replace("Z", "+00:00"))
+        t = t.astimezone(timezone.utc) if t.tzinfo else t.replace(tzinfo=timezone.utc)
+        first = first or t
+        if t > cut:
+            break
+        base = row[1]
+    days = 0 if first is None else 7 if first <= cut else max(0, (now - first).days)
+    return {"change": round(value - base, 2), "pct": round((value / base - 1) * 100, 2) if base else None, "days": days}
+
+
 def earnings_series(books: list, now: datetime) -> list:
     """What all the bots have earned together over time, [[iso time, dollars], ...]. `books` is [(curve, start)], a curve
     being [[iso time, value], ...]. Hourly for the last 8 days, daily before that. A bot counts as $0 until it starts."""
@@ -1301,7 +1333,7 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
 
     def add(bot_id, name, href, value, start, today, curve, note, late=False, bench=None):
         row = {"id": bot_id, "name": name, "href": href, "value": value, "start": start, "today": today, "note": note, "late": late,
-               "bench": bench, "earned": None if value is None else round(value - start, 2),
+               "bench": bench, "earned": None if value is None else round(value - start, 2), "week": week_change(curve, value, start, now),
                "earned_pct": None if value is None or not start else round((value / start - 1) * 100, 2),
                "curve": [r[:2] for r in _thin(curve or [])]}
         bots.append(row)
@@ -1338,7 +1370,9 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
             "trading": stocks.get("trading") or {"mode": "paper"},
             "halted": {"limit": (stocks.get("today") or {}).get("limit")} if (stocks.get("today") or {}).get("halted") else None,
             "next_repick": plan.get("next_rebalance"), "total": {"earned": earned, "earned_pct": round(earned / start * 100, 2) if start else None,
-            "today": round(sum(b["today"] or 0 for b in counted), 2), "value": round(sum(b["value"] for b in counted), 2), "start": start},
+            "today": round(sum(b["today"] or 0 for b in counted), 2), "value": round(sum(b["value"] for b in counted), 2), "start": start,
+            "week": round(sum(b["week"]["change"] for b in counted), 2) if counted else None,
+            "week_days": max((b["week"]["days"] for b in counted), default=0)},
             "series": series, "bots": bots, "notices": noted,
             "can_add": [{"id": k, "name": a["short"], "about": a["pitch"]} for k, a in addons.ADDONS.items() if not on.get(k)]}
 
@@ -1552,7 +1586,8 @@ def kalshi_mode(body: bytes, ctype: str):
 
 # The leaderboard (owner 2026-10-27; leaderboard/, docs/leaderboard.md): the Home cards' Submit button.
 # Only this bot's settings and an optional name leave the server, signed with this install's key.
-LEADERBOARD_URL = os.environ.get("LEADERBOARD_URL", "https://charles-bot.xyz")
+REAL_BOARD = "https://charles-bot.xyz"
+LEADERBOARD_URL = os.environ.get("LEADERBOARD_URL", REAL_BOARD)
 LEADERBOARD_SITE = os.environ.get("LEADERBOARD_SITE", "https://charles-bot.xyz/leaderboard.html")
 LEADERBOARD_BOT_DIR = os.environ.get("LEADERBOARD_BOT_DIR") or ROOT      # the preview submits a test copy's settings
 
@@ -1674,6 +1709,9 @@ def challenge_post(body: bytes, withdraw: bool = False):
         return 400, {"ok": False, "message": str(e) or "malformed request"}
     except Exception as e:
         return 502, {"ok": False, "message": f"The leaderboard isn't answering right now ({type(e).__name__})."}
+
+
+LEADERBOARD_POSTS = ("/api/leaderboard/submit", "/api/leaderboard/withdraw", "/api/challenge/enter", "/api/challenge/withdraw")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -1874,6 +1912,11 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/api/control":
             return self._json(*control_post(body, _cached("auth", 5, auth.load)))
+        # Like Settings and Copy: no login set up, no sharing. A preview is let through, as with Copy, but only one that has its own
+        # test board as well as its own test copy: a mistyped folder alone must never open the real board.
+        preview = LEADERBOARD_BOT_DIR != ROOT and LEADERBOARD_URL != REAL_BOARD
+        if path in LEADERBOARD_POSTS and not preview and auth.access(_cached("auth", 5, auth.load)) == "open":
+            return self._json(403, {"ok": False, "message": "Sharing needs the dashboard login. Turn it on over SSH: charles-login"})
         if path == "/api/challenge/enter":
             return self._json(*challenge_post(body))
         if path == "/api/challenge/withdraw":

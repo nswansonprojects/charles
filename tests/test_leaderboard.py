@@ -222,3 +222,65 @@ class Simulation(BotTestCase):
         weekdays = sum((date(2026, 1, 1) + timedelta(days=k)).weekday() < 5 for k in range(sim.WARMUP_DAYS))
         trading = weekdays - 10 * sim.WARMUP_DAYS / 365            # about 10 exchange holidays a year
         self.assertGreaterEqual(trading, need)
+
+
+class HouseBots(BotTestCase):
+    """leaderboard/house.py: labelled entries the board runs itself, which step aside for a real person."""
+    def setUp(self):
+        super().setUp()
+        from leaderboard import house
+        self.house = house
+        self.tmp = tempfile.mkdtemp()
+        self.db = sim.connect(os.path.join(self.tmp, "lb.db"))
+
+    def tearDown(self):
+        self.db.close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+        super().tearDown()
+
+    def rows(self, where="1"):
+        return self.db.execute(f"SELECT * FROM entries WHERE {where} ORDER BY bot, pubkey").fetchall()
+
+    def test_every_preset_is_added_once_with_valid_settings_and_a_name_that_says_what_it_is(self):
+        added = self.house.ensure(self.db, NOW)
+        self.assertEqual(len(added), sum(len(v) for v in self.house.HOUSE.values()))
+        for r in self.rows():
+            self.assertTrue(r["name"].startswith("House bot: "), r["name"])
+            self.assertTrue(self.house.is_house(r["pubkey"]))
+            self.assertEqual(json.loads(r["settings"]), common.validate_settings(r["bot"], json.loads(r["settings"])))
+            self.assertEqual((r["status"], r["demo"], r["start_day"]), ("active", 0, "2026-10-28"))
+        self.assertEqual(len({(r["bot"], r["hash"]) for r in self.rows()}), len(added))      # no two the same
+        self.assertEqual(self.house.ensure(self.db, NOW), [])
+
+    def test_a_preset_someone_already_shares_is_left_to_them(self):
+        mine = server.submit(self.db, sub(common.new_key(), self.house.defaults("stocks"), name="first"), NOW)["id"]
+        self.house.ensure(self.db, NOW)
+        self.assertEqual([r["id"] for r in self.rows("bot='stocks' AND pubkey NOT LIKE 'house:%'")], [mine])
+        self.assertEqual(self.rows("pubkey='house:stocks:default'"), [])
+
+    def test_a_person_with_the_same_settings_takes_the_house_bots_place_for_good(self):
+        self.house.ensure(self.db, NOW)
+        steady = {**self.house.defaults("stocks"), "AGGRESSIVE": False}
+        res = server.submit(self.db, sub(common.new_key(), steady, name="realperson"), NOW)       # no 409: the house bot isn't "someone"
+        self.assertTrue(res["ok"])
+        h = self.rows("pubkey='house:stocks:steady'")[0]
+        self.assertEqual(h["status"], "retired")
+        self.assertEqual(self.house.ensure(self.db, NOW), [])                                   # and it doesn't come back
+        with self.assertRaises(server.Reject):                                                  # between people the rule is unchanged
+            server.submit(self.db, sub(common.new_key(), steady), NOW)
+
+    def test_nobody_can_withdraw_or_pose_as_one(self):
+        self.house.ensure(self.db, NOW)
+        eid = self.rows("pubkey='house:stocks:steady'")[0]["id"]
+        with self.assertRaises(server.Reject):
+            server.withdraw(self.db, signed(common.new_key(), action="withdraw", id=eid), NOW)
+        for name in ("HouseBot", "house_bot_2", "House-Bot"):
+            with self.assertRaises(ValueError):
+                common.check_name(name)
+        self.assertEqual(common.check_name("lighthouse"), "lighthouse")
+
+    def test_the_board_flags_them(self):
+        up = [[f"2026-10-{d:02d}", 10000 + d * 50] for d in range(1, 28)]
+        b = server.board([{**row("a", up, name="House bot: Steady"), "pubkey": "house:stocks:steady"}, row("b", up, name="person")],
+                         [[d, 100] for d, _ in up], "all", "2026-10-27")
+        self.assertEqual({e["name"]: e["house"] for e in b["ranked"]}, {"House bot: Steady": True, "person": False})

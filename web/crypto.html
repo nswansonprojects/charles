@@ -101,6 +101,16 @@ details.act-d p { margin: 0 0 9px 46px; font-size: 13px; color: var(--text-2); }
         <div class="bt-big num" id="tune-now" style="--n:2" hidden></div>
       </div>
       <div class="card st-card" id="selftune" hidden></div>
+      <div class="card" id="kinds-card" hidden>
+        <div class="card-head"><h2>In each kind of market</h2><span class="aside">per month</span></div>
+        <div class="kinds" id="kinds"></div>
+        <p class="note" id="kinds-note"></p>
+      </div>
+      <div class="card" id="shadow-card" hidden>
+        <div class="card-head"><h2>A safer rule, on trial</h2><span class="aside" id="shadow-since"></span></div>
+        <div class="bt-big num" id="shadow-runs" style="--n:2"></div>
+        <p class="note" id="shadow-note"></p>
+      </div>
       <div class="card" id="ev-card" hidden>
         <div class="card-head"><h2>What it tried</h2><span class="aside" id="ev-hist"></span></div>
         <ul class="ev-list" id="ev-list"></ul>
@@ -357,12 +367,23 @@ function renderTune() {
   $("tune-when").hidden = !E; if (E) $("tune-when").textContent = `Checked ${dayFmt(E.generated, {month: "short", day: "numeric"})}`;
   $("tune-now").hidden = !(E && E.now);
   if (E && E.now) $("tune-now").innerHTML = `<div class="bt-run"><span class="bt-l">Your plan, ${esc(E.history || "simulated")}</span><b class="${cls(E.now.cagr_pct)}">${pct(E.now.cagr_pct, 0)}</b><span class="bt-s">a year · worst drop <span class="down">${pct(E.now.max_drawdown_pct, 0)}</span></span></div>`;
+  const KD = E && E.kinds && E.kinds.kinds ? kindBars(E.kinds, "Bitcoin", pct) : null;
+  $("kinds-card").hidden = !KD;
+  if (KD) { $("kinds").innerHTML = KD.html; $("kinds-note").textContent = KD.note; }
+  const W = S.shadow;
+  $("shadow-card").hidden = !W;
+  if (W) {
+    $("shadow-since").textContent = "Since " + dayFmt(W.since, {month: "short", day: "numeric"});
+    const run = (label, v, sub) => `<div class="bt-run"><span class="bt-l">${label}</span><b class="${cls(v)}">${pct(v, 1)}</b><span class="bt-s">${sub}</span></div>`;
+    $("shadow-runs").innerHTML = run("Your book", W.book_pct, "the plan as it is") + run("The trial book", W.shadow_pct, W.holds.length ? "holds " + esc(W.holds.join(" and ")) : "all in cash");
+    $("shadow-note").textContent = `The trial book follows your plan with one more rule: it holds a coin only while the coin is also up over the past ${W.days} days. On past prices that made about the same, with a smaller worst drop. It runs beside your book on pretend money and changes nothing in your plan.`;
+  }
   $("ev-card").hidden = !(E && E.tests && E.tests.length);
   if (!E) return;
   $("ev-hist").textContent = E.history || "";
   $("ev-list").innerHTML = (E.tests || []).map(t => `<li><span><b>${esc(t.label)}</b> <span class="num muted">${esc(String(t.from))} → ${esc(String(t.to))}</span></span>
       <span class="num ${t.passes ? "ok" : cls(t.worst)}">${t.passes ? "Passed" : t.worst == null ? "—" : pct(t.worst, 1) + " a year"}</span><span class="why">${esc(t.why || "")}</span></li>`).join("");
-  $("ev-note").textContent = `A change passes only if it makes at least ${(E.rules || {}).min_gain_pct_per_year ?? 0.5}% a year more in both halves (2017-20 and 2021 on) without a much deeper worst drop. With self-tune on, at most one passing change a quarter is applied, and it can be undone on the Plan tab.`;
+  $("ev-note").textContent = `A change passes only if it makes at least ${(E.rules || {}).min_gain_pct_per_year ?? 0.5}% a year more in both halves (2017-20 and 2021 on) without a much deeper worst drop, averaged over the seven weekdays the check could fall on. With self-tune on, at most one passing change a quarter is applied, and it can be undone on the Plan tab.`;
 }
 
 function render() {
@@ -411,7 +432,11 @@ async function load() {
     const r = await fetch("api/state", {cache: "no-store"});
     S = await r.json();
     render();
-  } catch (e) { document.body.classList.remove("loading"); }
+    document.body.dataset.shown = "1";
+  } catch (e) {
+    if (!document.body.dataset.shown) $("ret").textContent = "The dashboard isn't answering. Refresh in a moment.";   // never over numbers already on the page
+    document.body.classList.remove("loading");
+  }
 }
 
 buildTabs();

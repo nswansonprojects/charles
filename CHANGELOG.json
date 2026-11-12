@@ -2,6 +2,19 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.9.0",
+   "date": "2026-11-12",
+   "kind": "rule",
+   "notes": [
+    "Stock prices now come from Alpaca's official closes first, with the keys Charles already has, and Yahoo as the backup. On two years of past prices the plan made the same decisions with either source.",
+    "Home shows the week: a bar and a number on each bot, the total in the top line, and what happened since your last visit.",
+    "Self-Tune shows how your plan did in each kind of market: calm rises, falls, rebounds and chop. The monthly check no longer proposes a change that makes the plan's weakest kind of market worse, and crypto's check averages all seven weekdays so one lucky day can't pass a change.",
+    "Sharing to the leaderboard and entering a challenge now need the dashboard login. If yours was never turned on, run charles-login over SSH.",
+    "Stocks and Crypto say so when their data doesn't arrive, instead of showing $0.00. The leaderboard labels its house bots.",
+    "How Charles trades doesn't change. The crypto files gain a rule on trial that stays off unless you start it."
+   ]
+  },
+  {
    "version": "v1.8.0",
    "date": "2026-11-11",
    "kind": "fix",

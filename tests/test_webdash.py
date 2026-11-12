@@ -408,6 +408,87 @@ class LoginOverHttp(BotTestCase):
         self.assertEqual(len(os.listdir(control.REQ_DIR)), 1)
 
 
+class LeaderboardPostsNeedTheLogin(BotTestCase):
+    """Share, Withdraw and challenge Enter/Withdraw: refused with no login set up, refused without a session, through with one.
+    The leaderboard's client is a fake, so nothing leaves the test."""
+    ADDRS = (("/api/leaderboard/submit", '{"bot": "stocks", "name": "abc"}'), ("/api/leaderboard/withdraw", '{"id": "lb-1a2b3c"}'),
+             ("/api/challenge/enter", '{"bot": "stocks", "name": "abc"}'), ("/api/challenge/withdraw", '{"bot": "stocks"}'))
+
+    def setUp(self):
+        super().setUp()
+        import threading
+        from http.server import ThreadingHTTPServer
+        from leaderboard import client
+        self.path = os.path.join(self.tmp, "auth.json")
+        self.patch(auth, "AUTH_FILE", self.path)
+        self.patch(wd, "_cache", {})
+        self.cfg = {"access": "public", "secret": "s" * 64, "links": []}
+        self.calls = []
+        def fake(name):
+            def call(*a, **k):
+                self.calls.append(name)
+                return {"open": {"id": "c1", "bot": "stocks"}} if name == "challenges" else (200, {"ok": True})
+            return call
+        for name in ("submit", "withdraw", "withdraw_challenge", "enter_challenge", "challenges", "_get"):
+            self.patch(client, name, fake(name))
+        self.srv = ThreadingHTTPServer(("127.0.0.1", 0), wd.Handler)
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+        self.addCleanup(self.srv.server_close)
+        self.addCleanup(self.srv.shutdown)
+
+    def state(self, access):
+        if access == "open":
+            if os.path.exists(self.path):
+                os.remove(self.path)
+        else:
+            with open(self.path, "w") as f:
+                json.dump({**self.cfg, "access": access}, f)
+        wd._cache.clear()
+
+    def post(self, path, body, cookie=None, csrf=None):
+        import http.client
+        c = http.client.HTTPConnection("127.0.0.1", self.srv.server_address[1], timeout=10)
+        c.request("POST", path, body=body, headers={"Content-Type": "application/json", **({"Cookie": cookie} if cookie else {}), **({"X-CSRF-Token": csrf} if csrf else {})})
+        r = c.getresponse()
+        return r.status, json.loads(r.read().decode() or "{}")
+
+    def test_open_refuses_and_sends_nothing(self):
+        self.state("open")
+        for path, body in self.ADDRS:
+            code, out = self.post(path, body)
+            self.assertEqual(code, 403, path)
+            self.assertIn("charles-login", out["message"])
+            self.assertFalse(out["ok"])
+        self.assertEqual(self.calls, [])
+
+    def test_a_preview_with_its_own_test_board_may_share_without_a_login(self):
+        self.state("open")
+        self.patch(wd, "LEADERBOARD_BOT_DIR", os.path.join(self.tmp, "copy-test"))
+        self.assertEqual(self.post(*self.ADDRS[0])[0], 403)           # a test copy alone, still pointed at the real board: refused
+        self.assertEqual(self.calls, [])
+        self.patch(wd, "LEADERBOARD_URL", "http://127.0.0.1:1")
+        code, out = self.post(*self.ADDRS[0])
+        self.assertEqual((code, out.get("ok")), (200, True), out)
+        self.assertTrue(self.calls)
+
+    def test_public_without_a_session_is_refused(self):
+        self.state("public")
+        for path, body in self.ADDRS:
+            self.assertEqual(self.post(path, body)[0], 401, path)
+            sid = auth.session(self.cfg)
+            self.assertEqual(self.post(path, body, cookie=f"{wd.SESSION_COOKIE}={sid}")[0], 403, path)      # a session but no page token
+        self.assertEqual(self.calls, [])
+
+    def test_public_with_a_session_and_token_goes_through(self):
+        self.state("public")
+        sid = auth.session(self.cfg)
+        for path, body in self.ADDRS:
+            self.calls.clear()
+            code, out = self.post(path, body, cookie=f"{wd.SESSION_COOKIE}={sid}", csrf=auth.csrf(self.cfg, sid.split(".")[0]))
+            self.assertEqual((code, out.get("ok")), (200, True), (path, out))
+            self.assertTrue(self.calls, path)
+
+
 class Control(BotTestCase):
     """POST /api/control: pause and resume need the login; the root service (control.py) carries them out."""
     CFG = {"access": "public", "secret": "s" * 64, "links": []}
@@ -455,6 +536,20 @@ class HomeFeed(BotTestCase):
 
     def view(self, stocks=None, crypto=None, kalshi=None, on=None, noted=()):
         return wd.home_view(stocks, crypto, kalshi, list(noted), on or {"crypto": True, "kalshi": True}, self.NOW)
+
+    def test_the_week_counts_from_seven_days_ago_or_from_a_young_books_start(self):
+        st = self.stocks(equity=[["2026-05-28T00:00:00+00:00", 1000.0], ["2026-10-23T20:00:00+00:00", 1010.0], ["2026-10-24T11:00:00+00:00", 1020.0],
+                                 ["2026-10-30T20:00:00+00:00", 1040.0]])
+        v = self.view(st, self.crypto(), self.kalshi())
+        by = {b["id"]: b for b in v["bots"]}
+        self.assertEqual(by["stocks"]["week"], {"change": 10.15, "pct": 1.0, "days": 7})          # from $1,020: the last value 7 days ago or earlier
+        self.assertEqual(by["crypto"]["week"], {"change": -55.5, "pct": -5.55, "days": 5})         # 5 days old: from its $1,000 start
+        self.assertEqual(by["kalshi"]["week"]["days"], 7)
+        self.assertEqual(v["total"]["week"], round(10.15 - 55.5 + by["kalshi"]["week"]["change"], 2))
+        self.assertEqual(v["total"]["week_days"], 7)
+        self.assertIsNone(wd.week_change([], None, 1000, self.NOW))
+        self.assertEqual(wd.week_change([], 1000.0, 1000, self.NOW), {"change": 0.0, "pct": 0.0, "days": 0})
+        self.assertEqual(self.view(None, None, None, on={})["total"]["week"], None)
 
     def test_adds_up_every_bot_and_uses_kalshi_betting_book_only(self):
         v = self.view(self.stocks(), self.crypto(), self.kalshi())

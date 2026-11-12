@@ -239,7 +239,12 @@ button.chip.practice:hover { border-color: color-mix(in srgb, var(--accent) 45%,
 .bot-earned { font: 600 26px/1.15 var(--sans); letter-spacing: -.025em; font-variant-numeric: lining-nums tabular-nums; margin: 6px 0 2px; white-space: nowrap; }
 .bot-line { font-size: 13px; color: var(--text-2); }
 .bot-note { font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bot-chart { grid-column: 2; grid-row: 1 / span 4; height: 72px; min-width: 0; }
+.bot-chart { grid-column: 2; grid-row: 1 / span 5; height: 72px; min-width: 0; }
+/* The week: a short bar on one scale for every bot (home.html weekTop), green or red like every money number */
+.bot-week { grid-column: 1; display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); margin-top: 4px; white-space: nowrap; }
+.bot-week .wk { flex: 0 1 64px; height: 6px; border-radius: 99px; background: var(--surface-2); overflow: hidden; }
+.bot-week .wk i { display: block; height: 100%; min-width: 2px; border-radius: 99px; background: currentColor; }
+.recap { display: block; margin-top: 2px; color: var(--muted); font-size: 13px; }
 .bot-chart svg { width: 100%; height: 100%; display: block; overflow: visible; }
 .bot-chart svg path[fill="none"] { stroke-width: 1.75; }
 .add-bot { display: flex; flex-direction: column; gap: 2px; border-style: dashed; border-color: var(--border-strong); background: transparent; box-shadow: none; }
@@ -526,6 +531,18 @@ button.pm:hover { filter: brightness(1.08); }
 .test-t { min-width: 0; font-size: 12px; line-height: 1.35; }
 .test-t b { display: block; font-weight: 600; color: var(--text); }
 .test-t span { color: var(--text-2); }
+.kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 28px; }
+.kd-h { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-height: 24px; font-size: 12.5px; color: var(--muted); }
+.kd-h b { font: 600 15px/1.2 var(--display); color: var(--text); }
+.kd-r { display: grid; grid-template-columns: 62px minmax(0, 1fr) 54px; align-items: center; gap: 8px; margin-top: 6px; font-size: 12.5px; color: var(--text-2); }
+.kd-r b { text-align: right; font-weight: 600; }
+.kd-t { position: relative; height: 10px; border-radius: 5px; background: var(--surface-2); }
+.kd-t::after { content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--border-strong); }
+.kd-t i { position: absolute; top: 0; bottom: 0; }
+.kd-t .kd-up { left: 50%; border-radius: 0 5px 5px 0; background: var(--good); }
+.kd-t .kd-dn { right: 50%; border-radius: 5px 0 0 5px; background: var(--critical); }
+.kd-r.mk i { opacity: .4; }
+@media (max-width: 560px) { .kinds { grid-template-columns: 1fr; } }
 .rings { display: flex; gap: 8px; }
 .ring { display: flex; flex: 1 1 0; flex-direction: column; align-items: center; text-align: center; min-width: 0; gap: 2px; }
 .ring-g { position: relative; width: min(100%, 92px); aspect-ratio: 1; margin-bottom: 6px; }

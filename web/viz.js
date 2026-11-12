@@ -33,3 +33,20 @@ function yearBars(yearly, label, pct) {
   return `<div class="label">${vizEsc(label)}</div><div class="yr-row" role="img" aria-label="Simulated yearly returns, ${vizEsc(ys[0])} to ${vizEsc(ys.at(-1))}">${ys.map(y => { const v = yearly[y];
     return `<div class="yr" title="${vizEsc(y)}: ${vizEsc(pct(v, 1))}"><span class="yr-up">${v > 0 ? bar(v) : ""}${v > top ? `<small>${vizEsc(pct(v, 0))}</small>` : ""}</span><span class="yr-down">${v < 0 ? bar(v) : ""}${-v > top ? `<small>${vizEsc(pct(v, 0))}</small>` : ""}</span><em>${vizEsc(y.slice(2))}</em></div>`; }).join("")}</div>`;
 }
+
+/* The plan in each kind of market (evaluate.by_kind), beside the market itself: two bars from a middle zero line, per month.
+   K: {kinds: {calm|fall|rebound|choppy: {share_pct, plan_pct, market_pct}}, weak, today, provisional_days, from, live}. Returns {html, note}. */
+const KIND_NAMES = {calm: "Calm rise", fall: "Fall", rebound: "Rebound", choppy: "Choppy"};
+function kindBars(K, market, pct) {
+  const order = ["calm", "fall", "rebound", "choppy"].filter(k => K.kinds[k] && K.kinds[k].plan_pct != null);
+  const top = Math.max(1, ...order.flatMap(k => [Math.abs(K.kinds[k].plan_pct), Math.abs(K.kinds[k].market_pct || 0)]));
+  const row = (who, v, mk) => `<div class="kd-r${mk ? " mk" : ""}"><span>${vizEsc(who)}</span><span class="kd-t"><i class="${v < 0 ? "kd-dn" : "kd-up"}" style="width:${(Math.abs(v || 0) / top * 50).toFixed(1)}%"></i></span><b class="num ${v > 0 ? "up" : v < 0 ? "down" : ""}">${vizEsc(pct(v, 1))}</b></div>`;
+  const html = order.map(k => { const r = K.kinds[k];
+    return `<div class="kd" role="img" aria-label="${KIND_NAMES[k]}: the plan ${vizEsc(pct(r.plan_pct, 1))} a month, ${vizEsc(market)} ${vizEsc(pct(r.market_pct, 1))}">
+      <div class="kd-h"><b>${KIND_NAMES[k]}</b>${K.weak === k ? `<span class="chip">Weakest here</span>` : `<span>${Math.round(r.share_pct)}% of days</span>`}</div>${row("The plan", r.plan_pct)}${row(market, r.market_pct, true)}</div>`; }).join("");
+  const live = Object.entries(K.live || {}).map(([k, r]) => `${r.days} ${KIND_NAMES[k].toLowerCase()} day${r.days === 1 ? "" : "s"}: the plan ${pct(r.plan_pct, 1)}, ${market} ${pct(r.market_pct, 1)}`);
+  const note = `Simulated since ${(K.from || "").slice(0, 4)}, per month.` + (K.today ? ` Right now the market reads as ${KIND_NAMES[K.today].toLowerCase()}; ${K.provisional_days > 90 ? "the days since its last high" : `the last ${K.provisional_days} days`} can still change, since a fall only counts once its low is known.` : "")
+    + (live.length ? ` Your real book so far: ${live.join("; ")}.` : "")
+    + (K.weak ? ` The rule check won't propose a change that makes ${KIND_NAMES[K.weak].toLowerCase()}s worse.` : "");
+  return {html, note};
+}

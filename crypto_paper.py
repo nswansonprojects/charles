@@ -18,6 +18,9 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("CRYPTO_DATA") or os.path.join(ROOT, "data")
 PATH = os.path.join(DATA, "crypto_paper.json")
 START_CASH = 1000.0
+SHADOW_PATH = os.path.join(DATA, "crypto_shadow.json")
+SHADOW_RULE = {"RISING_DAYS": 45}     # the rule on trial (ops/lab/crypto_rules.py, 2026-11-11): about the same return on past prices,
+                                      # a smaller worst drop; it fails self-tune's test, which counts only return, so it is watched instead
 WAIT_HOURS = 6        # a due check whose coins' prices didn't come waits this long for them, then goes ahead without them
 
 
@@ -110,12 +113,33 @@ def run(force: bool = False, path: str = PATH) -> dict:
     if book.get("check_waiting"):
         print(f"crypto paper book: the check waits for Coinbase's prices (since {book['check_waiting']}, up to {WAIT_HOURS} hours)")
     save(book, path)
+    try:
+        shadow(closes, prices, now, settings)
+    except Exception as e:                             # the trial book must never get in the real book's way
+        print(f"crypto shadow book: skipped ({e})")
+    return book
+
+
+def shadow(closes: dict, prices: dict, now: datetime, settings: dict | None, path: str | None = None) -> dict | None:
+    """A second pretend book that follows the same plan plus SHADOW_RULE, on the same prices at the same moments, so the two
+    can be compared from the day it started. It runs only where its file exists (`crypto_paper.py --start-shadow` makes it)
+    and only for Charles's own bitcoin/ether plan: with your own coins it stops stepping. It never touches the real book."""
+    path = path or SHADOW_PATH
+    book = load(path)
+    if book is None or (settings or {}).get("BLOCKS"):
+        return book
+    book = step(book, closes, prices, now, settings={**(settings or {}), **book.get("rule", SHADOW_RULE)}, names=crypto_settings.coin_names())
+    save(book, path)
     return book
 
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--force", action="store_true", help="run the weekly check now")
-    b = run(force=ap.parse_args().force)
+    ap.add_argument("--start-shadow", action="store_true", help="start the trial book that runs SHADOW_RULE beside the real one")
+    args = ap.parse_args()
+    if args.start_shadow and load(SHADOW_PATH) is None:
+        save({**new_book(datetime.now(timezone.utc).isoformat(timespec="seconds")), "rule": dict(SHADOW_RULE)}, SHADOW_PATH)
+    b = run(force=args.force)
     print(f"crypto paper book ${b['curve'][-1][1]:,.2f}; cash ${b['cash']:,.2f}; "
           + ", ".join(f"{p} {q:.6f}" for p, q in b["qty"].items()))

@@ -161,7 +161,7 @@ def short_id(public_key_b64: str) -> str:
 
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{2,19}$")
 RESERVED = ("charles", "admin", "official", "moderator", "support", "anthropic", "claude", "alpaca",
-            "kalshi", "coinbase", "anonymous")
+            "kalshi", "coinbase", "anonymous", "housebot")
 BLOCKED = ("fuck", "shit", "cunt", "nigg", "fag", "retard", "rape", "nazi")
 # everyday words with a blocked one inside: removed before the check, so the blocked word alone still fails
 INNOCENT = ("grape", "drape", "scrape", "trapez", "therap", "scunthorpe", "retardant", "ashkenazi")

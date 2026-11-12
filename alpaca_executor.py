@@ -38,6 +38,16 @@ def _client():
     return TradingClient(sec.alpaca_key(), sec.alpaca_secret(), paper=True)
 
 
+def data_client():
+    """Alpaca's market-data client, with the same key pair _client() uses (prices only: it can't see or touch the account)."""
+    from alpaca.data.historical import StockHistoricalDataClient
+    import live
+    if live.is_live():
+        key, secret = live.keys()
+        return StockHistoricalDataClient(key, secret)
+    return StockHistoricalDataClient(sec.alpaca_key(), sec.alpaca_secret())
+
+
 def _is_option(p) -> bool:
     return str(getattr(getattr(p, "asset_class", None), "value", getattr(p, "asset_class", ""))) == "us_option"
 

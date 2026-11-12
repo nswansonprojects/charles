@@ -208,3 +208,63 @@ class BacktestAlignment(BotTestCase):
         curve = crypto_backtest.simulate(common, closes, hold="BTC-USD")
         qty = 1000.0 * (1 - 0.006) / 100.0                               # the default 0.6% fee
         self.assertEqual(curve[-1], [days[9], round(qty * 109.0, 2)])
+
+
+class TrialRule(BotTestCase):
+    """RISING_DAYS, the rule on trial in the shadow book: off unless asked for, and the real plan never changes."""
+    def test_off_by_default_and_the_signature_is_unchanged(self):
+        self.assertIsNone(cp.DEFAULTS["RISING_DAYS"])
+        self.assertEqual(cp.signature({}), cp.signature({"RISING_DAYS": None}))
+        self.assertNotEqual(cp.signature({}), cp.signature({"RISING_DAYS": 45}))
+        d = cp.decide({"BTC-USD": [20, 10, 10, 13], "ETH-USD": [10, 10, 10, 13]}, S)
+        self.assertNotIn("rising", d["coins"]["BTC-USD"])
+
+    def test_a_coin_above_its_line_but_down_over_the_days_waits_in_cash(self):
+        s = {**S, "RISING_DAYS": 3}
+        d = cp.decide({"BTC-USD": [20, 10, 10, 13], "ETH-USD": [10, 10, 10, 13]}, s)      # bitcoin: above its 3-day line, below 3 days ago
+        self.assertEqual(d["targets"], {"BTC-USD": 0.0, "ETH-USD": 0.4})
+        self.assertEqual((d["coins"]["BTC-USD"]["above"], d["coins"]["BTC-USD"]["held"]), (True, False))
+        self.assertIn("but down over the past 3 days", cp.reason("BTC-USD", d["coins"]["BTC-USD"], s))
+        self.assertNotIn("down over", cp.reason("ETH-USD", d["coins"]["ETH-USD"], s))
+
+    def test_too_little_history_for_the_rule_counts_as_not_rising(self):
+        d = cp.decide({"BTC-USD": [10, 10, 13], "ETH-USD": [10, 10, 13]}, {**S, "RISING_DAYS": 3})
+        self.assertEqual(d["targets"], {"BTC-USD": 0.0, "ETH-USD": 0.0})
+
+
+class Shadow(BotTestCase):
+    def setUp(self):
+        super().setUp()
+        self.path = os.path.join(self.tmp, "crypto_shadow.json")
+        self.patch(crypto_paper, "SHADOW_RULE", {"RISING_DAYS": 3})
+        self.now = datetime(2026, 11, 11, 6, tzinfo=timezone.utc)
+        self.closes = {"BTC-USD": [20, 10, 10, 13], "ETH-USD": [10, 10, 10, 13]}
+        self.prices = {"BTC-USD": 13.0, "ETH-USD": 13.0}
+
+    def test_nothing_happens_until_it_is_started(self):
+        self.assertIsNone(crypto_paper.shadow(self.closes, self.prices, self.now, S, path=self.path))
+        self.assertFalse(os.path.exists(self.path))
+
+    def test_it_follows_the_plan_plus_the_rule_in_its_own_file(self):
+        crypto_paper.save({**crypto_paper.new_book(self.now.isoformat()), "rule": {"RISING_DAYS": 3}}, self.path)
+        b = crypto_paper.shadow(self.closes, self.prices, self.now, S, path=self.path)
+        self.assertEqual([(t["product"], t["side"]) for t in b["trades"]], [("ETH-USD", "BUY")])      # the real plan would buy both
+        self.assertEqual(crypto_paper.load(self.path)["targets"], {"BTC-USD": 0.0, "ETH-USD": 0.4})
+        real = crypto_paper.step(crypto_paper.new_book(self.now.isoformat()), self.closes, self.prices, self.now, S)
+        self.assertEqual(len(real["trades"]), 2)
+
+    def test_it_stops_stepping_with_your_own_coins(self):
+        crypto_paper.save({**crypto_paper.new_book(self.now.isoformat()), "rule": {"RISING_DAYS": 3}}, self.path)
+        blocks = [{"name": "Mine", "type": "long", "pct": 1.0, "tickers": ["SOL-USD"], "picks": 1}]
+        b = crypto_paper.shadow(self.closes, self.prices, self.now, {**S, "BLOCKS": blocks}, path=self.path)
+        self.assertEqual((b["trades"], b["curve"]), ([], []))
+
+    def test_the_page_compares_both_from_the_day_the_trial_started(self):
+        book = {"curve": [["2026-11-04T00:00:00+00:00", 1000.0], ["2026-11-11T06:00:00+00:00", 900.0], ["2026-11-12T06:00:00+00:00", 945.0]]}
+        trial = {"started": "2026-11-11T06:00:00+00:00", "start_cash": 1000.0, "rule": {"RISING_DAYS": 45},
+                 "curve": [["2026-11-11T06:00:00+00:00", 997.6], ["2026-11-12T06:00:00+00:00", 1020.0]],
+                 "targets": {"BTC-USD": 0.0, "ETH-USD": 0.4}, "trades": [{}]}
+        v = wd.crypto_shadow_view(book, trial)
+        self.assertEqual((v["book_pct"], v["shadow_pct"], v["holds"], v["days"]), (5.0, 2.0, ["Ether"], 45))
+        self.assertIsNone(wd.crypto_shadow_view(book, None))
+        self.assertIsNone(wd.crypto_shadow_view(None, trial))
