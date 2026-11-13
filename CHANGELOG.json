@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.10.2",
+   "date": "2026-11-13",
+   "kind": "fix",
+   "notes": [
+    "Nothing changes in your Charles. This release makes public the leaderboard server's code behind two new parts of charles-bot.xyz.",
+    "\"Watch Charles trade\" on the home page: our own server's Fetch, live, without results.",
+    "\"What stopped you?\" on the setup guide and the paid page: one tap adds one to that answer's count, and nothing else is kept.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.10.1",
    "date": "2026-11-13",
    "kind": "fix",

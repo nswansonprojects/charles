@@ -284,3 +284,86 @@ class HouseBots(BotTestCase):
         b = server.board([{**row("a", up, name="House bot: Steady"), "pubkey": "house:stocks:steady"}, row("b", up, name="person")],
                          [[d, 100] for d, _ in up], "all", "2026-10-27")
         self.assertEqual({e["name"]: e["house"] for e in b["ranked"]}, {"House bot: Steady": True, "person": False})
+
+
+class WhyCounts(BotTestCase):
+    """The website's one-tap "What stopped you?": totals only, known answers only, three a day per address."""
+    def setUp(self):
+        super().setUp()
+        import sqlite3
+        from leaderboard import why
+        self.why = why
+        self.db = sqlite3.connect(os.path.join(self.tmp, "lb.db"))
+
+    def test_counts_and_nothing_else(self):
+        from datetime import datetime, timezone
+        now = datetime(2026, 11, 13, 18, 0, tzinfo=timezone.utc)
+        for r in ("tech", "tech", "price"):
+            self.why.record(self.db, {"page": "guide", "reason": r}, now)
+        self.why.record(self.db, {"page": "paid", "reason": "trust"}, now)
+        self.assertEqual(self.why.totals(self.db), {"2026-11-13": {"guide": {"tech": 2, "price": 1}, "paid": {"trust": 1}}})
+        cols = [c[1] for c in self.db.execute("PRAGMA table_info(why_counts)")]
+        self.assertEqual(cols, ["day", "page", "reason", "n"])
+
+    def test_unknown_answers_refused(self):
+        for body in ({"page": "guide", "reason": "<script>"}, {"page": "x", "reason": "tech"}, [], {"page": "guide"}):
+            with self.assertRaises(self.why.Bad):
+                self.why.record(self.db, body)
+
+    def test_over_http_with_the_limit(self):
+        import json as _json
+        import threading
+        import urllib.error
+        import urllib.request
+        from http.server import ThreadingHTTPServer
+        from leaderboard import server
+        server._hits.clear()
+        H = type("H", (server.Handler,), {"db_path": os.path.join(self.tmp, "http.db")})
+        srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        url = f"http://127.0.0.1:{srv.server_address[1]}/api/why"
+
+        def post(body):
+            req = urllib.request.Request(url, data=_json.dumps(body).encode(), headers={"Content-Type": "application/json"})
+            try:
+                return urllib.request.urlopen(req, timeout=5).status
+            except urllib.error.HTTPError as e:
+                return e.code
+        try:
+            self.assertEqual(post({"page": "paid", "reason": "nope"}), 400)
+            self.assertEqual([post({"page": "guide", "reason": "later"}) for _ in range(3)], [200, 200, 429])   # 3 a day, the refused one too
+        finally:
+            srv.shutdown()
+            server._hits.clear()
+
+
+class WatchFeed(BotTestCase):
+    """The website's "Watch Charles trade": a public cut of this server's Fetch, never its results."""
+    def live(self, **kw):
+        d = {"product": "BTC-USD", "now": 1000.0, "price": 70000.0, "bid": 69999.0, "ask": 70001.0, "bars": [[t, 1, 2, 0, 1, 5] for t in range(200)],
+             "tape": [{"t": 999.0, "p": 70000.0, "q": 0.1, "side": "buy", "extra": 1}] * 40, "book": {"pos": None, "cash": 1012.0, "value": 1012.0},
+             "pnl": {"total": 12.0}, "events": [{"kind": "sell", "ts": 900.0, "price": 70100.0, "pnl": 12.0, "say": "Sold for a gain of $12.00."}],
+             "watching": "The trend is up. I am waiting for a dip of 0.2% more.", "watch": {"numbers": {"level": 69800.0}}}
+        d.update(kw)
+        return d
+
+    def test_no_results_ever(self):
+        from leaderboard import watch
+        v = watch.public_view(self.live(), 1001.0)
+        text = json.dumps(v)
+        for leak in ("pnl", "cash", "value", "gain", "12.0", "say"):
+            self.assertNotIn(leak, text)
+        self.assertEqual((len(v["bars"]), len(v["tape"]), v["moves"]), (90, 30, [{"kind": "sell", "ts": 900.0, "price": 70100.0}]))
+        self.assertEqual(v["watching"], "The trend is up. I am waiting for a dip of 0.2% more.")
+
+    def test_holding_hides_the_open_trade(self):
+        from leaderboard import watch
+        v = watch.public_view(self.live(book={"pos": {"qty": 1}}, watching="Up 0.4% on this trade. Target 70,300."), 1001.0)
+        self.assertEqual((v["holding"], v["watching"]), (True, "Charles is holding bitcoin and waiting for his target or his stop."))
+
+    def test_stale_or_missing_is_off(self):
+        from leaderboard import watch
+        self.assertIsNone(watch.public_view(self.live(), 1000.0 + watch.STALE + 1))
+        self.assertIsNone(watch.public_view({}, 1000.0))
+        watch._cache["at"] = 0
+        self.assertIsNone(watch.current(os.path.join(self.tmp, "none.json"), 5.0))

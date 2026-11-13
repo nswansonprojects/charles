@@ -7,6 +7,8 @@ leaderboard/server.py — the public leaderboard API (and, for the preview, the 
     GET  /api/leaderboard/mine?pubkey=…  the entries one install has submitted
     POST /api/leaderboard/submit         {"payload": {...}, "sig": "..."} signed by the install's key
     POST /api/leaderboard/withdraw       same, for one entry it owns
+    GET  /api/watch                      this server's Charles Fetch, live and read-only, without results (watch.py)
+    POST /api/why                        the website's one-tap "What stopped you?": a count per answer (why.py)
     GET  /api/challenges                 this month's challenge, the next one, the finished ones (challenges.py)
     GET  /api/challenges/<id>/results.csv  a challenge's results as open data, with no names and no keys
     GET  /api/challenges/mine?pubkey=…   the challenges one install has entered
@@ -35,7 +37,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
 
-from leaderboard import challenges, common, house, sim  # noqa: E402
+from leaderboard import challenges, common, house, sim, watch, why  # noqa: E402
 
 log = logging.getLogger(__name__)
 
@@ -53,7 +55,7 @@ if os.environ.get("SETUP_DEMO") == "1":     # the test site's "Set it up for me"
 MIN_DAYS = 20                 # days of results before an entry is ranked
 RANGES = {"week": 7, "month": 30, "all": None}
 MAX_ACTIVE_PER_BOT = 2000     # keeps the nightly simulation bounded
-LIMITS = {"submit": (5, 3600), "withdraw": (20, 3600), "enter": (10, 3600), "read": (240, 60)}   # (requests, per seconds) per address
+LIMITS = {"submit": (5, 3600), "withdraw": (20, 3600), "enter": (10, 3600), "read": (240, 60), "why": (3, 86400)}   # (requests, per seconds) per address
 
 
 # ── The board (pure; tested in tests/test_leaderboard.py) ─────────────────────
@@ -297,6 +299,9 @@ class Handler(BaseHTTPRequestHandler):
         q = {k: v[0] for k, v in parse_qs(query).items()}
         if path.startswith("/api/") and not allowed("read", self._addr(), time.time()):
             return self._json(429, {"ok": False, "message": "slow down"})
+        if path == "/api/watch":
+            v = watch.current()
+            return self._json(200, v or {"off": True})
         if path == "/api/leaderboard":
             bot, rng = q.get("bot", "stocks"), q.get("range", "week")
             if bot not in common.BOTS or rng not in RANGES:
@@ -363,6 +368,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if self._setup_demo(path):
             return
+        if path == "/api/why":
+            return self._why()
         kind = {"/api/leaderboard/submit": "submit", "/api/leaderboard/withdraw": "withdraw",
                 "/api/challenges/enter": "enter", "/api/challenges/withdraw": "withdraw"}.get(path)
         if not kind:
@@ -392,6 +399,22 @@ class Handler(BaseHTTPRequestHandler):
             self._json(e.code, {"ok": False, "message": e.message, **e.extra})
         except (ValueError, TypeError, KeyError):
             self._json(400, {"ok": False, "message": "malformed request"})
+
+    def _why(self):
+        """The website's one-tap "What stopped you?": one more in today's count, nothing else kept (leaderboard/why.py)."""
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            n = -1
+        if not 0 < n <= 200:
+            return self._json(413, {"ok": False, "message": "request too big"})
+        raw = self.rfile.read(n)
+        if not allowed("why", self._addr(), time.time()):
+            return self._json(429, {"ok": False, "message": "thanks, we have your answer"})
+        try:
+            self._json(200, why.record(self._db(), json.loads(raw)))
+        except (why.Bad, ValueError):
+            self._json(400, {"ok": False, "message": "unknown answer"})
 
     def log_message(self, *args):
         pass
