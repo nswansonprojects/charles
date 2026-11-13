@@ -2,6 +2,19 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.11.0",
+   "date": "2026-11-13",
+   "kind": "fix",
+   "notes": [
+    "Fetch: pick the coin and the stock it watches from a short list of busy ones. Switching closes an open practice trade at the market price, and the P&L carries on.",
+    "Fetch: Pause and Resume on its tab. Pause stops new buys; an open trade still ends at its target or stop.",
+    "Fetch: \"What Charles sees in the last 10 minutes\" under the chart: the price's move, buyers vs sellers, how close the buy price is, and a countdown to the next decision.",
+    "Fetch: the chart is zoomed in and looks the same for a coin and a stock.",
+    "Home: Fetch has its own card and counts in the total, and Add a bot offers it. If stocks trade real money, Home's big number is the real account alone and the practice bots are shown apart.",
+    "How the stock, crypto and Kalshi bots trade doesn't change. Fetch stays practice money."
+   ]
+  },
+  {
    "version": "v1.10.2",
    "date": "2026-11-13",
    "kind": "fix",

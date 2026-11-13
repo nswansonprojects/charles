@@ -24,7 +24,7 @@ def public_view(live: dict, now: float) -> dict | None:
     name = {"BTC-USD": "bitcoin", "ETH-USD": "ether"}.get(live.get("product"), live.get("product"))
     say = live.get("watching") or ""
     if holding or RESULTISH.search(say):
-        say = f"Charles is holding {name} and waiting for his target or his stop." if holding else "Charles is watching the market."
+        say = f"Fetch is holding {name} and waiting for its target or its stop." if holding else "Fetch is watching the market."
     moves = [{"kind": e["kind"], "ts": e["ts"], "price": e["price"]} for e in (live.get("events") or [])[-5:]
              if isinstance(e, dict) and e.get("kind") in ("buy", "sell")]
     return {

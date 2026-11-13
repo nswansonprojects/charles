@@ -32,7 +32,7 @@ REQ_DIR = os.path.join(ROOT, "data", "requests")
 PAUSE_FILE = os.path.join(ROOT, "data", "paused.json")
 LOG_FILE = os.path.join(ROOT, "data", "control.jsonl")
 ACTIONS = ("pause", "resume", "update", "restore", "check-updates", "apply-settings", "undo-settings", "backtest-settings", "copy-config",
-           "set-keys")
+           "set-keys", "fetch-pause", "fetch-resume", "fetch-ticker")
 MAX_REQUEST = 65536                      # bytes; most are a few dozen, a custom plan with its saved presets a few thousand
 
 log = logging.getLogger(__name__)
@@ -100,6 +100,8 @@ def dispatch(r: dict) -> str:
         return apply(r["action"], "the dashboard")
     if r["action"] == "set-keys":
         return set_keys(r)
+    if r["action"].startswith("fetch-"):
+        return fetch(r)
     import updates
     said = updates.queue(r["action"], "the dashboard", version=r.get("version"), confirm=r.get("confirm") is True,
                          settings=r.get("settings"), reason=r.get("reason") or "", config=r.get("config"),
@@ -107,6 +109,22 @@ def dispatch(r: dict) -> str:
     with open(LOG_FILE, "a") as f:
         f.write(json.dumps({"at": _now(None).isoformat(), "action": r["action"], "by": "the dashboard",
                             "version": r.get("version"), "result": said}) + "\n")
+    return said
+
+
+def fetch(r: dict) -> str:
+    """Charles Fetch's pause and ticker (fetch_control.py): practice money only, so nothing here can reach an account."""
+    import fetch_control
+    market = r.get("market") if r.get("market") in fetch_control.MARKETS else None
+    if not market:
+        said = "Unknown Fetch market."
+    elif r["action"] == "fetch-ticker":
+        said = fetch_control.set_ticker(market, str(r.get("product") or ""))
+    else:
+        said = fetch_control.set_paused(market, r["action"] == "fetch-pause", "the dashboard")
+    with open(LOG_FILE, "a") as f:
+        f.write(json.dumps({"at": _now(None).isoformat(), "action": r["action"], "market": market, "product": r.get("product"),
+                            "by": "the dashboard", "result": said}) + "\n")
     return said
 
 

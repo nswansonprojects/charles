@@ -15,7 +15,8 @@ explain what you changed and why in plain words too, and ask before anything ris
 - The dashboard is `webdash.py` (service `charles-web`, read-only) with pages in `web/`. Changes from the dashboard are
   requests that `control.py` and `updates.py` (service `charles-updater`) carry out as root.
 - Add-ons: `crypto_*.py` (a paper crypto book), `kalshi/` (a paper prediction-market bot) and `fetch_*.py` (Fetch: one
-  ticker watched trade by trade with a practice book; `fetch.json` and `fetch-stocks.json` hold its settings). Records live in `data/`,
+  ticker watched trade by trade with a practice book; `fetch.json` and `fetch-stocks.json` hold its settings, `fetch_control.py`
+  the user's ticker pick and pause, kept in `data/fetch*/control.json`). Records live in `data/`,
   logs in `logs/`.
 
 ## Commands

@@ -493,6 +493,7 @@ def say(e: Event) -> str:
         "time": f"The {held} minute time limit is up.",
         "trend": ("Price is back at its average." if e.rule == "revert" else "Price closed under its slow average."),
         "close": "The session is ending, so I am out for the night.",
+        "switch": "You picked a new ticker, so I am out of this one.",
     }[e.reason]
     return f"{lead} Sold at {_p(e.price)} for {result}. {count}"
 

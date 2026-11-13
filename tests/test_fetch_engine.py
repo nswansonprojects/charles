@@ -202,3 +202,89 @@ class StockTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ControlsTest(unittest.TestCase):
+    """The user's pause and ticker pick (fetch_control.py, data/.../control.json)."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+
+    def _ctl(self, **d):
+        with open(os.path.join(self.dir, "control.json"), "w") as f:
+            json.dump(d, f)
+
+    def test_pause_drops_buys_but_not_sells(self):
+        eng = fe.Engine("BTC-USD", rt.settings({"FEE": 0.0}), data=self.dir)
+        self._ctl(paused=True, since="x", by="t")
+        self.assertIsNone(eng.poll(T0))
+        self.assertTrue(eng.paused)
+        eng.st.pending = ("buy", {})
+        self.assertEqual(eng.on_trade(T0 + 1, 100.0, 1, "buy"), [])
+        self.assertIsNone(eng.st.pending)
+        eng.st.pos = {"entry": 100.0, "qty": 10.0, "invest": 1000.0, "ts": T0, "stop": 95, "target": 101, "rule": "revert"}
+        eng.st.cash = 0.0
+        ev = eng.on_trade(T0 + 2, 101.5, 1, "buy")
+        self.assertEqual((ev[0].kind, ev[0].reason), ("sell", "target"))
+        eng.write_live(T0 + 3)
+        with open(os.path.join(self.dir, "live.json")) as f:
+            live = json.load(f)
+        self.assertTrue(live["paused"])
+        self.assertTrue(any(c["product"] == "ETH-USD" for c in live["choices"]))
+
+    def test_a_new_ticker_closes_the_trade_and_carries_the_pnl(self):
+        eng = fe.Engine("BTC-USD", rt.settings({"FEE": 0.0, "SLIP": 0.0}), data=self.dir)
+        eng.st.pos = {"entry": 100.0, "qty": 10.0, "invest": 1000.0, "ts": T0, "stop": 90, "target": 120, "rule": "revert"}
+        eng.st.cash = 0.0
+        eng.bid = 105.0
+        self._ctl(product="ETH-USD")
+        self.assertEqual(eng.poll(T0), "ETH-USD")
+        ev = eng.switch("ETH-USD", T0)
+        self.assertEqual((ev[0].reason, round(ev[0].pnl, 6)), ("switch", 50.0))
+        self.assertIn("new ticker", rt.say(ev[0]))
+        back = fe.load_book("ETH-USD", self.dir)
+        self.assertAlmostEqual(back.cash, 1050.0)
+        self.assertIsNone(back.pos)
+        self.assertEqual(fe.saved_book("ETH-USD", self.dir)["wins"], 1)
+
+    def test_a_ticker_off_the_list_or_of_the_other_kind_is_ignored(self):
+        eng = fe.Engine("BTC-USD", rt.settings({}), data=self.dir)
+        self._ctl(product="SPY")
+        self.assertIsNone(eng.poll(T0))
+        self._ctl(product="FAKE-USD")
+        self.assertIsNone(eng.poll(T0 + 10))
+
+    def test_chosen_product(self):
+        self._ctl(product="SOL-USD")
+        cfg = os.path.join(self.dir, "fetch.json")
+        with open(cfg, "w") as f:
+            json.dump({"PRODUCT": "BTC-USD"}, f)
+        self.assertEqual(fe.chosen_product(self.dir, cfg), "SOL-USD")
+        self._ctl(product="AAPL")
+        self.assertEqual(fe.chosen_product(self.dir, cfg), "BTC-USD")
+
+
+class FetchControlTest(unittest.TestCase):
+    def test_set_ticker_and_pause_write_control_json(self):
+        import fetch_control as fc
+        root = tempfile.mkdtemp()
+        self.assertEqual(fc.ticker("stock", root), "SPY")
+        self.assertIn("can't", fc.set_ticker("stock", "GME", root))
+        self.assertIn("Apple", fc.set_ticker("stock", "AAPL", root))
+        self.assertEqual(fc.ticker("stock", root), "AAPL")
+        self.assertIn("already", fc.set_ticker("stock", "AAPL", root))
+        self.assertIn("paused", fc.set_paused("stock", True, "t", root))
+        self.assertTrue(fc.paused("stock", root))
+        self.assertEqual(fc.ticker("stock", root), "AAPL")                   # pause kept the pick
+        self.assertIn("resumed", fc.set_paused("stock", False, "t", root))
+        self.assertIsNone(fc.paused("stock", root))
+
+
+class FlowTest(unittest.TestCase):
+    def test_last_ten_minutes_by_side(self):
+        eng = fe.Engine("BTC-USD", rt.settings({}), data=tempfile.mkdtemp())
+        eng.on_trade(T0 + 5, 100.0, 2, "buy")
+        eng.on_trade(T0 + 65, 100.0, 1, "sell")
+        eng.on_trade(T0 + 70, 100.0, 1, "buy")
+        self.assertEqual(eng.flow10(T0 + 80), {"minutes": 10, "buy": 300.0, "sell": 100.0})
+        self.assertEqual(eng.flow10(T0 + 10 * 60), {"minutes": 10, "buy": 100.0, "sell": 100.0})   # the first minute aged out

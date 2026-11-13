@@ -52,6 +52,20 @@
 .fx-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 .ev .pl { font-weight: 600; font-variant-numeric: tabular-nums; }
 .fx-rules { margin-top: 10px; font-size: 13px; color: var(--muted); }
+.fx-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.fx-ctl label { font: 600 13px var(--sans); color: var(--muted); }
+.fx-ctl select { font: 600 15px var(--sans); padding: 8px 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); color: var(--text); max-width: 100%; }
+.fx-ctl .run-msg { flex-basis: 100%; font-size: 13px; color: var(--muted); min-height: 0; }
+.fx-state.paused { background: color-mix(in srgb, var(--warn, #c98a00) 16%, transparent); color: var(--warn-ink, #8a5a00); }
+.fx-an { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+@media (max-width: 700px) { .fx-an { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fx-an > div { background: var(--surface-2); border-radius: var(--r-md); padding: 10px 12px; min-width: 0; }
+.fx-an span { display: block; font-size: 12.5px; color: var(--muted); }
+.fx-an b { display: block; font: 600 18px/1.3 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-an small { display: block; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.fx-an .meter { height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; display: flex; margin-top: 6px; }
+.fx-an .meter i { display: block; height: 100%; transition: width .6s; }
+.fx-an-h { margin-top: 14px; font: 600 13px var(--sans); color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) { .say p.new, .tape li.in { animation: none; } }
 </style>
 </head>
@@ -59,8 +73,13 @@
 <header></header>
 <main>
   <div class="page-head"><div><h1 class="page-title">Fetch</h1><p class="page-sub">Charles trades one ticker live with practice money and tells you why</p></div></div>
-  <div class="seg" id="fx-pick" hidden><button type="button" data-m="coin">Bitcoin</button><button type="button" data-m="stock">Stock</button></div>
+  <div class="seg" id="fx-pick" hidden><button type="button" data-m="coin">Crypto</button><button type="button" data-m="stock">Stock</button></div>
 
+  <div class="fx-ctl" id="fx-ctl" hidden>
+    <label for="fx-tick">Watching</label><select id="fx-tick" aria-label="The ticker Fetch watches"></select>
+    <button class="btn" type="button" id="fx-run">Pause</button>
+    <div class="run-msg" id="fx-msg" role="status"></div>
+  </div>
   <div class="card off" id="fx-off" hidden>Fetch isn't running on this server yet.</div>
 
   <div class="fx" id="fx">
@@ -90,6 +109,8 @@
         </div>
         <canvas id="fx-chart" role="img" aria-label="Price by the minute with Charles's levels"></canvas>
         <div class="fx-sub">Each bar is one minute. Dashed line: the price Charles buys at. Green and red dots: the market's last trades (green bought, red sold).</div>
+        <div class="fx-an-h">What Charles sees in the last 10 minutes</div>
+        <div class="fx-an" id="fx-an" aria-live="off"></div>
       </div>
       <div class="card"><div class="card-head"><h2>Charles's trades</h2></div><ul class="ev" id="fx-ev"></ul><div class="fx-rules" id="fx-rules"></div></div>
     </div>
@@ -105,7 +126,23 @@
 (function () {
   var $ = function (id) { return document.getElementById(id); };
   var money = function (v, d) { return (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d }); };
-  var NAMES = { "BTC-USD": "Bitcoin", "ETH-USD": "Ether" };
+  var NAMES = { "BTC-USD": "Bitcoin", "ETH-USD": "Ether" }, SESSION = null, asked = null;
+  fetch("/api/session", { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (s) { SESSION = s; }).catch(function () {});
+  function why() {   // changing Fetch needs the dashboard login, like Pause on Home
+    if (!SESSION) return "";
+    if (!SESSION.access || SESSION.access === "open") return "Changing Fetch needs the dashboard login. Turn it on over SSH: charles-login";
+    if (!SESSION.logged_in) return "Log in to change Fetch: run charles-login on your server and open its link.";
+    return "";
+  }
+  function ask(body, said) {
+    var m = $("fx-msg"), w = why();
+    if (w) { m.textContent = w; return; }
+    m.textContent = "Asking…";
+    fetch("/api/control", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+      .then(function (r) { return r.json().then(function (j) { return [r.ok, j]; }); })
+      .then(function (a) { m.textContent = a[0] ? said : (a[1].error || "That didn't work."); if (a[0]) asked = body; })
+      .catch(function () { m.textContent = "The dashboard didn't answer. Try again."; });
+  }
   var M = ""; try { M = localStorage.getItem("fetch-market") || ""; } catch (e) {}
   var EMPTY = { coin: "No trades yet. With this rule a trade comes about once every two weeks: until then, watch the market trade and read what Charles is waiting for.",
                 stock: "No trades yet. Charles buys only in market hours and is always out by the close: until then, watch the market trade and read what Charles is waiting for." };
@@ -149,16 +186,22 @@
     var w = cv.clientWidth, h = cv.clientHeight, r = window.devicePixelRatio || 1;
     if (cv.width !== w * r || cv.height !== h * r) { cv.width = w * r; cv.height = h * r; }
     ctx.setTransform(r, 0, 0, r, 0, 0); ctx.clearRect(0, 0, w, h);
-    var n = w < 600 ? 45 : 75, bars = D.bars.slice(-(n - 1)).concat(D.forming ? [D.forming] : []);
+    // Zoomed in, the same for a coin and a stock (owner 2026-11-13): the last 30 minutes on a phone, 45 on a computer
+    var n = w < 600 ? 30 : 45, bars = D.bars.slice(-(n - 1)).concat(D.forming ? [D.forming] : []);
     if (!bars.length) return;
     var px = ball == null ? D.price : ball, lv = (D.watch && D.watch.numbers) || {}, pos = D.book.pos;
     var lo = Infinity, hi = -Infinity;
     bars.forEach(function (b) { lo = Math.min(lo, b[3]); hi = Math.max(hi, b[2]); });
+    lo = Math.min(lo, px); hi = Math.max(hi, px);
     var marks = [];
-    if (lv.level && Math.abs(lv.level / px - 1) < 0.03) marks.push([lv.level, "Buy at", css("--accent")]);
+    if (lv.level) marks.push([lv.level, "Buy at", css("--accent")]);
     if (pos) { marks.push([pos.target || D.watch.target, "Target", css("--good")]); marks.push([pos.stop || D.watch.stop, "Stop", css("--critical")]); }
-    marks.forEach(function (m) { if (m[0]) { lo = Math.min(lo, m[0]); hi = Math.max(hi, m[0]); } });
-    var pad = (hi - lo) * 0.08 || px * 0.001; lo -= pad; hi += pad;
+    // The price sets the zoom. A level close by widens the view to fit it; one far away doesn't squash the candles: it's pinned
+    // to the chart's edge with an arrow and how far it is (it used to stretch the coin's view, whose buy level sits ~1.5% away).
+    var span0 = Math.max(hi - lo, px * 0.0015);
+    marks.forEach(function (m) { if (m[0] && Math.abs(m[0] - (lo + hi) / 2) <= span0 * 1.2) { lo = Math.min(lo, m[0]); hi = Math.max(hi, m[0]); } });
+    if (hi - lo < px * 0.0015) { var mid = (hi + lo) / 2; lo = mid - px * 0.00075; hi = mid + px * 0.00075; }
+    var pad = (hi - lo) * 0.08; lo -= pad; hi += pad;
     var R = 64, cw = (w - R) / n, y = function (p) { return 8 + (h - 24) * (1 - (p - lo) / (hi - lo)); };
     ctx.font = "11px " + css("--mono"); ctx.textBaseline = "middle";
     ctx.strokeStyle = css("--grid"); ctx.fillStyle = css("--muted"); ctx.lineWidth = 1;
@@ -173,9 +216,15 @@
       ctx.fillRect(x - Math.max(1, cw * .32), top, Math.max(2, cw * .64), bh);
     });
     ctx.globalAlpha = 1;
-    marks.forEach(function (m) { if (!m[0]) return; var yy = Math.round(y(m[0])) + .5;
+    marks.forEach(function (m) { if (!m[0]) return;
+      var label = m[1] + " " + money(m[0], m[0] < 1000 ? 2 : 0);
+      if (m[0] < lo || m[0] > hi) {             // off the chart: a tag at the edge, pointing to it
+        var under = m[0] < lo, ey = under ? h - 22 : 14, away = Math.abs(m[0] / px - 1) * 100;
+        ctx.fillStyle = m[2]; ctx.fillText((under ? "\u2193 " : "\u2191 ") + label + " (" + away.toFixed(1) + "% " + (under ? "lower" : "higher") + ")", 6, ey);
+        return; }
+      var yy = Math.round(y(m[0])) + .5;
       ctx.setLineDash([5, 4]); ctx.strokeStyle = m[2]; ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(w - R, yy); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = m[2]; ctx.fillText(m[1] + " " + money(m[0], m[0] < 1000 ? 2 : 0), 6, yy - 8); });
+      ctx.fillStyle = m[2]; ctx.fillText(label, 6, yy - 8); });
     // the market's last trades as dots on the live bar, newest brightest
     var lx = (bars.length - 1) * cw + cw / 2, now = D.now;
     D.tape.slice(-60).forEach(function (t) { var age = Math.max(0, now - t.t);
@@ -195,7 +244,17 @@
 
   function render() {
     var d = D, p = d.price;
+    (d.choices || []).forEach(function (c) { NAMES[c.product] = c.name; });
     $("fx-name").textContent = $("fx-name2").textContent = NAMES[d.product] || d.product;
+    var sel = $("fx-tick"), key = d.market + ":" + d.product;
+    $("fx-ctl").hidden = !d.choices;
+    if (sel.dataset.k !== key && document.activeElement !== sel) {
+      sel.innerHTML = (d.choices || []).map(function (c) { return '<option value="' + c.product + '"' + (c.product === d.product ? " selected" : "") + ">" +
+        c.name + " (" + c.product.replace("-USD", "") + ")</option>"; }).join("");
+      sel.dataset.k = key;
+    }
+    var rb = $("fx-run"); rb.textContent = d.paused ? "Resume" : "Pause"; rb.className = d.paused ? "btn primary" : "btn";
+    if (asked && (asked.action === "fetch-ticker" ? d.product === asked.product : !!d.paused === (asked.action === "fetch-pause"))) { $("fx-msg").textContent = ""; asked = null; }
     var P = d.pnl || { total: 0, realized: 0, open: 0, today: 0, wins: 0, trades: 0, since: d.now };
     var T = $("fx-total"); T.textContent = signed(P.total); T.className = "big num " + tone(P.total);
     $("fx-since").textContent = "Counted from $0 on " + new Date(P.since * 1000).toLocaleDateString([], { month: "long", day: "numeric" }) +
@@ -205,9 +264,10 @@
     o = $("fx-real"); o.textContent = signed(P.realized); o.className = tone(P.realized);
     $("fx-wins").textContent = P.trades ? P.wins + " of " + P.trades : "None yet";
     var stt = $("fx-state"), closed = d.market === "stock" && !d.open;
-    stt.textContent = d.book.pos ? "Holding " + (NAMES[d.product] || d.product) : closed ? "Market closed" : "Waiting to buy";
-    stt.className = "fx-state" + (d.book.pos ? " hold" : "");
+    stt.textContent = d.paused ? (d.book.pos ? "Paused, still holding" : "Paused") : d.book.pos ? "Holding " + (NAMES[d.product] || d.product) : closed ? "Market closed" : "Waiting to buy";
+    stt.className = "fx-state" + (d.paused ? " paused" : d.book.pos ? " hold" : "");
     pnlChart();
+    analysis();
     var el = $("fx-px"); el.textContent = money(p);
     if (lastPx != null && p !== lastPx) { el.className = "fx-px " + (p > lastPx ? "up" : "dn"); }
     lastPx = p; if (ball == null) ball = p;
@@ -215,7 +275,7 @@
     $("fx-age").textContent = d.market === "stock" && !d.open ? "Market closed" : (Date.now() / 1000 - d.now) > 15 ? "Waiting for the feed…" : "Live";
     var pick = $("fx-pick"); pick.hidden = (d.markets || []).length < 2;
     [].forEach.call(pick.children, function (b) { b.className = b.getAttribute("data-m") === d.market ? "on" : "";
-      if (b.getAttribute("data-m") === "stock" && d.market === "stock") b.textContent = d.product; });
+      if (b.getAttribute("data-m") === d.market) b.textContent = d.market === "stock" ? d.product : (NAMES[d.product] || d.product); });
     $("fx-flow-t").title = d.market === "stock" ? "IEX, Alpaca's free feed: about 2.5% of all the trades in this stock" : "";
     var s = $("fx-say");
     if (s.textContent !== d.watching) { s.textContent = d.watching || "…"; s.className = "new"; void s.offsetWidth; }
@@ -241,6 +301,49 @@
       (st.FEE ? "Fee " + (st.FEE * 100).toFixed(2) + "% each way, counted in the P&L." : "No fee.") + " Up to " + d.book.max_trades + " trades a day.";
   }
 
+  // The analysis strip: the last 10 minutes, who is buying, how close the next move is, and when Charles decides next
+  var pc = function (v, d) { return (v > 0 ? "+" : v < 0 ? "\u2212" : "") + Math.abs(v).toFixed(d == null ? 2 : d) + "%"; };
+  function analysis() {
+    var d = D, p = d.price, bars = d.bars, w = (d.watch && d.watch.numbers) || {}, st = d.settings || {}, out = [];
+    var tile = function (label, val, cls, sub, meter) { out.push("<div><span>" + label + "</span><b class='" + (cls || "") + "'>" + val + "</b>" + (sub ? "<small>" + sub + "</small>" : "") + (meter || "") + "</div>"); };
+    var past = bars.length >= 10 ? bars[bars.length - 10] : bars[0];
+    if (past && p) {
+      var win = bars.slice(-10).concat(d.forming ? [d.forming] : []), lo = Math.min.apply(null, win.map(function (b) { return b[3]; })), hi = Math.max.apply(null, win.map(function (b) { return b[2]; }));
+      var ch = (p / past[1] - 1) * 100;
+      tile("Price, 10 minutes", pc(ch), tone(ch * 100), "Range " + money(lo, p < 1000 ? 2 : 0) + " to " + money(hi, p < 1000 ? 2 : 0));
+    } else tile("Price, 10 minutes", "\u2026", "", "Collecting minutes");
+    var f = d.flow10 || { buy: 0, sell: 0 }, tot = f.buy + f.sell;
+    if (tot > 0) {
+      var bs = f.buy / tot * 100;
+      tile("Buyers vs sellers", Math.round(bs) + "% buying", bs >= 55 ? "up" : bs <= 45 ? "down" : "flat", money(f.buy, 0) + " bought, " + money(f.sell, 0) + " sold",
+        "<div class='meter'><i style='width:" + bs + "%;background:var(--good)'></i><i style='width:" + (100 - bs) + "%;background:var(--critical)'></i></div>");
+    } else tile("Buyers vs sellers", "\u2026", "", d.market === "stock" && !d.open ? "Market closed" : "No trades seen yet");
+    if (d.book.pos) {
+      var tt = w.to_target_pct, ts = w.to_stop_pct, span = (tt || 0) + (ts || 0);
+      tile("Target", tt != null ? pc(tt) + " away" : "\u2026", "", ts != null ? "Stop " + Math.abs(ts).toFixed(2) + "% below" + (w.minutes_left != null ? ", " + Math.round(w.minutes_left) + " min left" : "") : "",
+        span > 0 ? "<div class='meter'><i style='width:" + (ts / span * 100) + "%;background:var(--accent)'></i></div>" : "");
+    } else if (w.waiting === "level" || w.waiting === "cross") {
+      var gap = Math.abs(w.gap_pct || 0), near = Math.max(0, 1 - gap / 3) * 100;
+      tile("Buy price", money(w.level, w.level < 1000 ? 2 : 0), "", gap.toFixed(2) + "% away" + (w.waiting === "level" && w.rising === false ? ", and the average must turn up" : ""),
+        "<div class='meter'><i style='width:" + near + "%;background:var(--accent)'></i></div>");
+    } else {
+      var why = { trend: ["Trend", "Down", "Needs the price over its " + (w.slow_minutes || st.SLOW || "") + " minute average"],
+                  dip: ["Buy price", "Needs a dip", (w.need_pct != null ? w.need_pct.toFixed(2) + "% more" : "") + " from the recent high"],
+                  warmup: ["Getting ready", (w.have || 0) + " of " + (w.need || 0), "Minutes of prices collected"],
+                  cap: ["Today", "Done", "Most trades for one day reached"], cool: ["Resting", Math.ceil(w.minutes || 0) + " min", "A short break after a loss"],
+                  daystop: ["Today", "Stopped", "The day's loss limit was reached"], edge_open: ["Opening", Math.ceil(w.minutes || 0) + " min", "No buys in the first minutes"],
+                  edge_close: ["Closing", "No buys", "Too close to the close"] }[w.waiting] || ["Buy price", "\u2026", ""];
+      tile(why[0], why[1], "", why[2]);
+    }
+    if (d.market === "stock" && !d.open) tile("Next check", "Closed", "", "Starts when the market opens");
+    else {
+      var left = Math.max(0, 60 - Math.floor(Date.now() / 1000) % 60);
+      tile("Next check", Math.floor(left / 60) + ":" + (left % 60 < 10 ? "0" : "") + (left % 60), "", "A decision every minute; target and stop on every trade",
+        "<div class='meter'><i style='width:" + ((60 - left) / 60 * 100) + "%;background:var(--accent)'></i></div>");
+    }
+    $("fx-an").innerHTML = out.join("");
+  }
+
   function poll() {
     fetch("/api/fetch?m=" + encodeURIComponent(M), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
       document.body.classList.remove("loading");
@@ -253,6 +356,17 @@
     var m = e.target.getAttribute && e.target.getAttribute("data-m"); if (!m || m === M) return;
     M = m; try { localStorage.setItem("fetch-market", m); } catch (x) {}
     if (D) D.market = ""; poll.now();
+  });
+  $("fx-tick").addEventListener("change", function () {
+    if (!D) return;
+    var p = this.value, n = NAMES[p] || p;
+    ask({ action: "fetch-ticker", market: D.market, product: p }, "Switching to " + n + ". Any open practice trade closes at the market price; the P&L carries on. About 20 seconds.");
+    this.dataset.k = "";
+  });
+  $("fx-run").addEventListener("click", function () {
+    if (!D) return;
+    ask({ action: D.paused ? "fetch-resume" : "fetch-pause", market: D.market },
+        D.paused ? "Resuming…" : "Pausing… No new buys; an open trade still ends at its target or stop.");
   });
   var timer = null;
   poll.now = function () { clearTimeout(timer); poll(); };

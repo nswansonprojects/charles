@@ -359,7 +359,7 @@ class WatchFeed(BotTestCase):
     def test_holding_hides_the_open_trade(self):
         from leaderboard import watch
         v = watch.public_view(self.live(book={"pos": {"qty": 1}}, watching="Up 0.4% on this trade. Target 70,300."), 1001.0)
-        self.assertEqual((v["holding"], v["watching"]), (True, "Charles is holding bitcoin and waiting for his target or his stop."))
+        self.assertEqual((v["holding"], v["watching"]), (True, "Fetch is holding bitcoin and waiting for its target or its stop."))
 
     def test_stale_or_missing_is_off(self):
         from leaderboard import watch

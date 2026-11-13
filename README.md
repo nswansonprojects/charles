@@ -36,8 +36,8 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 
 **Add-ons**, off by default: `charles-addon on crypto` (a $1,000 paper book of bitcoin and ether, Coinbase's public prices),
 `charles-addon on kalshi` (a paper-only prediction-market bot; see [kalshi/README.md](kalshi/README.md)) and
-`charles-addon on fetch` (**Fetch**: bitcoin and SPY watched trade by trade, with a live chart, everyone's trades and Charles
-saying what he sees, on $1,000 of practice money each; market data only, it never places an order).
+`charles-addon on fetch` (**Fetch**: one coin and one stock you pick, watched trade by trade, with a live chart, everyone's trades,
+what Charles sees in the last 10 minutes and a Pause button, on $1,000 of practice money each; market data only, it never places an order).
 
 ## Simulated results
 

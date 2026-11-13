@@ -598,8 +598,31 @@ class HomeFeed(BotTestCase):
     def test_a_bot_thats_off_can_be_added(self):
         v = self.view(self.stocks(), None, None, on={"crypto": False, "kalshi": False})
         self.assertEqual([b["id"] for b in v["bots"]], ["stocks"])
-        self.assertEqual([a["id"] for a in v["can_add"]], ["crypto", "kalshi"])
-        self.assertEqual(self.view(self.stocks(), self.crypto(), self.kalshi())["can_add"], [])
+        self.assertEqual([a["id"] for a in v["can_add"]], ["crypto", "kalshi", "fetch"])
+        with mock.patch.object(wd, "fetch_for_home", return_value=None):
+            self.assertEqual(self.view(self.stocks(), self.crypto(), self.kalshi(), on={"crypto": True, "kalshi": True, "fetch": True})["can_add"], [])
+
+    def test_fetch_gets_a_card_and_counts_in_the_total(self):
+        f = {"value": 1012.5, "start": 1000.0, "today": 2.5, "curve": [["2026-10-30T12:00:00+00:00", 1010.0]], "note": "Watching Bitcoin"}
+        with mock.patch.object(wd, "fetch_for_home", return_value=f):
+            v = self.view(self.stocks(), None, None, on={"crypto": False, "kalshi": False, "fetch": True})
+        card = [b for b in v["bots"] if b["id"] == "fetch"][0]
+        self.assertEqual((card["earned"], card["href"], card["real"]), (12.5, "/fetch", False))
+        self.assertNotIn("curve_full", card)
+        stocks = [b for b in v["bots"] if b["id"] == "stocks"][0]
+        self.assertAlmostEqual(v["total"]["earned"], stocks["earned"] + 12.5)
+        self.assertIsNone(v["total"]["real_value"])
+
+    def test_live_stocks_are_never_added_to_practice_money(self):
+        st = {**self.stocks(), "trading": {"mode": "live"}}
+        f = {"value": 1100.0, "start": 1000.0, "today": 0.0, "curve": [], "note": "Watching Bitcoin"}
+        with mock.patch.object(wd, "fetch_for_home", return_value=f):
+            v = self.view(st, None, None, on={"crypto": False, "kalshi": False, "fetch": True})
+        stocks = [b for b in v["bots"] if b["id"] == "stocks"][0]
+        self.assertTrue(stocks["real"])
+        self.assertEqual(v["total"]["earned"], stocks["earned"])          # the headline is the real account alone
+        self.assertEqual(v["total"]["practice_earned"], 100.0)
+        self.assertEqual(v["total"]["real_value"], stocks["value"])
 
     def test_thinning_keeps_the_ends(self):
         rows = list(range(1000))

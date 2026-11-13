@@ -28,7 +28,7 @@ ADDONS = {
     "kalshi": {"name": "Kalshi", "short": "Kalshi", "pitch": "Practice bets on prediction markets.", "timer": "kalshi-net.timer", "services": ["kalshi-web.service"],
                "about": "A paper prediction-market bot that scans Kalshi every 15 minutes. Its strategies "
                         "start by only predicting and bet (paper) once their record earns it."},
-    "fetch": {"name": "Charles Fetch", "short": "Fetch", "pitch": "Watch Charles trade one ticker live, out loud.", "timer": None,
+    "fetch": {"name": "Charles Fetch", "short": "Fetch", "pitch": "Watch Charles trade one coin or stock live, and why.", "timer": None,
               "services": ["charles-fetch.service", "charles-fetch-stocks.service"],
               "about": "Bitcoin and SPY watched trade by trade: a live chart, everyone's trades, and Charles saying what he sees "
                        "and why he buys or sells, with $1,000 of practice money each. Market data only; it never places an order."},

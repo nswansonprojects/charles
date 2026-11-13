@@ -25,6 +25,7 @@ from urllib.parse import parse_qs
 from zoneinfo import ZoneInfo
 
 import addons
+import fetch_control
 import auth
 import allocator
 import stock_settings
@@ -620,6 +621,14 @@ def control_post(body: bytes, cfg: dict | None) -> tuple[int, dict]:
     if action not in control.ACTIONS or action in ("apply-settings", "copy-config"):
         return 400, {"error": "Unknown request."}
     extra = {}
+    if action.startswith("fetch-"):
+        if req.get("market") not in fetch_control.MARKETS:
+            return 400, {"error": "Unknown Fetch market."}
+        extra = {"market": req["market"]}
+        if action == "fetch-ticker":
+            if not fetch_control.allowed(req["market"], req.get("product")):
+                return 400, {"error": "Fetch can't watch that ticker: pick one from the list."}
+            extra["product"] = req["product"]
     if action in ("update", "restore"):
         if not isinstance(req.get("version"), str) or not updates.VERSION_RE.match(req["version"]):
             return 400, {"error": "Unknown version."}
@@ -1009,7 +1018,7 @@ LOGO = ('<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><pat
         '<path d="M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3" stroke="#fff" stroke-width=".6" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="18.7" rx="2" ry="1.4" fill="#1f2937"/></svg>')
 
 
-BOT_ADDONS = ("crypto", "kalshi")    # add-ons with a book of their own (Home offers them); Fetch is a show, on Settings only
+BOT_ADDONS = ("crypto", "kalshi", "fetch")    # add-ons Home offers; Fetch joined its bots' cards 2026-11-13 (owner: "it should also show fetch in there too")
 FETCH_STALE = 120     # seconds: an older live.json means the charles-fetch unit isn't running
 
 
@@ -1031,6 +1040,39 @@ def fetch_markets() -> list:
 def fetch_on() -> bool:
     """Charles Fetch runs here (a coin, a stock or both). Its tab shows only then."""
     return bool(fetch_markets())
+
+
+def fetch_for_home() -> dict | None:
+    """Fetch's practice books for Home's card: one row for every market running (a coin, a stock), summed. Value = $1,000 a book plus
+    its P&L after fees; the curve is the P&L line moved onto that value. None while no engine runs."""
+    books = []
+    for m in fetch_markets():
+        try:
+            with open(os.path.join(DATA, FETCH_DIRS[m], "live.json")) as f:
+                d = json.load(f)
+        except (OSError, ValueError):
+            continue
+        p, start = d.get("pnl") or {}, float((d.get("book") or {}).get("start") or 1000)
+        books.append({"market": m, "product": d.get("product"), "start": start,
+                      "name": (d.get("name") or d.get("product")) if m == "coin" else d.get("product"),
+                      "value": start + float(p.get("total") or 0), "today": float(p.get("today") or 0), "holding": bool((d.get("book") or {}).get("pos")),
+                      "paused": bool(d.get("paused")),
+                      "curve": [[datetime.fromtimestamp(t, timezone.utc).isoformat(timespec="seconds"), start + v] for t, v in p.get("history") or []]})
+    if not books:
+        return None
+    if len(books) == 1:
+        curve = books[0]["curve"]
+    else:                                       # sum the books on one clock: each book's latest value at every point in time
+        pts = sorted((r[0], i, r[1]) for i, b in enumerate(books) for r in b["curve"])
+        last, curve = [b["start"] for b in books], []
+        for t, i, v in pts:
+            last[i] = v
+            curve.append([t, sum(last)])
+    names = [b["name"] for b in books]
+    held = [b["name"] for b in books if b["holding"]]
+    note = ("Paused · " if all(b["paused"] for b in books) else "") + (("Holding " + " and ".join(held)) if held else "Watching " + " and ".join(names))
+    return {"value": round(sum(b["value"] for b in books), 2), "start": sum(b["start"] for b in books),
+            "today": round(sum(b["today"] for b in books), 2), "curve": curve, "note": note}
 
 
 def fetch_live(market: str = "") -> dict | None:
@@ -1375,7 +1417,7 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
         row = {"id": bot_id, "name": name, "href": href, "value": value, "start": start, "today": today, "note": note, "late": late,
                "bench": bench, "earned": None if value is None else round(value - start, 2), "week": week_change(curve, value, start, now),
                "earned_pct": None if value is None or not start else round((value / start - 1) * 100, 2),
-               "curve": [r[:2] for r in _thin(curve or [])]}
+               "curve": [r[:2] for r in _thin(curve or [])], "curve_full": curve or []}
         bots.append(row)
         if value is not None:
             books.append((curve or [], start))
@@ -1400,9 +1442,21 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
             (f"Following {'Evil Charles' if (k.get('mode') or {}).get('evil') else 'Charles'}" + (f" · {n} open bet{'' if n == 1 else 's'}" if n is not None else ""))
             if k else "No word from it yet",
             bool(kalshi) and not (kalshi.get("scanner") or {}).get("healthy", True))
+    if on.get("fetch"):
+        f = fetch_for_home() or {}
+        add("fetch", "Fetch", "/fetch", f.get("value"), f.get("start") or 1000, f.get("today"), f.get("curve"),
+            f.get("note") or "Starts when its feed connects", False)
+    real = (stocks.get("trading") or {}).get("mode") == "live"
+    for b in bots:                              # only the stock account can be real money today; every other book is practice
+        b["real"] = real and b["id"] == "stocks"
+    if real:                                    # live: the hero's number and chart are the real account's alone
+        books = [(b["curve_full"], b["start"]) for b in bots if b["real"] and b["value"] is not None]
+    for b in bots:
+        b.pop("curve_full", None)
     counted = [b for b in bots if b["value"] is not None]
-    earned = round(sum(b["earned"] for b in counted), 2)
-    start = sum(b["start"] for b in counted)
+    headline = [b for b in counted if b["real"]] if real else counted
+    earned = round(sum(b["earned"] for b in headline), 2)
+    start = sum(b["start"] for b in headline)
     series = earnings_series(books, now)
     if series:
         series.append([now.isoformat(timespec="seconds"), earned])
@@ -1410,9 +1464,14 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
             "trading": stocks.get("trading") or {"mode": "paper"},
             "halted": {"limit": (stocks.get("today") or {}).get("limit")} if (stocks.get("today") or {}).get("halted") else None,
             "next_repick": plan.get("next_rebalance"), "total": {"earned": earned, "earned_pct": round(earned / start * 100, 2) if start else None,
-            "today": round(sum(b["today"] or 0 for b in counted), 2), "value": round(sum(b["value"] for b in counted), 2), "start": start,
-            "week": round(sum(b["week"]["change"] for b in counted), 2) if counted else None,
-            "week_days": max((b["week"]["days"] for b in counted), default=0)},
+            "today": round(sum(b["today"] or 0 for b in headline), 2), "value": round(sum(b["value"] for b in headline), 2), "start": start,
+            "week": round(sum(b["week"]["change"] for b in headline), 2) if headline else None,
+            "week_days": max((b["week"]["days"] for b in headline), default=0),
+            # Real and practice money are never added into one number (a practice result is not a real one): Home shows them apart
+            "real_value": round(sum(b["value"] for b in counted if b["real"]), 2) if real else None,
+            "real_earned": round(sum(b["earned"] for b in counted if b["real"]), 2) if real else None,
+            "practice_value": round(sum(b["value"] for b in counted if not b["real"]), 2),
+            "practice_earned": round(sum(b["earned"] for b in counted if not b["real"]), 2)},
             "series": series, "bots": bots, "notices": noted,
             "can_add": [{"id": k, "name": a["short"], "about": a["pitch"]} for k, a in addons.ADDONS.items() if not on.get(k) and k in BOT_ADDONS]}
 

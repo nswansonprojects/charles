@@ -24,6 +24,7 @@ import os
 import time
 from collections import deque
 
+import fetch_control
 import fetch_plan as rt
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +41,7 @@ BARS = 240                    # closed bars kept for the page
 EVENTS = 40                   # events kept for the page
 WRITE_EVERY = 1.0             # seconds between live.json writes
 SAY_EVERY = 20.0              # seconds between "watching" sentences when nothing happens
+FLOW_MIN = 10                 # minutes of buying vs selling the page's analysis strip shows
 PNL_POINTS = 2000             # P&L points kept (one per closed minute while it changes, else one every 15 minutes)
 
 
@@ -139,6 +141,9 @@ class Engine:
         self.pnl_hist = deque(maxlen=PNL_POINTS)          # [ts, total P&L]
         self.wins = self.losses = 0
         self.dirty = True
+        self.flow = deque(maxlen=FLOW_MIN + 1)         # [minute_ts, bought $, sold $]: the tape's money by side, for "the last 10 minutes"
+        self.paused = None                                # {"since", "by"} while the user has paused Fetch (data/.../control.json)
+        self.polled = 0.0
 
     def pnl(self, price: float | None = None) -> dict:
         """Charles's P&L in practice dollars, from $0 when the book started: closed trades (realized), the open trade at the
@@ -175,10 +180,16 @@ class Engine:
         if not self.is_open(ts):
             return []
         self.tape.append({"t": ts, "p": price, "q": size, "side": side})
+        m = float(int(ts // 60) * 60)
+        if not self.flow or self.flow[-1][0] < m:
+            self.flow.append([m, 0.0, 0.0])
+        if self.flow[-1][0] == m:
+            self.flow[-1][1 if side == "buy" else 2] += price * size
         self.last_price = price
         ev = []
         for b in self.bars.add(ts, price, size):
             ev += self._close(b)
+        self._hold_buys()
         ev += rt.tick(self.st, ts, price, self.s, self.bid, self.ask)
         self._keep(ev)
         self.dirty = True
@@ -196,7 +207,45 @@ class Engine:
         elif self.last_price and (ev or now - self.watch_at >= SAY_EVERY):
             w = rt.watch(self.st, self.last_price, self.s, self.session, ts=now)
             self.watch_say, self.watch_at, self.watch_n = rt.say(w), now, record(w)
+            if self.paused:
+                self.watch_say = ("Paused. I buy nothing until you resume" +
+                                  (", and this trade still ends at its target or stop." if self.st.pos else "."))
             self.dirty = True
+        return ev
+
+    def _hold_buys(self):
+        """While paused, an order to buy is dropped before it fills; a sell (target, stop, time) still goes through."""
+        if self.paused and self.st.pending and self.st.pending[0] == "buy":
+            self.st.pending = None
+
+    def poll(self, now: float) -> str | None:
+        """Every few seconds: the user's pause and ticker (control.json, written by control.py as root). Returns the new ticker
+        when the user picked another one; the caller then calls switch() and exits, and systemd starts the engine on it."""
+        if now - self.polled < 3:
+            return None
+        self.polled = now
+        d = fetch_control._read(os.path.join(self.data, "control.json"))
+        was, self.paused = self.paused, ({"since": d.get("since"), "by": d.get("by")} if d.get("paused") else None)
+        if bool(was) != bool(self.paused):
+            self.watch_at, self.dirty = 0.0, True        # say so at once
+        p = d.get("product")
+        market = "stock" if self.stock else "coin"
+        return p if isinstance(p, str) and p != self.product and fetch_control.allowed(market, p) else None
+
+    def switch(self, product: str, now: float) -> list:
+        """The user picked another ticker: close an open practice trade at the market's buying price, then save the book for the
+        new ticker with the same cash, P&L line and win count (the P&L carries on from where it was)."""
+        ev = []
+        self.st.pending = None
+        if self.st.pos:
+            raw = self.bid or self.last_price or self.st.pos["entry"]
+            ev.append(rt._sell(self.st, rt.Bar(now, raw, raw, raw, raw), raw, "switch", self.s, {"close": raw, "to": product}))
+            self._keep(ev)
+        self._note_pnl(now)
+        cash = self.st.cash
+        self.product, self.st = product, rt.new_state(cash)
+        self.st.day_start = cash
+        self.save_book()
         return ev
 
     def closed_say(self, now: float) -> str:
@@ -207,6 +256,7 @@ class Engine:
     def _close(self, b: rt.Bar) -> list:
         self.closed.append(b)
         ev = rt.step(self.st, b, self.s, self.session if self.stock else None)
+        self._hold_buys()
         self._note_pnl(b.ts + 60)
         self.save_book()                                  # once a minute: an order signalled at this close survives a restart
         return ev
@@ -230,7 +280,9 @@ class Engine:
     def view(self, now: float) -> dict:
         price = self.last_price
         return {
-            "product": self.product, "now": now, "practice": True, "market": "stock" if self.stock else "coin",
+            "product": self.product, "name": fetch_control.name_of(self.product), "paused": self.paused,
+            "choices": [{"product": p, "name": n} for p, n in fetch_control.CHOICES["stock" if self.stock else "coin"]],
+            "now": now, "practice": True, "market": "stock" if self.stock else "coin",
             "open": self.is_open(now), "session": [self.session.open, self.session.close] if self.session else None,
             "price": price, "bid": self.bid, "ask": self.ask,
             "tape": list(self.tape), "bars": [list(b) for b in self.closed], "forming": self.bars.forming(),
@@ -238,8 +290,15 @@ class Engine:
                      "pos": self.st.pos, "trades_today": self.st.trades_today, "max_trades": self.s["MAX_TRADES"]},
             "pnl": {**self.pnl(price), "today": self.pnl_today(now, price), "history": list(self.pnl_hist)},
             "events": list(self.events), "watching": self.watch_say, "watch": self.watch_n,
+            "flow10": self.flow10(now),
             "rule": self.s["RULE"], "settings": {k: self.s[k] for k in ("RULE", "TARGET", "STOP", "HOLD", "FEE", "SLIP")},
         }
+
+    def flow10(self, now: float) -> dict:
+        """The market's money by side over the last FLOW_MIN minutes (the minute under way included), from the trades Fetch saw."""
+        cut = float(int(now // 60) * 60) - (FLOW_MIN - 1) * 60
+        rows = [r for r in self.flow if r[0] >= cut]
+        return {"minutes": FLOW_MIN, "buy": round(sum(r[1] for r in rows), 2), "sell": round(sum(r[2] for r in rows), 2)}
 
     def pnl_today(self, now: float, price: float | None) -> float:
         """Today's P&L: the total now less the total at the start of the day (UTC for a coin, the session for a stock)."""
@@ -342,9 +401,12 @@ async def run(product: str):
                                 print(rt.say(e), flush=True)
                     for e in eng.on_clock(now):
                         print(rt.say(e), flush=True)
+                    _maybe_switch(eng, now)
                     if now - last_write >= WRITE_EVERY:
                         eng.write_live(now)
                         last_write = now
+        except SwitchTicker:
+            raise
         except Exception as e:                            # noqa: BLE001
             print(f"feed dropped: {type(e).__name__}: {e}; again in {wait}s", flush=True)
             eng.save_book()
@@ -474,14 +536,37 @@ async def run_stock(symbol: str):
                             raise RuntimeError(f"Alpaca: {m.get('code')} {m.get('msg')}")
                     for e in eng.on_clock(now):
                         print(rt.say(e), flush=True)
+                    _maybe_switch(eng, now)
                     if now - last_write >= WRITE_EVERY:
                         eng.write_live(now)
                         last_write = now
+        except SwitchTicker:
+            raise
         except Exception as e:                            # noqa: BLE001
             print(f"feed dropped: {type(e).__name__}: {e}; again in {wait}s", flush=True)
             eng.save_book()
             await asyncio.sleep(wait)
             wait = min(wait * 2, 60)
+
+
+class SwitchTicker(Exception):
+    """The user picked another ticker: the book is saved for it; the process exits and systemd starts it on the new one."""
+
+
+def _maybe_switch(eng: "Engine", now: float):
+    new = eng.poll(now)
+    if new:
+        for e in eng.switch(new, now):
+            print(rt.say(e), flush=True)
+        print(f"switching to {new}", flush=True)
+        raise SwitchTicker(new)
+
+
+def chosen_product(data: str = DATA, path: str = SETTINGS_PATH) -> str:
+    """The user's pick in control.json when it is on the list for this engine's kind of market, else the settings file's."""
+    base = product_from(path)
+    p = fetch_control._read(os.path.join(data, "control.json")).get("product")
+    return p if isinstance(p, str) and fetch_control.allowed("stock" if is_stock(base) else "coin", p) else base
 
 
 def _num(x):
@@ -495,8 +580,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[1])
     ap.add_argument("--product", default=None)
     a = ap.parse_args()
-    product = a.product or product_from()
-    asyncio.run(run_stock(product) if is_stock(product) else run(product))
+    product = a.product or chosen_product()
+    try:
+        asyncio.run(run_stock(product) if is_stock(product) else run(product))
+    except SwitchTicker:
+        raise SystemExit(0)                               # Restart=always brings it back on the new ticker
 
 
 if __name__ == "__main__":
