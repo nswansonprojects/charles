@@ -9,6 +9,9 @@ Three rules, picked by RULE:
   breakout  A bar closes above the highest high of the previous LOOK minutes while its close is above the SLOW average: buy.
   revert    The close is at least DIP% below the SLOW average while the SLOW average is above where it was SLOW minutes ago: buy.
             It also sells when the close returns to the SLOW average.
+  mine      The user's own rule: fetch_my_rule.py beside this file (written by them or their Claude Code; copy
+            fetch_my_rule.example.py). Its entry(closes, highs, lows, s) returns the numbers that triggered a buy, or None.
+            It exits by TARGET, STOP and HOLD only. A missing or broken file buys nothing and says so.
 Exits, for all: TARGET% gain, STOP% loss, HOLD minutes in the trade, and (pullback and breakout) a close below the SLOW average.
 Guards: MAX_TRADES a day, COOL minutes of rest after a losing trade, DAY_STOP% (no new entry once the day's loss reaches it).
 A stock (a `session` is passed) also takes no entry in the first 5 or the last 15 minutes and is flat by the close, never overnight.
@@ -41,7 +44,29 @@ from datetime import datetime, timezone
 from typing import NamedTuple, Optional
 from zoneinfo import ZoneInfo
 
-RULES = ("pullback", "breakout", "revert")
+RULES = ("pullback", "breakout", "revert", "mine")
+MY_RULE = "fetch_my_rule"          # the user's own rule's module (RULE "mine"); kept out of git so an update never touches it
+_my = {}
+
+
+def my_rule():
+    """(module, None) for the user's own rule, or (None, why not). Loaded once per process: restart the engine after editing it."""
+    if "mod" not in _my:
+        import importlib
+        import sys as _sys
+        import os as _os
+        here = _os.path.dirname(_os.path.abspath(__file__))
+        try:
+            if here not in _sys.path:
+                _sys.path.insert(0, here)
+            mod = importlib.import_module(MY_RULE)
+            _my.update(mod=mod if callable(getattr(mod, "entry", None)) else None,
+                       why=None if callable(getattr(mod, "entry", None)) else f"{MY_RULE}.py has no entry() function")
+        except ModuleNotFoundError:
+            _my.update(mod=None, why=f"there is no {MY_RULE}.py yet")
+        except Exception as e:                       # noqa: BLE001  (a user's file: any error means no buys, said plainly)
+            _my.update(mod=None, why=f"{MY_RULE}.py has an error: {type(e).__name__}: {e}")
+    return _my["mod"], _my["why"]
 
 DEFAULTS = {
     "RULE": "pullback",
@@ -207,7 +232,7 @@ def signal_exit(rule: str, held_min: float, close: float, slow: Optional[float],
     """The exit read at a bar's close: "time", "trend" (pullback/breakout: close under the slow average; revert: back at it) or None."""
     if held_min >= s["HOLD"]:
         return "time"
-    if slow is not None:
+    if slow is not None and rule != "mine":
         if rule == "revert":
             if close >= slow:
                 return "trend"
@@ -223,6 +248,17 @@ def _avg(xs: list, n: int) -> Optional[float]:
 def entry_signal(rule: str, c: list, h: list, l: list, s: dict) -> Optional[dict]:
     """The numbers that triggered a buy on the latest closed bar, or None. c, h, l: closes, highs, lows, oldest first, latest last."""
     slow_n, fast_n, look = s["SLOW"], s["FAST"], s["LOOK"]
+    if rule == "mine":
+        mod, _ = my_rule()
+        if mod is None or len(c) < int(getattr(mod, "NEED", slow_n)):
+            return None
+        try:
+            got = mod.entry(list(c), list(h), list(l), dict(s))
+        except Exception:                            # noqa: BLE001  (a broken rule buys nothing)
+            return None
+        if not got:
+            return None
+        return {"close": c[-1], **{k: v for k, v in dict(got).items() if isinstance(k, str) and isinstance(v, (int, float, str))}}
     slow = _avg(c, slow_n)
     if slow is None:
         return None
@@ -330,7 +366,8 @@ def step(state: State, bar: Bar, settings: dict, session: Optional[Session] = No
     state.c.append(bar.close)
     state.h.append(bar.high)
     state.l.append(bar.low)
-    cap = 2 * max(2 * s["SLOW"], s["LOOK"] + 2, s["FAST"] + 2)
+    cap = 2 * max(2 * s["SLOW"], s["LOOK"] + 2, s["FAST"] + 2,
+                  int(getattr(my_rule()[0], "NEED", 0)) if s["RULE"] == "mine" else 0)
     if len(state.c) > cap:
         keep = cap // 2
         state.c, state.h, state.l = state.c[-keep:], state.h[-keep:], state.l[-keep:]
@@ -433,8 +470,12 @@ def watch(state: State, price: float, settings: dict, session: Optional[Session]
     else:
         c, h, l = state.c, state.h, state.l
         slow, fast, look = _avg(c, s["SLOW"]), _avg(c, s["FAST"]), s["LOOK"]
-        need = {"pullback": max(s["SLOW"], s["FAST"] + 1, look), "breakout": max(s["SLOW"], look + 1), "revert": 2 * s["SLOW"]}[rule]
-        if len(c) < need:
+        mod, why = my_rule() if rule == "mine" else (None, None)
+        need = {"pullback": max(s["SLOW"], s["FAST"] + 1, look), "breakout": max(s["SLOW"], look + 1), "revert": 2 * s["SLOW"],
+                "mine": int(getattr(mod, "NEED", s["SLOW"]))}[rule]
+        if rule == "mine" and mod is None:
+            n = {"waiting": "mine_missing", "why": why}
+        elif len(c) < need:
             n = {"waiting": "warmup", "have": len(c), "need": need}
         elif rule == "pullback":
             if not (price > slow and fast > slow):
@@ -447,6 +488,14 @@ def watch(state: State, price: float, settings: dict, session: Optional[Session]
                     n = {"waiting": "dip", "dip_pct": dip, "need_pct": s["DIP"] - dip, "high": top}
                 else:
                     n = {"waiting": "cross", "level": fast, "fast_minutes": s["FAST"], "gap_pct": (fast / price - 1) * 100}
+        elif rule == "mine":
+            line = None
+            if callable(getattr(mod, "watching", None)):
+                try:
+                    line = str(mod.watching(list(c), list(h), list(l), price, dict(s)))[:300]
+                except Exception:                    # noqa: BLE001
+                    line = None
+            n = {"waiting": "mine", "line": line or "My own rule is watching for its signal."}
         elif rule == "breakout":
             level = max(max(h[-look:]), slow)
             n = {"waiting": "level", "level": level, "gap_pct": (level / price - 1) * 100, "look_minutes": look}
@@ -476,6 +525,15 @@ def say(e: Event) -> str:
     n = e.numbers
     if e.kind == "watch":
         return _say_watch(e)
+    if e.kind == "buy" and e.rule == "mine":
+        mod, _ = my_rule()
+        lead = "My own rule fired."
+        if mod is not None and callable(getattr(mod, "say", None)):
+            try:
+                lead = str(mod.say(dict(n)))[:300] or lead
+            except Exception:                        # noqa: BLE001
+                pass
+        return f"{lead} Buying at {_p(e.price)}. I will sell at {_p(e.target)} for a gain, or at {_p(e.stop)} if I am wrong."
     if e.kind == "buy":
         lead = {
             "pullback": f"Price is back above its {n.get('fast_minutes')} minute average after a {_pct(n.get('dip_pct', 0))}% dip.",
@@ -504,6 +562,10 @@ def _say_watch(e: Event) -> str:
         g = n["gain_pct"]
         lead = f"Up {_pct(g)}% on this trade." if g >= 0.005 else f"Down {_pct(-g)}% on this trade." if g <= -0.005 else "Even on this trade."
         return f"{lead} Target {_p(e.target)}, stop {_p(e.stop)}, {n['minutes_left']:.0f} minutes left."
+    if w == "mine":
+        return n["line"]
+    if w == "mine_missing":
+        return f"My own rule can't run: {n['why']}. I buy nothing until it is fixed."
     if w == "cap":
         return f"Done for today: {e.trade_n} of {e.max_trades} trades used."
     if w == "daystop":

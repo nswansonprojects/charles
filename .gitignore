@@ -16,3 +16,6 @@ __pycache__/
 
 # Packaged copies of the project
 *.zip
+
+# Fetch: the user's own rule (RULE "mine"); an update never touches it
+fetch_my_rule.py

@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.12.0",
+   "date": "2026-11-13",
+   "kind": "fix",
+   "notes": [
+    "Fetch can run your own rule: describe it to Claude Code in plain words and it writes fetch_my_rule.py (start from fetch_my_rule.example.py). An update never touches that file.",
+    "New: python fetch_test.py shows how a Fetch rule would have done on past minutes after fees, next to simply holding and to random entries with the same exits, for each half of the span.",
+    "The guide Claude Code reads (CLAUDE.md) says to test a rule before Fetch uses it and to show you the whole result.",
+    "Nothing changes until you choose your own rule. How the stock, crypto and Kalshi bots trade doesn't change. Fetch stays practice money."
+   ]
+  },
+  {
    "version": "v1.11.0",
    "date": "2026-11-13",
    "kind": "fix",

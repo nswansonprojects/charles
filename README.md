@@ -38,6 +38,8 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 `charles-addon on kalshi` (a paper-only prediction-market bot; see [kalshi/README.md](kalshi/README.md)) and
 `charles-addon on fetch` (**Fetch**: one coin and one stock you pick, watched trade by trade, with a live chart, everyone's trades,
 what Charles sees in the last 10 minutes and a Pause button, on $1,000 of practice money each; market data only, it never places an order).
+With Claude Code you can give Fetch your own rule in plain words: it writes `fetch_my_rule.py` and tests it on past prices
+with `python fetch_test.py --rule mine` before Fetch uses it.
 
 ## Simulated results
 

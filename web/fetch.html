@@ -297,7 +297,7 @@
       return "<li>" + head + ' <span class="when">' + new Date(e.ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) +
         "</span><br>" + e.say + "</li>"; }).join("");
     var st = d.settings, hold = st.HOLD >= 120 ? (st.HOLD / 60).toFixed(st.HOLD % 60 ? 1 : 0) + " hours" : st.HOLD + " minutes";
-    $("fx-rules").textContent = "Each trade sells at +" + st.TARGET + "% or −" + st.STOP + "%, or after " + hold + ". " +
+    $("fx-rules").textContent = (d.rule === "mine" ? "Rule: your own (fetch_my_rule.py). " : "") + "Each trade sells at +" + st.TARGET + "% or −" + st.STOP + "%, or after " + hold + ". " +
       (st.FEE ? "Fee " + (st.FEE * 100).toFixed(2) + "% each way, counted in the P&L." : "No fee.") + " Up to " + d.book.max_trades + " trades a day.";
   }
 

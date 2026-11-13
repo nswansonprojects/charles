@@ -28,6 +28,21 @@ explain what you changed and why in plain words too, and ask before anything ris
 - `charles-restart` applies code changes to the bot; `systemctl restart charles-web` to the dashboard. `charles-logs`
   shows the log. Check the log after a restart.
 
+## Fetch: the user's own rule
+
+When the user describes a rule for Fetch in plain words ("buy bitcoin after three green minutes in a row"):
+1. `cp fetch_my_rule.example.py fetch_my_rule.py` (if it isn't there yet) and write their rule in `entry()`: plain arithmetic
+   on the minute closes, highs and lows, no files or network. Fill `say()` and `watching()` with plain sentences, and set `NEED`.
+   `fetch_my_rule.py` is kept out of git, so an update never touches it.
+2. Test it on past prices, after fees, before anything else: `python fetch_test.py --rule mine` (the coin; `--market stock`
+   for the stock; `--days 90` for longer; `TARGET=1.0 STOP=0.5 HOLD=60` to try exits). Show the user the whole result, in plain
+   words, including when it didn't beat random entries or holding (most minute rules don't once fees count). Try a second span or
+   ticker before calling anything good.
+3. Only if they still want it: set `"RULE": "mine"` (and any TARGET, STOP, HOLD they chose) in `fetch.json` or `fetch-stocks.json`
+   through `fetch_plan.check()` so a bad value is refused, then `sudo systemctl restart charles-fetch` (or `charles-fetch-stocks`).
+   Check its log with `journalctl -u charles-fetch -n 20`: a broken rule buys nothing and the page says why.
+Fetch is practice money only: never connect it to an account. To go back, set `"RULE"` to what it was and restart.
+
 ## Rules
 
 - **Practice money first.** Never turn on live trading (`charles-live`), never edit `data/trading_mode.json`, and never
