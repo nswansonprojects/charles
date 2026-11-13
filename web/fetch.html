@@ -10,7 +10,7 @@
 <link rel="icon" href="/icon-192.png">
 <link rel="stylesheet" href="/style.css">
 <style>
-/* Fetch page only: one coin or one stock, every trade, said out loud */
+/* Fetch page only: one coin or one stock, every trade, and why Charles moves */
 .fx { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 980px) { .fx { grid-template-columns: minmax(0, 1fr) 300px; } }
 .fx-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
@@ -19,10 +19,10 @@
 .fx-sub { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
 #fx-chart { width: 100%; height: 340px; display: block; margin-top: 10px; }
 @media (max-width: 600px) { #fx-chart { height: 260px; } }
-.say { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.say { display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 12px; align-items: center; }
 .say .face { width: 36px; height: 36px; border-radius: 50%; display: block; }
 .say p { margin: 0; font-size: 16px; line-height: 1.4; }
-@media (max-width: 600px) { .say { grid-template-columns: 36px minmax(0, 1fr); } .say .btn { grid-column: 1 / -1; } .tape { max-height: 330px; } }
+@media (max-width: 600px) { .tape { max-height: 330px; } }
 .say p.new { animation: sayin .5s ease-out; }
 @keyframes sayin { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 .tape { list-style: none; margin: 0; padding: 0; font: 13px var(--mono); font-variant-numeric: tabular-nums; max-height: 520px; overflow: hidden; }
@@ -36,18 +36,29 @@
 .ev { list-style: none; margin: 0; padding: 0; }
 .ev li { padding: 9px 0; border-top: 1px solid var(--border); font-size: 14px; }
 .ev li:first-child { border-top: 0; }
-.ev b.buy { color: var(--good-ink); } .ev b.sell { color: var(--accent); }
+.ev b.buy, .ev b.sell { color: var(--text); }
 .ev .when { color: var(--muted); font-size: 12.5px; }
 .kv { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; font-size: 14px; font-variant-numeric: tabular-nums; }
 .kv span:nth-child(odd) { color: var(--muted); }
 .off { text-align: center; padding: 40px 16px; color: var(--muted); }
+.fx-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+@media (max-width: 600px) { .fx-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fx-stats div { background: var(--surface-2); border-radius: var(--r-md); padding: 10px 12px; min-width: 0; }
+.fx-stats span { display: block; font-size: 12.5px; color: var(--muted); }
+.fx-stats b { display: block; font: 600 18px/1.3 var(--sans); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#fx-pnl { width: 100%; height: 150px; display: block; margin-top: 12px; }
+.fx-state { display: inline-flex; align-items: center; gap: 6px; font: 600 12.5px var(--sans); padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--text-2); margin-bottom: 4px; }
+.fx-state.hold { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
+.fx-state::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.ev .pl { font-weight: 600; font-variant-numeric: tabular-nums; }
+.fx-rules { margin-top: 10px; font-size: 13px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { .say p.new, .tape li.in { animation: none; } }
 </style>
 </head>
 <body class="loading">
 <header></header>
 <main>
-  <div class="page-head"><div><h1 class="page-title">Fetch</h1><p class="page-sub">One ticker, every trade, and Charles saying what he sees</p></div></div>
+  <div class="page-head"><div><h1 class="page-title">Fetch</h1><p class="page-sub">Charles trades one ticker live with practice money and tells you why</p></div></div>
   <div class="seg" id="fx-pick" hidden><button type="button" data-m="coin">Bitcoin</button><button type="button" data-m="stock">Stock</button></div>
 
   <div class="card off" id="fx-off" hidden>Fetch isn't running on this server yet.</div>
@@ -55,8 +66,24 @@
   <div class="fx" id="fx">
     <div style="display:grid;gap:14px;min-width:0">
       <div class="card ink">
+        <div class="hero-head"><div class="eyebrow"><span>Charles's P&amp;L on <span id="fx-name2">Bitcoin</span></span></div><span class="chip practice" title="Practice money: no real dollars move, no real orders">Practice money</span></div>
+        <div class="big num" id="fx-total">$0.00</div>
+        <div class="sub num" id="fx-since">&nbsp;</div>
+        <canvas id="fx-pnl" role="img" aria-label="Charles's profit and loss since the start, zero in the middle"></canvas>
+        <div class="fx-stats">
+          <div><span>Today</span><b id="fx-today">$0.00</b></div>
+          <div><span>Open trade</span><b id="fx-open">None</b></div>
+          <div><span>Closed trades</span><b id="fx-real">$0.00</b></div>
+          <div><span>Won</span><b id="fx-wins">0 of 0</b></div>
+        </div>
+      </div>
+      <div class="card say" aria-live="polite">
+        <img class="face" src="/icon-192.png" alt="">
+        <div><div class="fx-state" id="fx-state">Watching</div><p id="fx-say">…</p></div>
+      </div>
+      <div class="card">
         <div class="fx-top">
-          <div><div class="eyebrow"><span id="fx-name">Bitcoin</span><span class="chip practice" title="Practice book: no real dollars move, no real orders">Practice money</span></div>
+          <div><div class="eyebrow"><span><span id="fx-name">Bitcoin</span> price</span></div>
             <div class="fx-px" id="fx-px">…</div>
             <div class="fx-sub" id="fx-sub">&nbsp;</div></div>
           <div class="fx-sub" id="fx-age"></div>
@@ -64,15 +91,7 @@
         <canvas id="fx-chart" role="img" aria-label="Price by the minute with Charles's levels"></canvas>
         <div class="fx-sub">Each bar is one minute. Dashed line: the price Charles buys at. Green and red dots: the market's last trades (green bought, red sold).</div>
       </div>
-      <div class="card say" aria-live="polite">
-        <img class="face" src="/icon-192.png" alt="">
-        <p id="fx-say">…</p>
-        <button class="btn small" type="button" id="fx-voice" aria-pressed="false">Turn on the voice</button>
-      </div>
-      <div class="two even">
-        <div class="card"><div class="card-head"><h2>Charles's moves</h2></div><ul class="ev" id="fx-ev"><li class="fx-sub">No trades yet. With this rule a trade comes about once every two weeks: the tape and the voice are the show in between.</li></ul></div>
-        <div class="card"><div class="card-head"><h2>Practice book</h2></div><div class="kv" id="fx-book"></div></div>
-      </div>
+      <div class="card"><div class="card-head"><h2>Charles's trades</h2></div><ul class="ev" id="fx-ev"></ul><div class="fx-rules" id="fx-rules"></div></div>
     </div>
     <aside class="card" style="min-width:0">
       <div class="card-head"><h2>Everyone's trades</h2></div>
@@ -88,32 +107,42 @@
   var money = function (v, d) { return (v < 0 ? "-$" : "$") + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: d == null ? 2 : d, maximumFractionDigits: d == null ? 2 : d }); };
   var NAMES = { "BTC-USD": "Bitcoin", "ETH-USD": "Ether" };
   var M = ""; try { M = localStorage.getItem("fetch-market") || ""; } catch (e) {}
-  var EMPTY = { coin: "No trades yet. With this rule a trade comes about once every two weeks: the tape and the voice are the show in between.",
-                stock: "No trades yet. Charles buys only in market hours and is always out by the close: the tape and the voice are the show in between." };
+  var EMPTY = { coin: "No trades yet. With this rule a trade comes about once every two weeks: until then, watch the market trade and read what Charles is waiting for.",
+                stock: "No trades yet. Charles buys only in market hours and is always out by the close: until then, watch the market trade and read what Charles is waiting for." };
   var cv = $("fx-chart"), ctx = cv.getContext("2d");
-  var D = null, lastPx = null, shown = {}, first = true, said = "", saidAt = 0, voice = false, seenEv = {}, ball = null;
-  try { voice = localStorage.getItem("fetch-voice") === "1" && "speechSynthesis" in window; } catch (e) {}
+  var D = null, lastPx = null, shown = {}, first = true, ball = null;
 
   function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim() || "#888"; }
 
-  function speak(text) {
-    if (!voice || !text || !("speechSynthesis" in window)) return;
-    var u = new SpeechSynthesisUtterance(text), vs = speechSynthesis.getVoices();
-    u.lang = "en-GB"; u.rate = 1.02;
-    var v = vs.filter(function (x) { return x.lang === "en-GB"; })[0] || vs.filter(function (x) { return /^en/.test(x.lang); })[0];
-    if (v) u.voice = v;
-    speechSynthesis.cancel(); speechSynthesis.speak(u);
+  function pnlChart() {
+    var c = $("fx-pnl"), x = c.getContext("2d"), w = c.clientWidth, h = c.clientHeight, r = window.devicePixelRatio || 1;
+    if (!D || !D.pnl || !w) return;
+    if (c.width !== w * r || c.height !== h * r) { c.width = w * r; c.height = h * r; }
+    x.setTransform(r, 0, 0, r, 0, 0); x.clearRect(0, 0, w, h);
+    var P = D.pnl, pts = [[P.since, 0]].concat(P.history || []).concat([[D.now, P.total]]);
+    var t0 = pts[0][0], t1 = Math.max(D.now, t0 + 60), lo = 0, hi = 0;
+    pts.forEach(function (p) { lo = Math.min(lo, p[1]); hi = Math.max(hi, p[1]); });
+    var span = Math.max(hi - lo, 1), pad = span * .15; lo -= pad; hi += pad;
+    var X = function (t) { return 4 + (w - 8) * (t - t0) / (t1 - t0); }, Y = function (v) { return 6 + (h - 22) * (1 - (v - lo) / (hi - lo)); }, z = Y(0);
+    x.strokeStyle = css("--border-strong"); x.setLineDash([4, 4]); x.beginPath(); x.moveTo(0, z); x.lineTo(w, z); x.stroke(); x.setLineDash([]);
+    x.font = "11px " + css("--sans"); x.fillStyle = css("--muted"); x.textBaseline = "bottom"; x.fillText("$0", 4, z - 3);
+    var flat = Math.abs(P.total) < 0.005 && !(P.history || []).some(function (p) { return Math.abs(p[1]) >= 0.005; });
+    if (flat) {
+      x.strokeStyle = css("--text-2"); x.lineWidth = 2; x.beginPath(); x.moveTo(X(t0), z); x.lineTo(X(D.now), z); x.stroke();
+      x.fillStyle = css("--muted"); x.textAlign = "center"; x.textBaseline = "middle";
+      x.fillText("The line moves with Charles's first trade", w / 2, z + 22); x.textAlign = "start";
+    }
+    var line = function () { x.beginPath(); pts.forEach(function (p, i) { var px = X(p[0]), py = Y(p[1]);
+      if (i) x.lineTo(px, Y(pts[i - 1][1])); i ? x.lineTo(px, py) : x.moveTo(px, py); }); };
+    if (!flat) [[css("--good"), 0, z], [css("--critical"), z, h]].forEach(function (k) {
+      x.save(); x.beginPath(); x.rect(0, k[1], w, k[2] - k[1]); x.clip();
+      line(); x.lineTo(X(pts[pts.length - 1][0]), z); x.lineTo(X(pts[0][0]), z); x.closePath();
+      x.globalAlpha = .14; x.fillStyle = k[0]; x.fill(); x.globalAlpha = 1;
+      line(); x.strokeStyle = k[0]; x.lineWidth = 2; x.stroke(); x.restore(); });
+    x.fillStyle = css("--muted"); x.textBaseline = "alphabetic";
+    var when = function (t) { return new Date(t * 1000).toLocaleString([], { month: "short", day: "numeric" }); };
+    x.fillText(when(t0), 4, h - 2); var lb = "Now"; x.fillText(lb, w - 4 - x.measureText(lb).width, h - 2);
   }
-  function setVoice(on) {
-    voice = on && "speechSynthesis" in window;
-    $("fx-voice").textContent = voice ? "Mute the voice" : "Turn on the voice";
-    $("fx-voice").setAttribute("aria-pressed", voice ? "true" : "false");
-    try { localStorage.setItem("fetch-voice", voice ? "1" : "0"); } catch (e) {}
-    if (voice) { said = ""; saidAt = 0; } else if ("speechSynthesis" in window) speechSynthesis.cancel();
-  }
-  $("fx-voice").onclick = function () { setVoice(!voice); if (voice && D) { speak(D.watching); said = D.watching; saidAt = Date.now(); } };
-  if (!("speechSynthesis" in window)) $("fx-voice").hidden = true;
-  setVoice(voice);
 
   function draw() {
     if (!D) return;
@@ -161,10 +190,24 @@
     ctx.fillRect(w - R + 1, by - 9, R - 2, 18); ctx.fillStyle = "#fff"; ctx.fillText(money(px, px < 1000 ? 2 : 0), w - R + 6, by);
   }
   (function frame() { if (D && ball != null) ball += (D.price - ball) * .2; draw(); requestAnimationFrame(frame); })();
+  var signed = function (v) { return (v > 0.004 ? "+" : "") + money(Math.abs(v) < 0.005 ? 0 : v).replace(/^-/, "\u2212"); };
+  var tone = function (v) { return v > 0.004 ? "up" : v < -0.004 ? "down" : "flat"; };
 
   function render() {
     var d = D, p = d.price;
-    $("fx-name").textContent = NAMES[d.product] || d.product;
+    $("fx-name").textContent = $("fx-name2").textContent = NAMES[d.product] || d.product;
+    var P = d.pnl || { total: 0, realized: 0, open: 0, today: 0, wins: 0, trades: 0, since: d.now };
+    var T = $("fx-total"); T.textContent = signed(P.total); T.className = "big num " + tone(P.total);
+    $("fx-since").textContent = "Counted from $0 on " + new Date(P.since * 1000).toLocaleDateString([], { month: "long", day: "numeric" }) +
+      ", trading $" + d.book.start.toLocaleString("en-US") + " of practice money. No real money moves.";
+    var o = $("fx-today"); o.textContent = signed(P.today); o.className = tone(P.today);
+    o = $("fx-open"); o.textContent = d.book.pos ? signed(P.open) : "None"; o.className = d.book.pos ? tone(P.open) : "flat";
+    o = $("fx-real"); o.textContent = signed(P.realized); o.className = tone(P.realized);
+    $("fx-wins").textContent = P.trades ? P.wins + " of " + P.trades : "None yet";
+    var stt = $("fx-state"), closed = d.market === "stock" && !d.open;
+    stt.textContent = d.book.pos ? "Holding " + (NAMES[d.product] || d.product) : closed ? "Market closed" : "Waiting to buy";
+    stt.className = "fx-state" + (d.book.pos ? " hold" : "");
+    pnlChart();
     var el = $("fx-px"); el.textContent = money(p);
     if (lastPx != null && p !== lastPx) { el.className = "fx-px " + (p > lastPx ? "up" : "dn"); }
     lastPx = p; if (ball == null) ball = p;
@@ -176,15 +219,10 @@
     $("fx-flow-t").title = d.market === "stock" ? "IEX, Alpaca's free feed: about 2.5% of all the trades in this stock" : "";
     var s = $("fx-say");
     if (s.textContent !== d.watching) { s.textContent = d.watching || "…"; s.className = "new"; void s.offsetWidth; }
-    // the voice: a new move right away, otherwise the watching sentence when it changes, at most every 20 seconds
-    var fresh = d.events.filter(function (e) { return !seenEv[e.ts + e.kind]; });
-    d.events.forEach(function (e) { seenEv[e.ts + e.kind] = 1; });
-    if (fresh.length && said) speak(fresh[fresh.length - 1].say);
-    else if (d.watching !== said && Date.now() - saidAt > 20000) { speak(d.watching); said = d.watching; saidAt = Date.now(); }
     // tape
     var ul = $("fx-tape"), rows = d.tape.slice(-24).reverse(), html = "";
     rows.forEach(function (t) { var k = t.t + ":" + t.p + ":" + t.q;
-      html += '<li class="' + (t.side === "buy" ? "b" : "s") + (shown[k] || first ? "" : " in") + '"><span>' + money(t.p) + '</span><span>' + money(t.q * t.p, t.q * t.p < 10 ? 2 : 0) +
+      html += '<li class="' + (t.side === "buy" ? "b" : "s") + (shown[k] || first ? "" : " in") + '"><span>' + money(t.p) + '</span><span>' + (t.q * t.p < 0.005 ? "<$0.01" : money(t.q * t.p, t.q * t.p < 10 ? 2 : 0)) +
         '</span><span class="t">' + new Date(t.t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }) + "</span></li>"; });
     first = false; shown = {}; rows.forEach(function (t) { shown[t.t + ":" + t.p + ":" + t.q] = 1; });
     ul.innerHTML = html;
@@ -194,19 +232,20 @@
     // moves + book
     if (!d.events.length) $("fx-ev").innerHTML = '<li class="fx-sub">' + EMPTY[d.market === "stock" ? "stock" : "coin"] + "</li>";
     else $("fx-ev").innerHTML = d.events.slice().reverse().slice(0, 8).map(function (e) {
-      return '<li><b class="' + e.kind + '">' + (e.kind === "buy" ? "Bought" : "Sold") + "</b> " + money(e.price) +
-        ' <span class="when">' + new Date(e.ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) + "</span><br>" + e.say + "</li>"; }).join("");
-    var b = d.book, st = d.settings, ch = b.value - b.start;
-    $("fx-book").innerHTML = "<span>Worth</span><span>" + money(b.value) + "</span><span>Since the start</span><span style=\"color:var(" + (ch >= 0 ? "--good-ink" : "--critical") + ')">' + money(ch) +
-      "</span><span>Holding</span><span>" + (b.pos ? "Yes" : "Cash") + "</span><span>Trades today</span><span>" + b.trades_today + " of " + b.max_trades +
-      "</span><span>Sells at</span><span>+" + st.TARGET + "% or −" + st.STOP + "%</span><span>Fee per trade</span><span>" + (st.FEE * 100).toFixed(2) + "%</span>";
+      var head = e.kind === "buy" ? "<b class=\"buy\">Bought</b> at " + money(e.price)
+        : '<b class="sell">Sold</b> at ' + money(e.price) + ' <span class="pl ' + tone(e.pnl) + '">' + signed(e.pnl) + " (" + (e.result_pct >= 0 ? "+" : "") + e.result_pct.toFixed(2) + "%)</span>";
+      return "<li>" + head + ' <span class="when">' + new Date(e.ts * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) +
+        "</span><br>" + e.say + "</li>"; }).join("");
+    var st = d.settings, hold = st.HOLD >= 120 ? (st.HOLD / 60).toFixed(st.HOLD % 60 ? 1 : 0) + " hours" : st.HOLD + " minutes";
+    $("fx-rules").textContent = "Each trade sells at +" + st.TARGET + "% or −" + st.STOP + "%, or after " + hold + ". " +
+      (st.FEE ? "Fee " + (st.FEE * 100).toFixed(2) + "% each way, counted in the P&L." : "No fee.") + " Up to " + d.book.max_trades + " trades a day.";
   }
 
   function poll() {
     fetch("/api/fetch?m=" + encodeURIComponent(M), { cache: "no-store" }).then(function (r) { return r.json(); }).then(function (d) {
       document.body.classList.remove("loading");
       if (d.off) { $("fx-off").hidden = false; $("fx").hidden = true; D = null; return; }
-      if (D && D.market !== d.market) { lastPx = null; ball = null; shown = {}; first = true; seenEv = {}; said = ""; }
+      if (D && D.market !== d.market) { lastPx = null; ball = null; shown = {}; first = true;  }
       $("fx-off").hidden = true; $("fx").hidden = false; D = d; render();
     }).catch(function () {}).then(function () { clearTimeout(timer); timer = setTimeout(poll, document.hidden ? 5000 : 1000); });
   }

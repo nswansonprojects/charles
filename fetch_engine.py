@@ -40,6 +40,7 @@ BARS = 240                    # closed bars kept for the page
 EVENTS = 40                   # events kept for the page
 WRITE_EVERY = 1.0             # seconds between live.json writes
 SAY_EVERY = 20.0              # seconds between "watching" sentences when nothing happens
+PNL_POINTS = 2000             # P&L points kept (one per closed minute while it changes, else one every 15 minutes)
 
 
 # ------------------------------------------------------------------ pure parts (tested)
@@ -134,7 +135,29 @@ class Engine:
         self.bid = self.ask = None
         self.last_price = None
         self.watch_say, self.watch_at, self.watch_n = "", 0.0, {}
+        self.since = time.time()                          # when this book started: its P&L counts from $0 there
+        self.pnl_hist = deque(maxlen=PNL_POINTS)          # [ts, total P&L]
+        self.wins = self.losses = 0
         self.dirty = True
+
+    def pnl(self, price: float | None = None) -> dict:
+        """Charles's P&L in practice dollars, from $0 when the book started: closed trades (realized), the open trade at the
+        market's buying price after the fee (open), and both together (total)."""
+        st, mark = self.st, self.bid or price or self.last_price
+        invest = st.pos["invest"] if st.pos else 0.0
+        realized = st.cash + invest - START_CASH
+        if st.pos and mark:
+            total = st.cash + st.pos["qty"] * mark * (1 - self.s["FEE"]) * (1 - self.s["SLIP"]) - START_CASH
+        else:
+            total = realized
+        return {"total": total, "realized": realized, "open": total - realized, "since": self.since,
+                "wins": self.wins, "losses": self.losses, "trades": self.wins + self.losses}
+
+    def _note_pnl(self, ts: float):
+        t = round(self.pnl()["total"], 4)
+        h = self.pnl_hist
+        if not h or h[-1][1] != t or ts - h[-1][0] >= 900:
+            h.append([ts, t])
 
     def warm(self, past: list):
         rt.warm(self.st, past)
@@ -184,11 +207,18 @@ class Engine:
     def _close(self, b: rt.Bar) -> list:
         self.closed.append(b)
         ev = rt.step(self.st, b, self.s, self.session if self.stock else None)
+        self._note_pnl(b.ts + 60)
         self.save_book()                                  # once a minute: an order signalled at this close survives a restart
         return ev
 
     def _keep(self, ev: list):
         for e in ev:
+            if e.kind == "sell" and e.pnl is not None:
+                if e.pnl > 0:
+                    self.wins += 1
+                else:
+                    self.losses += 1
+                self._note_pnl(e.ts + 60)
             r = record(e)
             self.events.append(r)
             os.makedirs(self.data, exist_ok=True)
@@ -206,12 +236,28 @@ class Engine:
             "tape": list(self.tape), "bars": [list(b) for b in self.closed], "forming": self.bars.forming(),
             "book": {"start": START_CASH, "cash": self.st.cash, "value": rt.value(self.st, price) if price else self.st.cash,
                      "pos": self.st.pos, "trades_today": self.st.trades_today, "max_trades": self.s["MAX_TRADES"]},
+            "pnl": {**self.pnl(price), "today": self.pnl_today(now, price), "history": list(self.pnl_hist)},
             "events": list(self.events), "watching": self.watch_say, "watch": self.watch_n,
             "rule": self.s["RULE"], "settings": {k: self.s[k] for k in ("RULE", "TARGET", "STOP", "HOLD", "FEE", "SLIP")},
         }
 
+    def pnl_today(self, now: float, price: float | None) -> float:
+        """Today's P&L: the total now less the total at the start of the day (UTC for a coin, the session for a stock)."""
+        start = self.session.open if self.stock and self.session else float(int(now // 86400) * 86400)
+        before = [t for ts, t in self.pnl_hist if ts <= start]
+        return self.pnl(price)["total"] - (before[-1] if before else 0.0)
+
     def save_book(self):
-        _write(os.path.join(self.data, "book.json"), {"product": self.product, "state": rt.dump(self.st), "saved": time.time()})
+        _write(os.path.join(self.data, "book.json"), {"product": self.product, "state": rt.dump(self.st), "saved": time.time(),
+                                                      "since": self.since, "pnl": list(self.pnl_hist),
+                                                      "wins": self.wins, "losses": self.losses})
+
+    def restore(self, saved: dict | None):
+        """since, the P&L line and the win count from book.json (the state itself comes through load_book)."""
+        if saved:
+            self.since = saved.get("since") or saved.get("saved") or self.since
+            self.pnl_hist.extend(p for p in saved.get("pnl") or [] if isinstance(p, list) and len(p) == 2)
+            self.wins, self.losses = int(saved.get("wins") or 0), int(saved.get("losses") or 0)
 
     def write_live(self, now: float):
         if self.dirty:
@@ -224,6 +270,15 @@ def _write(path: str, obj):
     with open(path + ".tmp", "w") as f:
         json.dump(obj, f, separators=(",", ":"))
     os.replace(path + ".tmp", path)
+
+
+def saved_book(product: str, data: str = DATA) -> dict | None:
+    try:
+        with open(os.path.join(data, "book.json")) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return d if isinstance(d, dict) and d.get("product") == product else None
 
 
 def load_book(product: str, data: str = DATA) -> rt.State | None:
@@ -258,6 +313,7 @@ async def run(product: str):
     import websockets
     s = settings_from()
     eng = Engine(product, s, load_book(product))
+    eng.restore(saved_book(product))
     try:
         eng.warm(past_bars(product))
     except Exception as e:                                # noqa: BLE001
@@ -371,6 +427,7 @@ async def run_stock(symbol: str):
     keys = _alpaca_keys()
     s = settings_from()
     eng = Engine(symbol, s, load_book(symbol))
+    eng.restore(saved_book(symbol))
     day = None
     wait = 1
     while True:

@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.10.1",
+   "date": "2026-11-13",
+   "kind": "fix",
+   "notes": [
+    "Fetch now leads with Charles's P&L, counted from $0: the total in green or red, a line around $0, and today, the open trade, closed trades and how many won. Each sell in Charles's trades shows what it made or lost.",
+    "Fetch has no voice any more: Charles's sentences stay as captions.",
+    "With Fetch on, the six tabs fit a narrow computer screen again; the bell and settings had been pushed off the edge.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.10.0",
    "date": "2026-11-13",
    "kind": "fix",

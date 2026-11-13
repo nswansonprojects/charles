@@ -51,6 +51,13 @@ header.shell .ibtn:hover, header.shell .ibtn.on { color: #fff; background: rgba(
   .topnav a:hover { color: #fff; background: rgba(255, 255, 255, .13); }
   .topnav a.on, .topnav a.on:hover { color: var(--bar, #1f6ad1); background: #fff; }
 }
+/* six tabs (Fetch on) fit a narrow computer screen too: tighter tabs and logo spacing until 1100 px */
+@media (min-width: 860px) and (max-width: 1099px) {
+  header.shell .bar { gap: 6px; padding: 8px 16px; }
+  header.shell .brand { margin-right: 6px; padding-right: 12px; }
+  .topnav a { padding: 0 8px; font-size: 14px; }
+  header.shell .status { padding: 0 9px 0 8px; margin-right: 0; }
+}
 
 /* the guided tour: a real part of the page stays lit, and Charles talks you through it (web/tour.js) */
 .tour-spot { position: fixed; z-index: 40; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(10, 14, 22, .58); pointer-events: none; transition: top .28s cubic-bezier(.2,.8,.2,1), left .28s cubic-bezier(.2,.8,.2,1), width .28s cubic-bezier(.2,.8,.2,1), height .28s cubic-bezier(.2,.8,.2,1); }

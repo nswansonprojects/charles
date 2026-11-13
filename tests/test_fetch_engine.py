@@ -86,6 +86,45 @@ class EngineRun(unittest.TestCase):
 
 # ------------------------------------------------------------------ a stock (IEX)
 
+class PnlTest(unittest.TestCase):
+    def test_starts_at_zero_and_counts_a_closed_trade(self):
+        eng = fe.Engine("BTC-USD", rt.settings({"FEE": 0.0}), data=tempfile.mkdtemp())
+        eng.on_trade(1_000_000.0, 100.0, 1, "buy")
+        p = eng.pnl()
+        self.assertEqual((p["total"], p["realized"], p["open"], p["trades"]), (0.0, 0.0, 0.0, 0))
+        eng.st.pos = {"entry": 100.0, "qty": 10.0, "invest": 1000.0, "ts": 0, "stop": 99, "target": 102, "rule": "revert"}
+        eng.st.cash = 0.0
+        eng.bid = 101.0
+        p = eng.pnl()
+        self.assertAlmostEqual(p["open"], 10 * 101 * (1 - eng.s["SLIP"]) - 1000, places=6)
+        self.assertEqual(p["realized"], 0.0)
+        eng.st.pos, eng.st.cash = None, 1012.0                     # sold: +$12
+        e = rt.Event("sell", 1_000_060.0, "revert", 101.2, 101.2, {}, 99.0, 102.0, "target", 1.2, 12.0, 1, 6, 30.0)
+        eng._keep([e])
+        p = eng.pnl()
+        self.assertEqual((round(p["total"], 6), p["wins"], p["losses"]), (12.0, 1, 0))
+        self.assertEqual(eng.pnl_hist[-1][1], 12.0)
+
+    def test_book_keeps_since_and_the_line(self):
+        d = tempfile.mkdtemp()
+        eng = fe.Engine("BTC-USD", rt.settings({}), data=d)
+        eng.since = 123.0
+        eng.pnl_hist.append([200.0, 1.5])
+        eng.wins = 2
+        eng.save_book()
+        new = fe.Engine("BTC-USD", rt.settings({}), data=d)
+        new.restore(fe.saved_book("BTC-USD", d))
+        self.assertEqual((new.since, list(new.pnl_hist), new.wins), (123.0, [[200.0, 1.5]], 2))
+        self.assertIsNone(fe.saved_book("ETH-USD", d))
+
+    def test_today_counts_from_the_day_start(self):
+        eng = fe.Engine("BTC-USD", rt.settings({}), data=tempfile.mkdtemp())
+        day = 86400 * 20000
+        eng.pnl_hist.extend([[day - 600, 5.0]])
+        eng.st.cash = rt.new_state(fe.START_CASH).cash + 8.0
+        self.assertAlmostEqual(eng.pnl_today(day + 3600, None), 3.0)
+
+
 class StockTest(unittest.TestCase):
     def test_calendar_tries_live_keys_after_paper(self):
         import urllib.error
