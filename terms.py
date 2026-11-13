@@ -24,8 +24,8 @@ import state_io
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.path.join(ROOT, "data")
-VERSION = "2.1"
-EFFECTIVE = "November 9, 2026"
+VERSION = "2.2"
+EFFECTIVE = "November 13, 2026"
 URL = "https://charles-bot.xyz/terms.html"
 PRIVACY_URL = "https://charles-bot.xyz/privacy.html"
 RISK_URL = "https://charles-bot.xyz/risk.html"

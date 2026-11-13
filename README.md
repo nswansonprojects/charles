@@ -66,8 +66,9 @@ results don't predict future results. **Charles is software, not investment advi
 
 Charles is plain Python on your own server, so you can change anything about it. The easiest way is
 [Claude Code](https://www.anthropic.com/claude-code): describe the change in plain words, and it reads the code, makes the
-change and runs the tests. It needs a Claude subscription or Anthropic API credit (on your own bill), and a server with 4 GB
-of memory is comfortable.
+change and runs the tests. It needs a Claude subscription or Anthropic API credit (on your own bill). It also needs a bigger
+server than Charles does: 4 GB of memory, about $24 a month at DigitalOcean.
+[How to move up](https://charles-bot.xyz/setup.html#claude-code).
 
 ```
 curl -fsSL https://claude.ai/install.sh | bash

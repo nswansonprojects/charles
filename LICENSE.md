@@ -1,6 +1,6 @@
 # Charles Terms of Service and License Agreement
 
-Version 2.1, effective November 9, 2026
+Version 2.2, effective November 13, 2026
 
 These terms are a contract between you and Charles LLC, a Colorado limited liability company ("we", "us", "our"). They cover the Charles software (the trading bot, its dashboard, installer, commands and add-ons), the website charles-bot.xyz, the leaderboard and its challenges, the paid "Set it up for me" service, and any help we give you. In these terms, "Charles" means all of these together, and "the software" means the Charles software alone. Our [Privacy Policy](https://charles-bot.xyz/privacy.html), [Risk Disclosure](https://charles-bot.xyz/risk.html) and [Refund Policy](https://charles-bot.xyz/refunds.html) are part of these terms.
 
@@ -91,15 +91,15 @@ You give us a free, worldwide, perpetual license to store, run, display and shar
 
 ## 10. The paid setup service ("Set it up for me")
 
-**What you buy.** A one-time, automated setup: we create one new server (a "droplet") in your own DigitalOcean account and install the same free Charles software that anyone can install. The price is shown on the setup page before you pay, in US dollars, plus any sales tax shown at checkout. It's a single payment, not a subscription, and nothing renews.
+**What you buy.** A one-time, automated setup: we create one new server (a "droplet") in your own DigitalOcean account, in the size you choose on the setup page, and install the same free Charles software that anyone can install. If you choose the larger server with Claude Code, we also run Anthropic's own installer for Claude Code on it. Claude Code is Anthropic's software, not ours: you use it with your own Claude account, under Anthropic's terms and at Anthropic's prices. The price is shown on the setup page before you pay, in US dollars, plus any sales tax shown at checkout. It's a single payment, not a subscription, and nothing renews.
 
-**What it doesn't include.** The server itself, which DigitalOcean bills to you directly (a few dollars a month at its current prices, until you delete it); your brokerage account and keys; data, AI or other services you add; running, monitoring or managing Charles after setup; and any trading results.
+**What it doesn't include.** The server itself, which DigitalOcean bills to you directly every month, at its own prices for the size you choose, until you delete it (the setup page shows each size's current monthly cost before you choose); your brokerage account and keys; a Claude account, or any other data, AI or other service you add; running, monitoring or managing Charles after setup; and any trading results.
 
 **What you give us, and what we do with it.** Your email address, for your receipt and the setup emails. A DigitalOcean API token, which we use once to create your server (and, if you give us one, to add your SSH public key to your account) and then discard: we never store it. You authorize us to use that token only to create that one server and add that one key, nothing else. Please delete the token when your setup is done. Our [Privacy Policy](https://charles-bot.xyz/privacy.html) explains exactly what we keep.
 
 **Payment.** Payments are processed by Stripe, and we never see your full card number. You authorize the charge when you pay, and you confirm you're allowed to use that payment method.
 
-**Delivery.** Setup usually finishes within 15 minutes after you connect DigitalOcean. It's complete when your server's dashboard answers, and we email you when it does.
+**Delivery.** Setup usually finishes within 15 minutes after you connect DigitalOcean. It's complete when your server's dashboard answers, and we email you when it does. Where you chose it, Claude Code is installed after that, as an extra: if its installer doesn't finish, your setup is still complete, and your order page gives the one command to install it yourself.
 
 **Refunds.** Our [Refund Policy](https://charles-bot.xyz/refunds.html) gives you an automatic full refund when your setup can't be finished, and a full refund on request for a period after you pay. Charges from DigitalOcean or other services aren't ours to refund.
 

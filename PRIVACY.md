@@ -1,6 +1,6 @@
 # Charles Privacy Policy
 
-Version 2.1, effective November 9, 2026
+Version 2.2, effective November 13, 2026
 
 This policy explains what information Charles LLC, a Colorado limited liability company ("we", "us", "our") collects through the website charles-bot.xyz, the leaderboard, the paid "Set it up for me" service and emails with us, what we do with it, and your choices. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html).
 
@@ -47,7 +47,7 @@ When you buy "Set it up for me":
 - **Your DigitalOcean API token** is used once, in memory, to create your server, and is sent only to DigitalOcean. It's never written to our disks, database or logs, and it's discarded as soon as your server exists. Please delete it in DigitalOcean when you're done.
 - **Your SSH public key**, if you give one, goes only to DigitalOcean, to add it to your account. We don't keep it.
 - **Your broker keys** never pass through us. You type them on a page served by your own new server, and they go from your browser straight to that server.
-- **Your order record** holds no contact details: a random order number, its status, the version of our terms you accepted and when, the price and amount paid, Stripe's references for the checkout and the payment, when it was paid, finished and refunded, and your new server's region, DigitalOcean ID, IP address and dashboard link. We delete the server details 24 hours after your setup finishes (we email them to you first), and the rest of the record after 2 years. We keep it that long to handle refunds, disputes and our accounts.
+- **Your order record** holds no contact details: a random order number, its status, the version of our terms you accepted and when, the price and amount paid, Stripe's references for the checkout and the payment, when it was paid, finished and refunded, the server size you chose, and your new server's region, DigitalOcean ID, IP address and dashboard link. We delete the server details 24 hours after your setup finishes (we email them to you first), and the rest of the record after 2 years. We keep it that long to handle refunds, disputes and our accounts.
 - **Your IP address** is used only as a one-way, salted fingerprint, held in memory for up to an hour to limit repeated attempts. Our web server doesn't log requests to the setup service.
 
 Stripe keeps payment records as its own [privacy policy](https://stripe.com/privacy) and the law require.

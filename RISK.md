@@ -1,6 +1,6 @@
 # Charles Risk Disclosure
 
-Version 2.1, effective November 9, 2026
+Version 2.2, effective November 13, 2026
 
 Trading and investing involve substantial risk, and automated trading adds risks of its own. Read this before you use Charles, and again before you turn on live trading. It's part of our [Terms of Service and License Agreement](https://charles-bot.xyz/terms.html). It can't list every risk.
 

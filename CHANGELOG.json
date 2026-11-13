@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.9.1",
+   "date": "2026-11-13",
+   "kind": "rule",
+   "notes": [
+    "New Terms of Service and License Agreement, version 2.2. Only the paid setup's section changed: it now describes the two server sizes you can choose, that DigitalOcean bills each at its own monthly price, and that Claude Code on the larger server is Anthropic's software, installed as an extra. The Privacy Policy adds the server size to what an order record holds.",
+    "If you trade live, live trading waits until you accept the new version with charles-terms. Paper trading isn't affected.",
+    "The README says which server size Claude Code needs.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.9.0",
    "date": "2026-11-12",
    "kind": "rule",
