@@ -3,6 +3,7 @@ import json
 import os
 import re
 import tempfile
+import time
 from datetime import datetime, timezone
 from unittest import mock
 
@@ -850,9 +851,55 @@ class PreviewAsNew(BotTestCase):
             wd.STATE_FROM, wd.addons.enabled = old
 
     def test_every_addon_off_only_on_the_preview_with_the_cookie(self):
-        self.assertEqual(self.on("a=b; preview_new=1", "http://127.0.0.1:8502"), {"crypto": False, "kalshi": False})
-        self.assertEqual(self.on("a=b", "http://127.0.0.1:8502"), {"crypto": True, "kalshi": True})
-        self.assertEqual(self.on("preview_new=1", ""), {"crypto": True, "kalshi": True})        # a real install ignores it
+        self.patch(wd, "fetch_on", lambda: False)
+        self.assertEqual(self.on("a=b; preview_new=1", "http://127.0.0.1:8502"), {"crypto": False, "kalshi": False, "fetch": False})
+        self.assertEqual(self.on("a=b", "http://127.0.0.1:8502"), {"crypto": True, "kalshi": True, "fetch": False})
+        self.assertEqual(self.on("preview_new=1", ""), {"crypto": True, "kalshi": True, "fetch": False})        # a real install ignores it
+
+
+class FetchTab(BotTestCase):
+    """Charles Fetch's tab and /api/fetch show only while its engine is writing live.json."""
+    def setUp(self):
+        super().setUp()
+        self.patch(wd, "DATA", self.tmp)
+
+    def test_off_without_the_engine(self):
+        self.assertFalse(wd.fetch_on())
+        self.assertIsNone(wd.fetch_live())
+
+    def test_on_while_fresh_and_off_when_stale(self):
+        os.makedirs(os.path.join(self.tmp, "fetch"))
+        p = os.path.join(self.tmp, "fetch", "live.json")
+        with open(p, "w") as f:
+            f.write('{"price": 1}')
+        self.assertTrue(wd.fetch_on())
+        self.assertEqual(wd.fetch_live(), {"price": 1, "markets": ["coin"], "market": "coin"})
+        old = time.time() - wd.FETCH_STALE - 5
+        os.utime(p, (old, old))
+        self.assertFalse(wd.fetch_on())
+        self.assertIsNone(wd.fetch_live())
+
+    def test_two_markets_and_the_pick(self):
+        for d, px in (("fetch", 1), ("fetch-stocks", 2)):
+            os.makedirs(os.path.join(self.tmp, d))
+            with open(os.path.join(self.tmp, d, "live.json"), "w") as f:
+                f.write('{"price": %d}' % px)
+        self.assertEqual(wd.fetch_markets(), ["coin", "stock"])
+        self.assertEqual(wd.fetch_live("stock")["price"], 2)
+        self.assertEqual(wd.fetch_live("")["price"], 1)
+        self.assertEqual(wd.fetch_live("../etc")["market"], "coin")
+
+    def test_only_the_stock_running(self):
+        os.makedirs(os.path.join(self.tmp, "fetch-stocks"))
+        with open(os.path.join(self.tmp, "fetch-stocks", "live.json"), "w") as f:
+            f.write('{"price": 2}')
+        self.assertTrue(wd.fetch_on())
+        self.assertEqual(wd.fetch_live("coin")["market"], "stock")
+
+    def test_the_tab_follows_on(self):
+        page = b"<html><head></head><body><header></header></body></html>"
+        self.assertIn(b'href="/fetch"', wd.shell(page, {"fetch": True}, "home"))
+        self.assertNotIn(b'href="/fetch"', wd.shell(page, {"fetch": False}, "home"))
 
 
 class FirstSteps(BotTestCase):

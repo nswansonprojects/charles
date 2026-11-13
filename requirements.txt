@@ -10,6 +10,9 @@ requests>=2.32.0
 # Broker (Alpaca paper account)
 alpaca-py>=0.33.0
 
+# Charles Fetch's live feeds (Coinbase, Alpaca IEX); alpaca-py brings it too
+websockets>=10.4
+
 # Leaderboard signatures (leaderboard/)
 cryptography>=42
 

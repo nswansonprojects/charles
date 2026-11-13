@@ -49,8 +49,8 @@ log = logging.getLogger(__name__)
 ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA = os.environ.get("WEBDASH_DATA") or os.path.join(ROOT, "data")     # the preview reads a copy
 PAGES = {"/": "home.html", "/index.html": "home.html", "/stocks": "stocks.html", "/crypto/": "crypto.html",
-         "/leaderboard": "leaderboard.html", "/settings": "settings.html"}
-PAGE_TAB = {"/": "home", "/index.html": "home", "/stocks": "stocks", "/crypto/": "crypto", "/leaderboard": "leaderboard", "/settings": "settings"}
+         "/leaderboard": "leaderboard.html", "/settings": "settings.html", "/fetch": "fetch.html"}
+PAGE_TAB = {"/": "home", "/index.html": "home", "/stocks": "stocks", "/crypto/": "crypto", "/leaderboard": "leaderboard", "/settings": "settings", "/fetch": "fetch"}
 CRYPTO_BACKTEST = os.path.join(ROOT, "docs", "crypto_backtest.json")
 BACKTEST = os.path.join(ROOT, "docs", "backtest.json")
 PORT = int(os.environ.get("WEBDASH_PORT", "8502"))
@@ -997,6 +997,7 @@ _I = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1
 NAV = (("home", "/", "Home", '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
        ("stocks", "/stocks", "Stocks", '<path d="M4 14l6-6 4 4 6-6M14 6h6v6"/>'),
        ("crypto", "/crypto/", "Crypto", '<path d="M9 7h5a2.5 2.5 0 0 1 0 5H9zM9 12h6a2.5 2.5 0 0 1 0 5H9zM9 5v14M12 5v2M12 17v2"/>'),
+       ("fetch", "/fetch", "Fetch", '<circle cx="12" cy="12" r="8"/><path d="M5.5 7.5c3 1.5 4.5 4.5 4.5 9M18.5 16.5c-3-1.5-4.5-4.5-4.5-9"/>'),
        ("kalshi", "/kalshi/", "Kalshi", '<circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/>'),
        ("leaderboard", "/leaderboard", "Leaderboard", '<path d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0zM7 6H4v2a3 3 0 0 0 3 3M17 6h3v2a3 3 0 0 1-3 3"/>'))
 LOGO = ('<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><path d="M7 12.5 L8.4 5 L13.5 8.6 Z M25 12.5 L23.6 5 L18.5 8.6 Z" fill="#fff" stroke="#fff" stroke-width="2.6" stroke-linejoin="round"/>'
@@ -1006,6 +1007,45 @@ LOGO = ('<svg width="28" height="28" viewBox="0 0 32 32" aria-hidden="true"><pat
         '<circle class="eye" cx="12.6" cy="15.5" r="1.3" fill="#1f2937"/><circle class="eye" cx="19.4" cy="15.5" r="1.3" fill="#1f2937"/><circle class="glint" cx="13" cy="15.1" r=".4" fill="#fff"/><circle class="glint" cx="19.8" cy="15.1" r=".4" fill="#fff"/><path class="angry" d="M10 12.4 L14.4 14.3 M22 12.4 L17.6 14.3" stroke="#1f2937" stroke-width="1.5" fill="none" stroke-linecap="round"/>'
         '<path d="M16 19.9c-1.3.2-2.6.5-3.8 1.2c-1.4.8-2.6 1.8-3.4 3.2l1.3-.3l-.5 1.4l1.4-.6l.1 1.4l1.2-1l.6 1.2l.8-1.2l.9.9l.3-1.3c.5-.8 1.2-1.5 2-2.1Z M16 19.9c1.3.2 2.6.5 3.8 1.2c1.4.8 2.6 1.8 3.4 3.2l-1.3-.3l.5 1.4l-1.4-.6l-.1 1.4l-1.2-1l-.6 1.2l-.8-1.2l-.9.9l-.3-1.3c-.5-.8-1.2-1.5-2-2.1Z" fill="#fff" stroke="#d3dbe5" stroke-width=".45" stroke-linejoin="round"/>'
         '<path d="M11 20.6q-3.2-.9-6.2-.4M11.2 21.8q-3.2 0-5.9 1.3M21 20.6q3.2-.9 6.2-.4M20.8 21.8q3.2 0 5.9 1.3" stroke="#fff" stroke-width=".6" fill="none" stroke-linecap="round"/><ellipse cx="16" cy="18.7" rx="2" ry="1.4" fill="#1f2937"/></svg>')
+
+
+BOT_ADDONS = ("crypto", "kalshi")    # add-ons with a book of their own (Home offers them); Fetch is a show, on Settings only
+FETCH_STALE = 120     # seconds: an older live.json means the charles-fetch unit isn't running
+
+
+FETCH_DIRS = {"coin": "fetch", "stock": "fetch-stocks"}   # one engine each: charles-fetch, charles-fetch-stocks
+
+
+def fetch_markets() -> list:
+    """The Fetch engines running here: those that wrote live.json in the last FETCH_STALE seconds."""
+    out = []
+    for m, d in FETCH_DIRS.items():
+        try:
+            if time.time() - os.path.getmtime(os.path.join(DATA, d, "live.json")) <= FETCH_STALE:
+                out.append(m)
+        except OSError:
+            pass
+    return out
+
+
+def fetch_on() -> bool:
+    """Charles Fetch runs here (a coin, a stock or both). Its tab shows only then."""
+    return bool(fetch_markets())
+
+
+def fetch_live(market: str = "") -> dict | None:
+    """One engine's live.json (~1/s) plus the markets running, or None when Fetch isn't running here. An unknown or stopped
+    market falls back to the first one running (the coin first)."""
+    on = fetch_markets()
+    if not on:
+        return None
+    m = market if market in on else on[0]
+    try:
+        with open(os.path.join(DATA, FETCH_DIRS[m], "live.json")) as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    return {**d, "markets": on, "market": m}
 
 
 def shell(page: bytes, on: dict, current: str) -> bytes:
@@ -1067,7 +1107,7 @@ def _code(cmd: str) -> str:
 
 
 def addon_off_page(name: str) -> bytes:
-    """/crypto/ or /kalshi/ while that add-on is off: what it is and the one command that turns it on."""
+    """/crypto/, /kalshi/ or /fetch while that add-on is off: what it is and the one command that turns it on."""
     a = addons.ADDONS[name]
     return _page(f"{html.escape(a['name'])} is off", f"""    <p style="margin-top:0">{html.escape(a["about"])}</p>
     <p>It's an add-on. To turn it on, log in to your server over SSH and run:</p>
@@ -1374,7 +1414,7 @@ def home_view(stocks: dict | None, crypto: dict | None, kalshi: dict | None, not
             "week": round(sum(b["week"]["change"] for b in counted), 2) if counted else None,
             "week_days": max((b["week"]["days"] for b in counted), default=0)},
             "series": series, "bots": bots, "notices": noted,
-            "can_add": [{"id": k, "name": a["short"], "about": a["pitch"]} for k, a in addons.ADDONS.items() if not on.get(k)]}
+            "can_add": [{"id": k, "name": a["short"], "about": a["pitch"]} for k, a in addons.ADDONS.items() if not on.get(k) and k in BOT_ADDONS]}
 
 
 def _kalshi_state() -> dict | None:
@@ -1740,10 +1780,14 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
 
+    def _on_raw(self) -> dict:
+        return {} if as_new(self.headers) else addons.enabled()
+
     def _on(self) -> dict:
         """Which add-ons are on. The preview can pretend to be a new install, to see what a new user sees (/preview-as-new)."""
         on = addons.enabled()
-        return {k: False for k in on} if as_new(self.headers) else on
+        on = {k: False for k in on} if as_new(self.headers) else on
+        return {**on, "fetch": fetch_on() and not as_new(self.headers)}
 
     def _stopped(self, method: str, path: str) -> bool:
         """Answers a request the login doesn't allow and returns True; False lets it through."""
@@ -1826,6 +1870,8 @@ class Handler(BaseHTTPRequestHandler):
             on = self._on()
             if path == "/crypto/" and not on["crypto"]:
                 return self._send(200, addon_off_page("crypto"), "text/html; charset=utf-8")
+            if path == "/fetch" and not on["fetch"] and not self._on_raw().get("fetch"):
+                return self._send(200, addon_off_page("fetch"), "text/html; charset=utf-8")
             with open(os.path.join(ROOT, "web", PAGES[path]), "rb") as f:
                 self._send(200, with_csrf(shell(f.read(), on, PAGE_TAB[path])), "text/html; charset=utf-8")
         elif path in ("/crypto", "/accounts", "/accounts/"):
@@ -1866,6 +1912,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, findings_state("" if as_new(self.headers) else bot, self._on()))
         elif path == "/api/feed":
             self._json(200, {"posts": []} if as_new(self.headers) else feed_state(parse_qs(query).get("bot", [""])[0], self._on()))
+        elif path == "/api/fetch":
+            live = fetch_live(parse_qs(query).get("m", [""])[0])
+            self._json(200, live or {"off": True})
         elif path == "/api/news":
             self._json(200, _cached("news", 1800, holdings_news) or {"items": [], "by_symbol": {}, "failed": []})
         elif path == "/manifest.webmanifest":

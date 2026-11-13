@@ -1,0 +1,10 @@
+{
+ "PRODUCT": "BTC-USD",
+ "RULE": "revert",
+ "SLOW": 120,
+ "DIP": 1.5,
+ "TARGET": 2.0,
+ "STOP": 1.0,
+ "HOLD": 480,
+ "FEE": 0.0025
+}

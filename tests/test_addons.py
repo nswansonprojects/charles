@@ -19,9 +19,9 @@ class Addons(BotTestCase):
         open(os.path.join(self.sd, "timers.target.wants", timer), "w").close()
 
     def test_off_until_the_timer_is_enabled(self):
-        self.assertEqual(addons.enabled(self.sd), {"crypto": False, "kalshi": False})
+        self.assertEqual(addons.enabled(self.sd), {"crypto": False, "kalshi": False, "fetch": False})
         self.enable("charles-crypto.timer")
-        self.assertEqual(addons.enabled(self.sd), {"crypto": True, "kalshi": False})
+        self.assertEqual(addons.enabled(self.sd), {"crypto": True, "kalshi": False, "fetch": False})
 
     def test_turning_crypto_on_installs_its_units_and_starts_it(self):
         wrote = addons.on("crypto", run=self.run, systemd_dir=self.sd)
@@ -49,6 +49,29 @@ class Addons(BotTestCase):
         with self.assertRaises(addons.AddonError):
             addons.on("kalshi", run=self.run, systemd_dir=self.sd)
         self.assertEqual(self.calls, [])
+
+    def test_fetch_is_on_while_its_service_is_enabled(self):
+        os.makedirs(os.path.join(self.sd, "multi-user.target.wants"))
+        open(os.path.join(self.sd, "multi-user.target.wants", "charles-fetch.service"), "w").close()
+        self.assertTrue(addons.enabled(self.sd)["fetch"])
+
+    def test_turning_fetch_on_installs_both_engines(self):
+        wrote = addons.on("fetch", run=self.run, systemd_dir=self.sd)
+        self.assertEqual(sorted(wrote), ["charles-fetch-stocks.service", "charles-fetch.service"])
+        self.assertEqual(self.calls[-1], ["systemctl", "enable", "--now", "charles-fetch.service", "charles-fetch-stocks.service"])
+        with open(os.path.join(self.sd, "charles-fetch-stocks.service")) as f:
+            stock = f.read()
+        with open(os.path.join(self.sd, "charles-fetch.service")) as f:
+            coin = f.read()
+        self.assertIn("FETCH_SETTINGS=fetch-stocks.json", stock)
+        self.assertIn(os.path.join(addons.ROOT, "data", "fetch-stocks"), stock)
+        self.assertNotIn(".env", stock)                                    # the stock engine needs the Alpaca keys
+        self.assertIn(os.path.join(addons.ROOT, ".env"), coin)             # the coin one doesn't get to read them
+        self.assertIn("ReadWritePaths=-" + os.path.join(addons.ROOT, "data", "fetch") + "\n", coin)
+
+    def test_turning_fetch_off(self):
+        addons.off("fetch", run=self.run)
+        self.assertEqual(self.calls, [["systemctl", "disable", "--now", "charles-fetch.service", "charles-fetch-stocks.service"]])
 
     def test_status_for_the_accounts_page(self):
         self.enable("kalshi-net.timer")

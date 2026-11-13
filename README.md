@@ -34,8 +34,10 @@ Most days it places no orders. A daily loss limit pauses buys for the rest of th
 - **Updates**: a version history with Restore. Anything that changes how it trades shows old → new and asks first. Software updates never install by themselves.
 - **Self-Tune**: on unless you turn it off. Each month it tests small changes to the plan's numbers on past prices, and it may make one passing change a quarter by itself, on paper money only (while live trading is on, it only shows its results). Every change shows on the dashboard and can be undone.
 
-**Add-ons**, off by default: `charles-addon on crypto` (a $1,000 paper book of bitcoin and ether, Coinbase's public prices) and
-`charles-addon on kalshi` (a paper-only prediction-market bot; see [kalshi/README.md](kalshi/README.md)).
+**Add-ons**, off by default: `charles-addon on crypto` (a $1,000 paper book of bitcoin and ether, Coinbase's public prices),
+`charles-addon on kalshi` (a paper-only prediction-market bot; see [kalshi/README.md](kalshi/README.md)) and
+`charles-addon on fetch` (**Fetch**: bitcoin and SPY watched trade by trade, with a live chart, everyone's trades and Charles
+saying what he sees, on $1,000 of practice money each; market data only, it never places an order).
 
 ## Simulated results
 
@@ -59,7 +61,7 @@ results don't predict future results. **Charles is software, not investment advi
 | `charles-keys` | Add or change your keys (they stay in `.env` on your server) |
 | `charles-pause` · `charles-resume` | Hold all orders, or start again |
 | `charles-update` · `charles-restore` | Install a new version, or go back to an earlier one |
-| `charles-addon` | Turn crypto or Kalshi on or off |
+| `charles-addon` | Turn crypto, Kalshi or Fetch on or off |
 | `charles-copy <id>` | Copy settings from the leaderboard |
 
 ## Change it with Claude Code
@@ -107,7 +109,7 @@ Python, with a standard-library web server and plain HTML in `web/`.
 | `alpaca_executor.py`, `risk_manager.py`, `news_veto.py` | The paper account, the loss limit, the headline check |
 | `webdash.py`, `auth.py`, `control.py`, `updates.py` | The dashboard, its login, its requests to the root job, updates |
 | `stock_settings.py`, `crypto_settings.py` | Checking, applying and undoing a settings change (the sliders, Copy, self-tune) |
-| `crypto_*.py`, `kalshi/` | The add-ons |
+| `crypto_*.py`, `kalshi/`, `fetch_*.py` | The add-ons |
 | `leaderboard/` | The board's server, its simulator and the client ([docs/leaderboard.md](docs/leaderboard.md)) |
 
 Run the tests with `python -m unittest discover -s tests -t tests`. Releases are explained in [docs/releases.md](docs/releases.md).

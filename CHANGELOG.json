@@ -2,6 +2,17 @@
  "about": "One entry per release tag. kind: \"fix\" (doesn't change how Charles trades) or \"rule\" (does, or might). The dashboard's Updates card and charles-update read this; see docs/releases.md.",
  "releases": [
   {
+   "version": "v1.10.0",
+   "date": "2026-11-13",
+   "kind": "fix",
+   "notes": [
+    "New add-on, Fetch: bitcoin and SPY watched trade by trade. A live chart of one-minute bars, everyone's trades as they happen, and Charles saying what he is waiting for and why he buys or sells, in captions and, if you turn it on, out loud.",
+    "Each has its own $1,000 of practice money. Fetch uses market data only (Coinbase's public feed, and Alpaca's free IEX feed for SPY with the keys Charles already has); it never places an order.",
+    "On past prices no Fetch rule beat simply holding after costs, so it is a show, not a way to make money. Turn it on with charles-addon on fetch.",
+    "How Charles trades doesn't change."
+   ]
+  },
+  {
    "version": "v1.9.1",
    "date": "2026-11-13",
    "kind": "rule",
